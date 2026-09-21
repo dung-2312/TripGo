@@ -1,0 +1,30 @@
+﻿using Microsoft.AspNetCore.Mvc;
+
+using TripGo.Models;
+
+< ul class= "navbar-nav ms-auto" >
+@if(User.Identity != null && User.Identity.IsAuthenticated)
+{
+    < li class= "nav-item" >
+        < span class= "nav-link text-dark" > Xin chào, <strong>@User.Identity.Name</strong>!</span>
+    </li>
+    @if (User.IsInRole("Admin"))
+    {
+        <li class= "nav-item" >
+            < a class= "nav-link text-danger fw-bold" asp - area = "Admin" asp - controller = "Dashboard" asp - action = "Index" > Trang Quản Trị</a>
+        </li>
+    }
+    < li class= "nav-item" >
+        < a class= "nav-link text-dark" asp - area = "" asp - controller = "Account" asp - action = "Logout" > Đăng xuất </ a >
+    </ li >
+}
+else
+{
+    < li class= "nav-item" >
+        < a class= "nav-link text-dark" asp - area = "" asp - controller = "Account" asp - action = "Register" > Đăng ký </ a >
+    </ li >
+    < li class= "nav-item" >
+        < a class= "nav-link text-dark" asp - area = "" asp - controller = "Account" asp - action = "Login" > Đăng nhập </ a >
+    </ li >
+}
+</ ul >
