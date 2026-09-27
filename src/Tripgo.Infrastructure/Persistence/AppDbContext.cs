@@ -37,7 +37,51 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Tự động quét và áp dụng tất cả các IEntityTypeConfiguration trong Assembly
+        // 1. Cấu hình Precision/Scale cho các trường số thực (decimal)
+        modelBuilder.Entity<PickupDropoffPoint>(entity =>
+        {
+            entity.Property(p => p.Latitude).HasPrecision(9, 6);
+            entity.Property(p => p.Longitude).HasPrecision(9, 6);
+        });
+
+        modelBuilder.Entity<Route>(entity =>
+        {
+            entity.Property(r => r.DistanceKm).HasPrecision(8, 2);
+
+            // Chặn lỗi Multiple Cascade Paths khi 2 FK cùng trỏ về Locations
+            entity.HasOne(r => r.OriginLocation)
+                  .WithMany()
+                  .HasForeignKey(r => r.OriginLocationId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(r => r.DestinationLocation)
+                  .WithMany()
+                  .HasForeignKey(r => r.DestinationLocationId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(r => r.Operator)
+                  .WithMany()
+                  .HasForeignKey(r => r.OperatorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Trip>(entity =>
+        {
+            entity.Property(t => t.BasePrice).HasPrecision(18, 2);
+
+            // Chặn cascade path từ Trip sang Route và Bus
+            entity.HasOne(t => t.Route)
+                  .WithMany()
+                  .HasForeignKey(t => t.RouteId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(t => t.Bus)
+                  .WithMany()
+                  .HasForeignKey(t => t.BusId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 2. Tự động quét và áp dụng tất cả các IEntityTypeConfiguration trong Assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }

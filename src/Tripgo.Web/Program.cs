@@ -1,8 +1,17 @@
+﻿using Microsoft.EntityFrameworkCore;
+using Tripgo.Infrastructure.Persistence;
 using Tripgo.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// 1. Đăng ký DbContext với chuỗi kết nối từ appsettings.json
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+// 2. Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
