@@ -32,6 +32,7 @@ try
     {
         var services = scope.ServiceProvider;
         var context = services.GetRequiredService<AppDbContext>();
+        await context.Database.MigrateAsync();
         await DbInitializer.SeedAsync(context);
     }
 }
