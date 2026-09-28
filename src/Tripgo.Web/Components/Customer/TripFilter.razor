@@ -1,0 +1,178 @@
+@using Tripgo.Web.Models
+
+<div class="card border-0 shadow-sm rounded-4 p-3 bg-white">
+    <div class="d-flex justify-content-between align-items-center pb-2 border-bottom mb-3">
+        <h6 class="fw-bold mb-0 text-dark">
+            <i class="bi bi-funnel-fill text-primary me-2"></i>BỘ LỌC TÌM KIẾM
+        </h6>
+        <button class="btn btn-sm btn-link text-decoration-none text-muted p-0" @onclick="ResetFilter">
+            <i class="bi bi-arrow-counterclockwise"></i> Đặt lại
+        </button>
+    </div>
+
+    <!-- Giờ khởi hành -->
+    <div class="mb-4">
+        <label class="fw-bold small text-secondary text-uppercase mb-2 d-block">
+            <i class="bi bi-clock me-1 text-primary"></i> Khung giờ khởi hành
+        </label>
+        <div class="d-flex flex-column gap-2">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="tf_early" 
+                       checked="@Filter.SelectedTimeFrames.Contains("EarlyMorning")" 
+                       @onchange="@(e => ToggleTimeFrame("EarlyMorning", e.Value))" />
+                <label class="form-check-label small" for="tf_early">
+                    Sáng sớm (00:00 - 06:00)
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="tf_morning" 
+                       checked="@Filter.SelectedTimeFrames.Contains("Morning")" 
+                       @onchange="@(e => ToggleTimeFrame("Morning", e.Value))" />
+                <label class="form-check-label small" for="tf_morning">
+                    Buổi sáng (06:00 - 12:00)
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="tf_afternoon" 
+                       checked="@Filter.SelectedTimeFrames.Contains("Afternoon")" 
+                       @onchange="@(e => ToggleTimeFrame("Afternoon", e.Value))" />
+                <label class="form-check-label small" for="tf_afternoon">
+                    Buổi chiều (12:00 - 18:00)
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="tf_evening" 
+                       checked="@Filter.SelectedTimeFrames.Contains("Evening")" 
+                       @onchange="@(e => ToggleTimeFrame("Evening", e.Value))" />
+                <label class="form-check-label small" for="tf_evening">
+                    Buổi tối (18:00 - 24:00)
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hãng xe / Nhà xe -->
+    <div class="mb-4">
+        <label class="fw-bold small text-secondary text-uppercase mb-2 d-block">
+            <i class="bi bi-buildings me-1 text-primary"></i> Nhà xe vận hành
+        </label>
+        <div class="d-flex flex-column gap-2">
+            @foreach (var op in AvailableOperators)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="op_@op" 
+                           checked="@Filter.SelectedOperators.Contains(op)" 
+                           @onchange="@(e => ToggleOperator(op, e.Value))" />
+                    <label class="form-check-label small text-truncate" for="op_@op">
+                        @op
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Loại xe / Hạng ghế -->
+    <div class="mb-4">
+        <label class="fw-bold small text-secondary text-uppercase mb-2 d-block">
+            <i class="bi bi-bus-front me-1 text-primary"></i> Dòng xe
+        </label>
+        <div class="d-flex flex-column gap-2">
+            @foreach (var bt in new[] { "Limousine", "Giường nằm", "Ghế ngồi" })
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="bt_@bt" 
+                           checked="@Filter.SelectedBusTypes.Contains(bt)" 
+                           @onchange="@(e => ToggleBusType(bt, e.Value))" />
+                    <label class="form-check-label small" for="bt_@bt">
+                        Xe @bt
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Khoảng giá -->
+    <div class="mb-3">
+        <label class="fw-bold small text-secondary text-uppercase mb-2 d-flex justify-content-between">
+            <span><i class="bi bi-cash-stack me-1 text-primary"></i> Giá vé tối đa</span>
+            <span class="text-danger fw-bold">@((Filter.MaxPrice ?? 600000).ToString("N0")) đ</span>
+        </label>
+        <input type="range" class="form-range" min="150000" max="600000" step="50000" 
+               value="@(Filter.MaxPrice ?? 600000)" 
+               @onchange="OnPriceChanged" />
+        <div class="d-flex justify-content-between small text-muted">
+            <span>150.000 đ</span>
+            <span>600.000 đ</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public TripSearchFilter Filter { get; set; } = new();
+
+    [Parameter]
+    public List<string> AvailableOperators { get; set; } = new() 
+    { 
+        "Phương Trang (FUTA)", 
+        "Thành Bưởi Limousine", 
+        "Sao Việt Limousine", 
+        "Inter Bus Lines",
+        "Hải Vân Limousine",
+        "Hoa Mai Vũng Tàu" 
+    };
+
+    [Parameter]
+    public EventCallback OnFilterChanged { get; set; }
+
+    private async Task ToggleTimeFrame(string frame, object? isChecked)
+    {
+        bool check = (bool)(isChecked ?? false);
+        if (check && !Filter.SelectedTimeFrames.Contains(frame))
+            Filter.SelectedTimeFrames.Add(frame);
+        else if (!check)
+            Filter.SelectedTimeFrames.Remove(frame);
+
+        await OnFilterChanged.InvokeAsync();
+    }
+
+    private async Task ToggleOperator(string op, object? isChecked)
+    {
+        bool check = (bool)(isChecked ?? false);
+        if (check && !Filter.SelectedOperators.Contains(op))
+            Filter.SelectedOperators.Add(op);
+        else if (!check)
+            Filter.SelectedOperators.Remove(op);
+
+        await OnFilterChanged.InvokeAsync();
+    }
+
+    private async Task ToggleBusType(string bt, object? isChecked)
+    {
+        bool check = (bool)(isChecked ?? false);
+        if (check && !Filter.SelectedBusTypes.Contains(bt))
+            Filter.SelectedBusTypes.Add(bt);
+        else if (!check)
+            Filter.SelectedBusTypes.Remove(bt);
+
+        await OnFilterChanged.InvokeAsync();
+    }
+
+    private async Task OnPriceChanged(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var price))
+        {
+            Filter.MaxPrice = price;
+            await OnFilterChanged.InvokeAsync();
+        }
+    }
+
+    private async Task ResetFilter()
+    {
+        Filter.SelectedTimeFrames.Clear();
+        Filter.SelectedOperators.Clear();
+        Filter.SelectedBusTypes.Clear();
+        Filter.MaxPrice = null;
+        await OnFilterChanged.InvokeAsync();
+    }
+}

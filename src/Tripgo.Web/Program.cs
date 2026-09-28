@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Tripgo.Infrastructure.Persistence;
 using Tripgo.Web.Components;
 
@@ -14,6 +14,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 2. Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// 3. Register Customer Booking Service (Mock implementation for Sprint 1)
+builder.Services.AddSingleton<Tripgo.Web.Services.ICustomerBookingService, Tripgo.Web.Services.CustomerBookingMockService>();
 
 var app = builder.Build();
 
