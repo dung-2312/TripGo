@@ -25,12 +25,19 @@ builder.Services.AddSingleton<Tripgo.Web.Services.ICustomerBookingService, Tripg
 
 var app = builder.Build();
 
-// 4. Tự động nạp dữ liệu mẫu khi khởi động
-using (var scope = app.Services.CreateScope())
+// 4. Tự động nạp dữ liệu mẫu khi khởi động (nếu có kết nối DB)
+try
 {
-    var services = scope.ServiceProvider;
-    var context = services.GetRequiredService<AppDbContext>();
-    await DbInitializer.SeedAsync(context);
+    using (var scope = app.Services.CreateScope())
+    {
+        var services = scope.ServiceProvider;
+        var context = services.GetRequiredService<AppDbContext>();
+        await DbInitializer.SeedAsync(context);
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning("Không thể nạp dữ liệu mẫu CSDL khi khởi động: {Message}", ex.Message);
 }
 
 // Configure the HTTP request pipeline.
