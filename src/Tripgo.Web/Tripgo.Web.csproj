@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tripgo.Application\Tripgo.Application.csproj" />
+    <ProjectReference Include="..\Tripgo.Domain\Tripgo.Domain.csproj" />
     <ProjectReference Include="..\Tripgo.Infrastructure\Tripgo.Infrastructure.csproj" />
   </ItemGroup>
 
