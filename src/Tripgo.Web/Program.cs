@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Tripgo.Domain.Interfaces;
 using Tripgo.Infrastructure.Persistence;
+using Tripgo.Infrastructure.Services;
 using Tripgo.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,7 +13,10 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// 2. Add services to the container.
+// 2. Đăng ký TripService vào DI container
+builder.Services.AddScoped<ITripService, TripService>();
+
+// 3. Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -19,6 +24,14 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSingleton<Tripgo.Web.Services.ICustomerBookingService, Tripgo.Web.Services.CustomerBookingMockService>();
 
 var app = builder.Build();
+
+// 4. Tự động nạp dữ liệu mẫu khi khởi động
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var context = services.GetRequiredService<AppDbContext>();
+    await DbInitializer.SeedAsync(context);
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

@@ -319,6 +319,32 @@ public class CustomerBookingMockService : ICustomerBookingService
     public Task<CustomerTripDto?> GetTripDetailsAsync(long tripId)
     {
         var trip = _trips.FirstOrDefault(t => t.TripId == tripId);
+        if (trip == null && _trips.Any())
+        {
+            var fb = _trips.First();
+            var fallback = new CustomerTripDto
+            {
+                TripId = tripId,
+                TripCode = $"TG-{tripId:D4}",
+                OperatorName = fb.OperatorName,
+                OperatorLogoUrl = fb.OperatorLogoUrl,
+                BusTypeName = fb.BusTypeName,
+                LicensePlate = fb.LicensePlate,
+                OriginCity = fb.OriginCity,
+                DestinationCity = fb.DestinationCity,
+                PickupPoint = fb.PickupPoint,
+                DropoffPoint = fb.DropoffPoint,
+                DepartureTime = fb.DepartureTime,
+                ExpectedArrivalTime = fb.ExpectedArrivalTime,
+                BasePrice = fb.BasePrice,
+                TotalSeats = fb.TotalSeats,
+                AvailableSeats = fb.AvailableSeats,
+                Rating = fb.Rating,
+                RatingCount = fb.RatingCount,
+                Amenities = fb.Amenities
+            };
+            return Task.FromResult<CustomerTripDto?>(fallback);
+        }
         return Task.FromResult(trip);
     }
 
