@@ -1,0 +1,70 @@
+﻿@model IEnumerable<TripGo.Models.Booking>
+@{
+    ViewData["Title"] = "Dashboard Quản Trị";
+}
+
+<!-- Hàng 4 Thẻ KPI Doanh Thu & Số Lượng -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white border-0 shadow-sm p-3 rounded-3">
+            <h6 class="text-uppercase small">TỔNG DOANH THU</h6>
+            <h3 class="fw-bold mb-0">@ViewBag.TotalRevenue.ToString("N0") đ</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white border-0 shadow-sm p-3 rounded-3">
+            <h6 class="text-uppercase small">VÉ ĐÃ BÁN</h6>
+            <h3 class="fw-bold mb-0">@ViewBag.TotalTickets vé</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark border-0 shadow-sm p-3 rounded-3">
+            <h6 class="text-uppercase small">TỔNG CHUYẾN ĐI</h6>
+            <h3 class="fw-bold mb-0">@ViewBag.TotalTrips chuyến</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white border-0 shadow-sm p-3 rounded-3">
+            <h6 class="text-uppercase small">ĐỘI XE VẬN HÀNH</h6>
+            <h3 class="fw-bold mb-0">@ViewBag.TotalBuses xe</h3>
+        </div>
+    </div>
+</div>
+
+<!-- Bảng Danh Sách 10 Đơn Đặt Vé Gần Nhất -->
+<div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0 fw-bold text-secondary"><i class="bi bi-clock-history"></i> Các Đơn Đặt Vé Gần Nhất</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Mã Vé</th>
+                        <th>Khách Hàng</th>
+                        <th>Số Điện Thoại</th>
+                        <th>Ghế Đã Đặt</th>
+                        <th>Tổng Tiền</th>
+                        <th>Trạng Thái</th>
+                        <th>Thời Gian Đặt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in Model)
+                    {
+                        <tr>
+                            <td><span class="badge bg-primary fs-6">@b.BookingCode</span></td>
+                            <td class="fw-bold">@b.CustomerName</td>
+                            <td>@b.CustomerPhone</td>
+                            <td>@string.Join(", ", b.BookingSeats?.Select(s => s.SeatCode) ?? new List<string>())</td>
+                            <td class="text-danger fw-bold">@b.TotalAmount.ToString("N0") đ</td>
+                            <td><span class="badge bg-success">@b.PaymentStatus</span></td>
+                            <td>@b.CreatedAt.ToString("HH:mm dd/MM/yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,25 @@
+﻿@model TripGo.Models.Booking
+@{
+    ViewData["Title"] = "Đặt Vé Thành Công";
+}
+
+<div class="container py-5 text-center">
+    <div class="card shadow border-0 p-5 col-md-8 mx-auto">
+        <i class="bi bi-check-circle-fill text-success" style="font-size: 70px;"></i>
+        <h2 class="text-success mt-3 fw-bold">CHÚC MỪNG BẠN ĐÃ ĐẶT VÉ THÀNH CÔNG!</h2>
+        <p class="lead">Mã đặt vé của bạn là:</p>
+        <h1 class="display-5 fw-bold text-primary border p-3 rounded bg-light">@Model.BookingCode</h1>
+
+        <div class="text-start mt-4 border-top pt-3">
+            <p><strong>Khách hàng:</strong> @Model.CustomerName</p>
+            <p><strong>Số điện thoại:</strong> @Model.CustomerPhone</p>
+            <p><strong>Ghế đã đặt:</strong> @string.Join(", ", Model.BookingSeats?.Select(s => s.SeatCode) ?? new List<string>())</p>
+            <p><strong>Tổng thanh toán:</strong> <span class="text-danger fw-bold">@Model.TotalAmount.ToString("N0") VNĐ</span></p>
+            <p><strong>Trạng thái:</strong> <span class="badge bg-success">ĐÃ XÁC NHẬN</span></p>
+        </div>
+
+        <div class="mt-4">
+            <a asp-controller="Home" asp-action="Index" class="btn btn-primary px-4">Về Trang Chủ</a>
+        </div>
+    </div>
+</div>

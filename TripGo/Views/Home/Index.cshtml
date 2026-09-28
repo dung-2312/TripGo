@@ -1,8 +1,70 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+﻿@model IEnumerable<TripGo.Models.Trip>
+@{
+    ViewData["Title"] = "Đặt Vé Xe Khách TripGo";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<!-- Thanh Tìm Kiếm Nhanh -->
+<div class="bg-primary text-white py-5 rounded-3 mb-4 shadow">
+    <div class="container text-center">
+        <h1 class="display-6 fw-bold mb-3"><i class="bi bi-bus-front"></i> HỆ THỐNG ĐẶT VÉ XE KHÁCH CHẤT LƯỢNG CAO</h1>
+        <p class="lead">An toàn - Nhanh chóng - Tiện lợi</p>
+
+        <form method="get" asp-action="Index" class="row g-2 justify-content-center mt-3 p-3 bg-white text-dark rounded shadow-sm">
+            <div class="col-md-3">
+                <label class="form-label text-muted fw-bold">Điểm xuất phát</label>
+                <input type="text" name="origin" value="@ViewBag.Origin" class="form-control" placeholder="Ví dụ: TP. Hồ Chí Minh" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted fw-bold">Điểm đến</label>
+                <input type="text" name="destination" value="@ViewBag.Destination" class="form-control" placeholder="Ví dụ: Quy Nhơn, Nha Trang" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted fw-bold">Ngày khởi hành</label>
+                <input type="date" name="departureDate" value="@ViewBag.DepartureDate" class="form-control" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-warning w-100 py-2 fw-bold text-dark">TÌM CHUYẾN</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Danh Sách Các Chuyến Xe -->
+<div class="container">
+    <h3 class="mb-4 text-secondary">DANH SÁCH CHUYẾN XE KHẢ DỤNG</h3>
+
+    @if (!Model.Any())
+    {
+        <div class="alert alert-info text-center py-4">
+            <h5>Hiện tại không có chuyến xe nào phù hợp với tìm kiếm của bạn!</h5>
+            <p>Vui lòng thử chọn điểm đi, điểm đến hoặc ngày khởi hành khác.</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-3">
+            @foreach (var trip in Model)
+            {
+                <div class="col-12">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-center">
+                            <div>
+                                <h5 class="text-primary fw-bold mb-1">
+                                    @trip.Route?.Origin <i class="bi bi-arrow-right"></i> @trip.Route?.Destination
+                                </h5>
+                                <p class="text-muted mb-1">
+                                    <i class="bi bi-clock"></i> Khởi hành: <strong>@trip.DepartureTime.ToString("HH:mm - dd/MM/yyyy")</strong>
+                                    | Xe: @(trip.Bus?.BusType?.TypeName ?? "Giường nằm cao cấp") (@trip.Bus?.PlateNumber)
+                                </p>
+                            </div>
+                            <div class="text-md-end mt-3 mt-md-0">
+                                <h4 class="text-danger fw-bold mb-1">@trip.Price.ToString("N0") đ</h4>
+                                <a asp-action="SelectSeats" asp-route-tripId="@trip.TripId" class="btn btn-primary px-4 fw-bold">CHỌN GHẾ</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 </div>

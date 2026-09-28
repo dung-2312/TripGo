@@ -1,25 +1,60 @@
 using Microsoft.AspNetCore.Mvc;
-using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using TripGo.Models;
 
 namespace TripGo.Controllers
 {
     public class HomeController : Controller
     {
-        public IActionResult Index()
+        private readonly TripGoDbContext _context;
+
+        public HomeController(TripGoDbContext context)
         {
-            return View();
+            _context = context;
         }
 
-        public IActionResult Privacy()
+        public async Task<IActionResult> Index(string? origin, string? destination, DateTime? departureDate)
         {
-            return View();
+            ViewBag.Origin = origin;
+            ViewBag.Destination = destination;
+            ViewBag.DepartureDate = departureDate?.ToString("yyyy-MM-dd");
+
+            var query = _context.Trips
+                .Include(t => t.Route)
+                .Include(t => t.Bus)
+                    .ThenInclude(b => b!.BusType)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(origin))
+                query = query.Where(t => t.Route!.Origin.Contains(origin));
+
+            if (!string.IsNullOrEmpty(destination))
+                query = query.Where(t => t.Route!.Destination.Contains(destination));
+
+            if (departureDate.HasValue)
+                query = query.Where(t => t.DepartureTime.Date == departureDate.Value.Date);
+
+            var trips = await query.ToListAsync();
+            return View(trips);
         }
 
-        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult Error()
+        public async Task<IActionResult> SelectSeats(int tripId)
         {
-            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+            var trip = await _context.Trips
+                .Include(t => t.Route)
+                .Include(t => t.Bus)
+                    .ThenInclude(b => b!.BusType)
+                .FirstOrDefaultAsync(t => t.TripId == tripId);
+
+            if (trip == null) return NotFound();
+
+            var bookedSeats = await _context.BookingSeats
+                .Where(s => s.TripId == tripId)
+                .Select(s => s.SeatCode)
+                .ToListAsync();
+
+            ViewBag.BookedSeats = bookedSeats;
+            return View(trip);
         }
     }
 }

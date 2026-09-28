@@ -1,0 +1,64 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - TripGo Quản Trị</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
+    <style>
+            .admin-sidebar {
+                width: 260px;
+                min-height: 100vh;
+                background-color: #1e293b;
+            }
+
+                .admin-sidebar a {
+                    color: #94a3b8;
+                    text-decoration: none;
+                    padding: 12px 20px;
+                    display: block;
+                    border-radius: 6px;
+                    margin: 4px 10px;
+                }
+
+                    .admin-sidebar a:hover, .admin-sidebar a.active {
+                        color: #ffffff;
+                        background-color: #334155;
+                    }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="d-flex">
+        <!-- Sidebar Dark Theme -->
+        <div class="admin-sidebar text-white p-2">
+            <div class="text-center py-4 border-bottom border-secondary">
+                <h4 class="fw-bold mb-0 text-warning"><i class="bi bi-speedometer2"></i> TripGo Admin</h4>
+                <small class="text-muted">Hệ thống quản lý nhà xe</small>
+            </div>
+            <nav class="mt-4">
+                <a asp-area="Admin" asp-controller="Dashboard" asp-action="Index" class="active">
+                    <i class="bi bi-graph-up-arrow me-2"></i> Bảng Điều Khiển
+                </a>
+                <a href="#"><i class="bi bi-calendar-check me-2"></i> Quản Lý Chuyến Xe</a>
+                <a href="#"><i class="bi bi-truck-front me-2"></i> Quản Lý Đội Xe</a>
+                <a href="#"><i class="bi bi-ticket-detailed me-2"></i> Quản Lý Vé Bán</a>
+                <hr class="border-secondary my-3" />
+                <a asp-area="" asp-controller="Home" asp-action="Index"><i class="bi bi-box-arrow-left me-2"></i> Xem Trang Khách</a>
+                <a asp-area="" asp-controller="Account" asp-action="Logout" class="text-danger"><i class="bi bi-power me-2"></i> Đăng Xuất</a>
+            </nav>
+        </div>
+
+        <!-- Vùng Nội Dung Dashboard -->
+        <div class="flex-grow-1 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm">
+                <h5 class="mb-0 text-secondary">HỆ THỐNG ĐIỀU HÀNH & BÁO CÁO</h5>
+                <div>Xin chào: <strong class="text-primary">@User.Identity?.Name</strong> <span class="badge bg-danger">ADMIN</span></div>
+            </div>
+            <main>
+                @RenderBody()
+            </main>
+        </div>
+    </div>
+</body>
+</html>

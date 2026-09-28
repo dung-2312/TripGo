@@ -1,0 +1,53 @@
+﻿@{
+    ViewData["Title"] = "Thanh Toán Đặt Vé";
+    var trip = ViewBag.Trip as TripGo.Models.Trip;
+    var seats = ViewBag.SelectedSeats as List<string>;
+    decimal total = ViewBag.TotalAmount;
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">XÁC NHẬN VÀ THANH TOÁN VÉ</h4>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-secondary">
+                        <h5>Tuyến: @trip?.Route?.Origin ➔ @trip?.Route?.Destination</h5>
+                        <p class="mb-1">Khởi hành: <strong>@trip?.DepartureTime.ToString("HH:mm - dd/MM/yyyy")</strong></p>
+                        <p class="mb-1">Vị trí ghế: <strong class="text-primary">@string.Join(", ", seats ?? new List<string>())</strong></p>
+                        <h4 class="text-danger mt-2">Tổng tiền: @total.ToString("N0") VNĐ</h4>
+                    </div>
+
+                    <form asp-action="ConfirmBooking" method="post">
+                        <input type="hidden" name="tripId" value="@trip?.TripId" />
+                        @if (seats != null)
+                        {
+                            foreach (var s in seats)
+                            {
+                                <input type="hidden" name="selectedSeats" value="@s" />
+                            }
+                        }
+
+                        <h5 class="mt-4 mb-3 text-secondary">Thông tin người đi xe:</h5>
+                        <div class="mb-3">
+                            <label class="form-label">Họ và tên hành khách</label>
+                            <input type="text" name="customerName" class="form-control" required placeholder="Nguyễn Văn A" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Số điện thoại nhận mã vé</label>
+                            <input type="tel" name="customerPhone" class="form-control" required placeholder="0901234567" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="customerEmail" class="form-control" required placeholder="email@example.com" />
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100 py-3 fw-bold fs-5 shadow mt-3">HOÀN TẤT ĐẶT VÉ</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
