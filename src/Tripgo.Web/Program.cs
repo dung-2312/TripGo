@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Tripgo.Domain.Interfaces;
 using Tripgo.Infrastructure.Persistence;
 using Tripgo.Infrastructure.Services;
@@ -20,14 +20,25 @@ builder.Services.AddScoped<ITripService, TripService>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// 3. Register Customer Booking Service (Mock implementation for Sprint 1)
+builder.Services.AddSingleton<Tripgo.Web.Services.ICustomerBookingService, Tripgo.Web.Services.CustomerBookingMockService>();
+
 var app = builder.Build();
 
-// 4. Tự động nạp dữ liệu mẫu khi khởi động
-using (var scope = app.Services.CreateScope())
+// 4. Tự động nạp dữ liệu mẫu khi khởi động (nếu có kết nối DB)
+try
 {
-    var services = scope.ServiceProvider;
-    var context = services.GetRequiredService<AppDbContext>();
-    await DbInitializer.SeedAsync(context);
+    using (var scope = app.Services.CreateScope())
+    {
+        var services = scope.ServiceProvider;
+        var context = services.GetRequiredService<AppDbContext>();
+        await context.Database.MigrateAsync();
+        await DbInitializer.SeedAsync(context);
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning("Không thể nạp dữ liệu mẫu CSDL khi khởi động: {Message}", ex.Message);
 }
 
 // Configure the HTTP request pipeline.

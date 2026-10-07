@@ -1,0 +1,122 @@
+@using Tripgo.Web.Models
+
+<div class="card border-0 shadow-sm rounded-4 mb-3 trip-card transition-all">
+    <div class="card-body p-4">
+        <div class="row align-items-center g-3">
+            <!-- Thông tin Nhà xe & Loại xe -->
+            <div class="col-lg-3 col-md-12 border-end-lg">
+                <div class="d-flex align-items-center gap-3 mb-2">
+                    @if (!string.IsNullOrEmpty(Trip.OperatorLogoUrl))
+                    {
+                        <img src="@Trip.OperatorLogoUrl" alt="@Trip.OperatorName" class="rounded-circle border" style="width: 45px; height: 45px; object-fit: cover;" />
+                    }
+                    else
+                    {
+                        <div class="bg-primary-subtle text-primary p-2 rounded-circle">
+                            <i class="bi bi-bus-front fs-4"></i>
+                        </div>
+                    }
+                    <div>
+                        <h6 class="fw-bold mb-0 text-dark">@Trip.OperatorName</h6>
+                        <span class="badge bg-warning-subtle text-dark border border-warning-subtle small">
+                            <i class="bi bi-star-fill text-warning"></i> @Trip.Rating.ToString("0.0") (@Trip.RatingCount)
+                        </span>
+                    </div>
+                </div>
+                <div class="text-secondary small mt-1">
+                    <div><i class="bi bi-truck me-1"></i> @Trip.BusTypeName</div>
+                    <div><i class="bi bi-upc-scan me-1"></i> Biển số: <strong>@Trip.LicensePlate</strong></div>
+                </div>
+            </div>
+
+            <!-- Lộ trình & Thời gian -->
+            <div class="col-lg-6 col-md-8">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <!-- Điểm đi -->
+                    <div class="text-start">
+                        <div class="fs-4 fw-bold text-primary">@Trip.DepartureTime.ToString("HH:mm")</div>
+                        <div class="fw-semibold text-dark">@Trip.OriginCity</div>
+                        <div class="small text-muted text-truncate" style="max-width: 170px;" title="@Trip.PickupPoint">
+                            <i class="bi bi-geo-alt text-danger"></i> @Trip.PickupPoint
+                        </div>
+                    </div>
+
+                    <!-- Thời gian di chuyển & đường nối -->
+                    <div class="text-center px-3 flex-grow-1">
+                        <div class="text-secondary small mb-1 fw-semibold">
+                            <i class="bi bi-clock me-1"></i>@((int)Trip.Duration.TotalHours)h @Trip.Duration.Minutes m
+                        </div>
+                        <div class="position-relative d-flex align-items-center justify-content-center">
+                            <hr class="w-100 my-0 border-primary border-2 opacity-50" />
+                            <i class="bi bi-bus-front-fill text-primary position-absolute bg-white px-1"></i>
+                        </div>
+                        <span class="badge bg-light text-secondary border small mt-1">Chạy thẳng</span>
+                    </div>
+
+                    <!-- Điểm đến -->
+                    <div class="text-end">
+                        <div class="fs-4 fw-bold text-dark">@Trip.ExpectedArrivalTime.ToString("HH:mm")</div>
+                        <div class="fw-semibold text-dark">@Trip.DestinationCity</div>
+                        <div class="small text-muted text-truncate" style="max-width: 170px;" title="@Trip.DropoffPoint">
+                            <i class="bi bi-geo-alt-fill text-success"></i> @Trip.DropoffPoint
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tiện ích trên xe -->
+                <div class="d-flex flex-wrap gap-1 mt-2">
+                    @foreach (var am in Trip.Amenities.Take(4))
+                    {
+                        <span class="badge bg-light text-secondary border small">
+                            <i class="bi bi-check2 text-success me-1"></i>@am
+                        </span>
+                    }
+                </div>
+            </div>
+
+            <!-- Giá vé & Nút Chọn ghế -->
+            <div class="col-lg-3 col-md-4 text-lg-end text-center border-start-lg pt-3 pt-lg-0">
+                <div class="text-muted small">Giá từ:</div>
+                <div class="fs-3 fw-bold text-danger mb-1">
+                    @Trip.BasePrice.ToString("N0") <span class="fs-6">đ</span>
+                </div>
+                <div class="mb-3">
+                    <span class="badge @(Trip.AvailableSeats > 5 ? "bg-success-subtle text-success border border-success-subtle" : "bg-danger-subtle text-danger border border-danger-subtle")">
+                        <i class="bi bi-person-check me-1"></i>Còn @Trip.AvailableSeats chỗ trống
+                    </span>
+                </div>
+                <a href="/chon-ghe/@Trip.TripId" class="btn btn-warning text-dark fw-bold px-4 py-2 w-100 shadow-sm rounded-pill btn-select-trip">
+                    Chọn chuyến <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public CustomerTripDto Trip { get; set; } = null!;
+}
+
+<style>
+    .trip-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        border: 1px solid #e2e8f0;
+    }
+    .trip-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important;
+        border-color: #0d6efd;
+    }
+    .btn-select-trip:hover {
+        background-color: #ffb703 !important;
+    }
+    @@media (min-width: 992px) {
+        .border-end-lg {
+            border-right: 1px dashed #dee2e6;
+        }
+        .border-start-lg {
+            border-left: 1px dashed #dee2e6;
+        }
+    }
+</style>
