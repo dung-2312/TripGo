@@ -1,0 +1,174 @@
+@page "/my-tickets"
+@using System.Security.Cryptography
+@using System.Text
+@using Tripgo.Domain.Interfaces
+@inject ITripService TripService
+@rendermode InteractiveServer
+
+<PageTitle>Vé của tôi | Tripgo</PageTitle>
+
+<section class="ticket-page">
+    <div class="ticket-wrap">
+        <header class="ticket-heading">
+            <span class="eyebrow">TRIPGO · HÀNH TRÌNH CỦA BẠN</span>
+            <h1>Tra cứu vé điện tử</h1>
+            <p>Nhập số điện thoại đặt vé hoặc mã đặt chỗ để xem thông tin hành trình.</p>
+        </header>
+
+        <div class="lookup-bar">
+            <i class="bi bi-search"></i>
+            <input aria-label="Số điện thoại hoặc mã đặt chỗ" placeholder="Số điện thoại hoặc TRIPGO-XXXXX" @bind="lookupValue" @bind:event="oninput" @onkeydown="HandleKeyDown" />
+            <button type="button" class="lookup-button" disabled="@isSearching" @onclick="LookupTickets">
+                @if (isSearching) { <span class="spinner-border spinner-border-sm"></span> }
+                else { <i class="bi bi-arrow-right"></i> }
+                Tra cứu
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            <div class="lookup-status @(tickets.Count > 0 ? "success" : "")" role="status">@statusMessage</div>
+        }
+
+        @foreach (var ticket in tickets)
+        {
+            var qrModules = CreateQrPattern(ticket.BookingCode);
+            <article class="ticket-card">
+                <div class="ticket-main">
+                    <div class="ticket-topline"><span class="ticket-code">@ticket.BookingCode</span><span class="ticket-paid">ĐÃ XÁC NHẬN</span></div>
+                    <h2>@ticket.RouteName</h2>
+                    <div class="ticket-operator"><i class="bi bi-bus-front-fill"></i><span>@ticket.OperatorName</span><span class="bus-type">@ticket.BusTypeName</span></div>
+                    <div class="ticket-route-line">
+                        <div><small>GIỜ KHỞI HÀNH</small><strong>@ticket.DepartureTime.ToLocalTime().ToString("HH:mm")</strong><span>@ticket.DepartureTime.ToLocalTime().ToString("ddd, dd/MM/yyyy")</span></div>
+                        <div class="route-rule"><i class="bi bi-arrow-right"></i></div>
+                        <div><small>BIỂN SỐ XE</small><strong>@ticket.BusLicensePlate</strong><span>Vui lòng có mặt trước giờ chạy 30 phút</span></div>
+                    </div>
+                    <div class="ticket-facts">
+                        <div><small>HÀNH KHÁCH</small><b>@ticket.Name</b></div>
+                        <div><small>SỐ ĐIỆN THOẠI</small><b>@ticket.Phone</b></div>
+                        <div><small>GIƯỜNG</small><b>@string.Join(", ", ticket.SeatCodes)</b></div>
+                        <div><small>ĐIỂM ĐÓN</small><b>@ticket.SelectedPickupPoint</b></div>
+                        <div><small>ĐIỂM TRẢ</small><b>@ticket.SelectedDropoffPoint</b></div>
+                        <div><small>BẢO HIỂM</small><b>@(ticket.HasInsurance ? $"Có · {ticket.InsuranceAmount:N0} đ" : "Không")</b></div>
+                    </div>
+                    <div class="boarding-note"><i class="bi bi-info-circle-fill"></i><span>Xuất trình mã QR cho nhân viên nhà xe tại điểm đón. Mã vé: <b>@ticket.BookingCode</b></span></div>
+                </div>
+                <aside class="ticket-qr-panel">
+                    <div class="qr-code" role="img" aria-label="Mã QR mô phỏng cho vé @ticket.BookingCode">
+                        @for (var index = 0; index < qrModules.Length; index++)
+                        {
+                            <span class="@(qrModules[index] ? "qr-dark" : "")"></span>
+                        }
+                    </div>
+                    <strong>VÉ ĐIỆN TỬ</strong>
+                    <small>Đặt lúc @ticket.BookedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>
+                    <div class="ticket-total">@((ticket.BasePrice * ticket.SeatCodes.Count + ticket.InsuranceAmount).ToString("N0")) đ</div>
+                </aside>
+            </article>
+        }
+    </div>
+</section>
+
+<style>
+    .ticket-page { min-height: 100vh; padding: 48px 22px 72px; background: #f2f6f8; color: #183042; }
+    .ticket-wrap { max-width: 1120px; margin: 0 auto; }
+    .ticket-heading { margin-bottom: 25px; }
+    .eyebrow { color: #0d5cb6; font-size: 12px; font-weight: 800; }
+    .ticket-heading h1 { margin: 9px 0 5px; font-size: 32px; font-weight: 800; }
+    .ticket-heading p { margin: 0; color: #647784; }
+    .lookup-bar { display: flex; align-items: center; gap: 12px; padding: 9px 10px 9px 16px; border: 1px solid #dce5e9; border-radius: 8px; background: white; box-shadow: 0 7px 24px rgba(18,54,72,.06); }
+    .lookup-bar > i { color: #8295a1; }
+    .lookup-bar input { flex: 1; min-width: 0; border: 0; outline: 0; padding: 10px 0; }
+    .lookup-button { display: flex; align-items: center; gap: 8px; padding: 11px 17px; border: 0; border-radius: 6px; background: #ffd333; color: #1c2f3b; font-weight: 800; }
+    .lookup-status { margin: 14px 0; color: #a33c2c; }
+    .lookup-status.success { color: #177347; }
+    .ticket-card { display: grid; grid-template-columns: minmax(0, 1fr) 210px; margin-top: 20px; border: 1px solid #dce5e9; border-radius: 8px; background: #fff; box-shadow: 0 8px 26px rgba(18,54,72,.06); overflow: hidden; }
+    .ticket-main { padding: 24px; }
+    .ticket-topline { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .ticket-code { color: #0d5cb6; font-weight: 800; }
+    .ticket-paid { padding: 5px 8px; border-radius: 4px; background: #e4f5ea; color: #217445; font-size: 10px; font-weight: 800; }
+    .ticket-main h2 { margin: 13px 0; font-size: 21px; font-weight: 800; }
+    .ticket-operator { display: flex; align-items: center; gap: 9px; color: #304956; font-weight: 700; }
+    .ticket-operator i { color: #0d5cb6; }
+    .bus-type { color: #71838e; font-size: 13px; font-weight: 500; }
+    .ticket-route-line { display: grid; grid-template-columns: 1fr 80px 1fr; align-items: center; gap: 12px; padding: 18px 0; margin: 12px 0; border-bottom: 1px solid #e9eef0; }
+    .ticket-route-line > div:not(.route-rule) { display: grid; gap: 4px; }
+    .ticket-route-line small, .ticket-facts small { color: #81929b; font-size: 10px; font-weight: 800; }
+    .ticket-route-line strong { font-size: 20px; }
+    .ticket-route-line span { color: #667985; font-size: 12px; }
+    .route-rule { display: grid; place-items: center; color: #0d5cb6; border-bottom: 1px dashed #aabac2; }
+    .ticket-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 20px; }
+    .ticket-facts > div { display: grid; gap: 4px; }
+    .ticket-facts b { overflow-wrap: anywhere; font-size: 13px; }
+    .boarding-note { display: flex; gap: 9px; align-items: flex-start; margin-top: 18px; padding: 11px 12px; background: #eef6fb; color: #375b70; font-size: 12px; }
+    .boarding-note i { color: #0d5cb6; }
+    .ticket-qr-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 20px 16px; border-left: 1px dashed #d5e0e5; background: #f9fbfc; text-align: center; }
+    .qr-code { display: grid; grid-template-columns: repeat(21, 6px); grid-template-rows: repeat(21, 6px); gap: 1px; padding: 6px; background: white; border: 1px solid #e1e8eb; }
+    .qr-code span { background: transparent; }
+    .qr-code span.qr-dark { background: #102a38; }
+    .ticket-qr-panel > strong { color: #0d5cb6; font-size: 11px; letter-spacing: .04em; }
+    .ticket-qr-panel small { color: #71838e; font-size: 10px; }
+    .ticket-total { margin-top: 4px; font-size: 18px; font-weight: 800; }
+    @@media (max-width: 760px) { .ticket-page { padding: 30px 14px; } .ticket-card { grid-template-columns: 1fr; } .ticket-qr-panel { border-left: 0; border-top: 1px dashed #d5e0e5; } .ticket-facts { grid-template-columns: repeat(2, minmax(0,1fr)); } .ticket-main { padding: 18px; } }
+</style>
+
+@code {
+    private string lookupValue = string.Empty;
+    private string? statusMessage;
+    private bool isSearching;
+    private List<CustomerBookingInfoDto> tickets = new();
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await LookupTickets();
+    }
+
+    private async Task LookupTickets()
+    {
+        statusMessage = null;
+        tickets.Clear();
+        if (string.IsNullOrWhiteSpace(lookupValue))
+        {
+            statusMessage = "Nhập số điện thoại hoặc mã đặt chỗ để tra cứu.";
+            return;
+        }
+
+        isSearching = true;
+        try
+        {
+            if (lookupValue.Trim().StartsWith("TRIPGO-", StringComparison.OrdinalIgnoreCase))
+            {
+                var ticket = await TripService.GetBookingByCodeAsync(lookupValue);
+                if (ticket != null) tickets.Add(ticket);
+            }
+            else
+            {
+                tickets = await TripService.GetBookingsByPhoneAsync(lookupValue);
+            }
+            statusMessage = tickets.Count > 0 ? $"Tìm thấy {tickets.Count} vé đã đặt." : "Không tìm thấy vé phù hợp trong phiên hệ thống này.";
+        }
+        finally { isSearching = false; }
+    }
+
+    private static bool[] CreateQrPattern(string code)
+    {
+        const int size = 21;
+        var modules = new bool[size * size];
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(code));
+        for (var index = 0; index < modules.Length; index++)
+            modules[index] = (digest[(index / 8) % digest.Length] & (1 << (index % 8))) != 0;
+
+        AddFinderPattern(modules, size, 0, 0);
+        AddFinderPattern(modules, size, size - 7, 0);
+        AddFinderPattern(modules, size, 0, size - 7);
+        return modules;
+    }
+
+    private static void AddFinderPattern(bool[] modules, int size, int left, int top)
+    {
+        for (var row = 0; row < 7; row++)
+        for (var column = 0; column < 7; column++)
+            modules[(top + row) * size + left + column] = row == 0 || row == 6 || column == 0 || column == 6 || (row is >= 2 and <= 4 && column is >= 2 and <= 4);
+    }
+}

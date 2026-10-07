@@ -27,8 +27,13 @@
 
         <!-- 3. Quản lý chuyến xe (Dành cho Quản trị/Nhà xe) -->
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="manage-trips">
+            <NavLink class="nav-link" href="schedules">
                 <span class="bi bi-calendar3 me-2" aria-hidden="true"></span> Lịch trình chuyến
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="admin/trips">
+                <span class="bi bi-gear-wide-connected me-2" aria-hidden="true"></span> Quản trị chuyến xe
             </NavLink>
         </div>
 
@@ -36,9 +41,21 @@
 
         <!-- 4. Hỗ trợ khách hàng -->
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="support">
+            <button type="button" class="nav-link w-100 text-start bg-transparent border-0" @onclick="() => showSupportDrawer = true">
                 <span class="bi bi-headset me-2" aria-hidden="true"></span> Trợ giúp 24/7
-            </NavLink>
+            </button>
         </div>
     </nav>
 </div>
+
+<SupportDrawer IsOpen="@showSupportDrawer" OnClose="CloseSupportDrawerAsync" />
+
+@code {
+    private bool showSupportDrawer;
+
+    private Task CloseSupportDrawerAsync()
+    {
+        showSupportDrawer = false;
+        return Task.CompletedTask;
+    }
+}

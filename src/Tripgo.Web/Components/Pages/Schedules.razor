@@ -1,0 +1,114 @@
+@page "/schedules"
+@using Tripgo.Domain.Interfaces
+@inject ITripService TripService
+@rendermode InteractiveServer
+
+<PageTitle>Lịch trình chuyến | Tripgo</PageTitle>
+
+<section class="schedule-page">
+    <div class="schedule-wrap">
+        <header class="schedule-heading">
+            <div><span class="eyebrow">LỊCH KHỞI HÀNH TOÀN QUỐC</span><h1>Lịch trình chuyến xe</h1><p>Tra cứu giờ chạy, loại xe và giá vé niêm yết.</p></div>
+            <label class="schedule-date"><span>Ngày khởi hành</span><InputDate @bind-Value="selectedDate" /></label>
+        </header>
+        <div class="schedule-toolbar"><span><i class="bi bi-calendar3"></i> @selectedDate.ToDateTime(TimeOnly.MinValue).ToString("dddd, dd/MM/yyyy", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))</span><label><i class="bi bi-search"></i><input placeholder="Lọc tuyến, nhà xe, loại xe..." @bind="filterText" @bind:event="oninput" /></label></div>
+
+        @if (isLoading)
+        {
+            <div class="schedule-empty"><span class="spinner-border text-primary"></span> Đang tải lịch chạy...</div>
+        }
+        else if (!VisibleTrips.Any())
+        {
+            <div class="schedule-empty"><i class="bi bi-calendar-x"></i><strong>Chưa có chuyến phù hợp ngày này</strong><span>Hãy chọn ngày khác hoặc đổi từ khóa tìm kiếm.</span></div>
+        }
+        else
+        {
+            <div class="table-responsive schedule-table-wrap">
+                <table class="schedule-table">
+                    <thead><tr><th>Mã chuyến</th><th>Tuyến xe</th><th>Nhà xe</th><th>Giờ xuất bến</th><th>Thời gian chạy</th><th>Loại xe</th><th>Giá niêm yết</th><th>Chỗ trống</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var trip in VisibleTrips)
+                        {
+                            <tr>
+                                <td><strong class="trip-code">@trip.TripCode</strong></td>
+                                <td><strong>@trip.RouteName</strong></td>
+                                <td>@trip.OperatorName<span class="operator-vehicle">@trip.BusLicensePlate</span></td>
+                                <td><strong>@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</strong><span class="operator-vehicle">@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy")</span></td>
+                                <td>@DurationLabel(trip)</td>
+                                <td>@trip.BusTypeName</td>
+                                <td><strong class="schedule-price">@trip.BasePrice.ToString("N0") đ</strong></td>
+                                <td>@trip.AvailableSeats / @trip.TotalSeats</td>
+                                <td><a class="schedule-book" href="/search-trips">Tìm vé</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>
+
+<style>
+    .schedule-page { min-height: 100vh; padding: 42px 22px 70px; background: #f2f6f8; color: #183042; }
+    .schedule-wrap { max-width: 1260px; margin: auto; }
+    .schedule-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 24px; }
+    .eyebrow { color: #0d5cb6; font-size: 11px; font-weight: 800; letter-spacing: .07em; }
+    .schedule-heading h1 { margin: 8px 0 5px; font-size: 30px; font-weight: 800; }
+    .schedule-heading p { margin: 0; color: #647784; }
+    .schedule-date { display: grid; gap: 5px; color: #667985; font-size: 12px; font-weight: 700; }
+    .schedule-date input { padding: 9px 11px; border: 1px solid #d6e0e4; border-radius: 6px; background: white; color: #183042; }
+    .schedule-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 17px; border: 1px solid #dce5e9; border-bottom: 0; border-radius: 8px 8px 0 0; background: white; color: #536a78; font-size: 13px; }
+    .schedule-toolbar > span { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+    .schedule-toolbar i { color: #0d5cb6; }
+    .schedule-toolbar label { display: flex; align-items: center; gap: 9px; width: min(360px, 100%); padding: 7px 10px; border: 1px solid #dce5e9; border-radius: 6px; }
+    .schedule-toolbar input { width: 100%; border: 0; outline: 0; }
+    .schedule-table-wrap { border: 1px solid #dce5e9; border-radius: 0 0 8px 8px; background: white; }
+    .schedule-table { width: 100%; border-collapse: collapse; min-width: 1050px; }
+    .schedule-table th { padding: 13px 14px; background: #f7fafb; color: #637884; text-align: left; font-size: 10px; letter-spacing: .04em; white-space: nowrap; }
+    .schedule-table td { padding: 14px; border-top: 1px solid #edf1f3; vertical-align: middle; font-size: 12px; }
+    .schedule-table tbody tr:hover { background: #fbfdfe; }
+    .trip-code { color: #0d5cb6; }
+    .operator-vehicle { display: block; margin-top: 4px; color: #7a8d97; font-size: 11px; }
+    .schedule-price { color: #0d5cb6; white-space: nowrap; }
+    .schedule-book { display: inline-block; padding: 7px 10px; border-radius: 5px; background: #ffd333; color: #1b303d; text-decoration: none; font-weight: 800; white-space: nowrap; }
+    .schedule-empty { display: grid; justify-items: center; gap: 9px; padding: 58px 18px; border: 1px solid #dce5e9; border-radius: 8px; background: white; color: #667985; }
+    .schedule-empty > i { color: #0d5cb6; font-size: 30px; }
+    .schedule-empty strong { color: #183042; }
+    @@media (max-width: 700px) { .schedule-page { padding: 28px 13px; } .schedule-heading { align-items: flex-start; flex-direction: column; } .schedule-heading h1 { font-size: 25px; } .schedule-toolbar { align-items: stretch; flex-direction: column; } }
+</style>
+
+@code {
+    private List<TripSearchResultDto> allTrips = new();
+    private DateOnly selectedDate = DateOnly.FromDateTime(DateTime.Today);
+    private string filterText = string.Empty;
+    private bool isLoading;
+
+    private IEnumerable<TripSearchResultDto> VisibleTrips
+    {
+        get
+        {
+            var trips = allTrips.Where(trip => trip.Status == "Scheduled" && trip.DepartureTime >= DateTimeOffset.Now && trip.DepartureTime.ToLocalTime().Date == selectedDate.ToDateTime(TimeOnly.MinValue).Date);
+            if (!string.IsNullOrWhiteSpace(filterText))
+            {
+                var filter = filterText.Trim();
+                trips = trips.Where(trip => trip.RouteName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    trip.OperatorName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    trip.BusTypeName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            }
+            return trips.OrderBy(trip => trip.DepartureTime);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        try { allTrips = await TripService.GetAllTripsAdminAsync(); }
+        finally { isLoading = false; }
+    }
+
+    private static string DurationLabel(TripSearchResultDto trip)
+    {
+        var duration = trip.ArrivalTime - trip.DepartureTime;
+        return $"{(int)duration.TotalHours}h {duration.Minutes:D2}m";
+    }
+}

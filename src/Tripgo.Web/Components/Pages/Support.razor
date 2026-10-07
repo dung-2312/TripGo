@@ -1,0 +1,100 @@
+@page "/support"
+@using Tripgo.Domain.Interfaces
+@inject ITripService TripService
+@rendermode InteractiveServer
+
+<PageTitle>Trợ giúp 24/7 | Tripgo</PageTitle>
+
+<section class="support-page">
+    <div class="support-wrap">
+        <header class="support-heading"><span class="support-eyebrow">TRIPGO · LUÔN SẴN SÀNG ĐỒNG HÀNH</span><h1>Trợ giúp 24/7</h1><p>Đội ngũ hỗ trợ hành khách trước, trong và sau chuyến đi.</p></header>
+        <div class="support-grid">
+            <section class="support-contact">
+                <div class="contact-icon"><i class="bi bi-headset"></i></div>
+                <span class="contact-kicker">HOTLINE KHẨN CẤP</span>
+                <a class="hotline-number" href="tel:19008888">1900 8888</a>
+                <p>Hỗ trợ đổi chuyến, sự cố tại điểm đón và thông tin vé.</p>
+                <a class="call-button" href="tel:19008888"><i class="bi bi-telephone-fill"></i> Gọi ngay</a>
+                <div class="contact-hours"><i class="bi bi-clock"></i> Phục vụ 24 giờ mỗi ngày</div>
+            </section>
+
+            <section class="callback-panel">
+                <div class="panel-heading"><div><span class="panel-kicker">PHẢN HỒI NHANH</span><h2>Yêu cầu gọi lại</h2><p>Để lại thông tin, tổng đài sẽ liên hệ trong tối đa 5 phút.</p></div><i class="bi bi-chat-dots"></i></div>
+                @if (callbackSent)
+                {
+                    <div class="callback-success" role="status"><i class="bi bi-check-circle-fill"></i><span><b>Đã nhận yêu cầu</b><small>Chúng tôi sẽ gọi lại số @callbackPhone trong thời gian sớm nhất.</small></span></div>
+                }
+                else
+                {
+                    <label class="support-field"><span>Họ và tên</span><input autocomplete="name" placeholder="Tên của bạn" @bind="callbackName" /></label>
+                    <label class="support-field"><span>Số điện thoại</span><input autocomplete="tel" inputmode="tel" placeholder="09xx xxx xxx" @bind="callbackPhone" /></label>
+                    @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
+                    <button class="callback-button" type="button" @onclick="SubmitCallback"><i class="bi bi-send-fill"></i> Gửi yêu cầu gọi lại</button>
+                }
+            </section>
+        </div>
+
+        <section class="faq-section">
+            <div class="faq-heading"><span class="panel-kicker">CÂU HỎI THƯỜNG GẶP</span><h2>Thông tin cần biết</h2></div>
+            <details class="faq-item"><summary>Quy định mang thú cưng và hành lý như thế nào?</summary><p>Quy định phụ thuộc vào từng nhà xe. Hành lý gọn nhẹ nên được ghi tên và bảo quản cùng vé. Vui lòng gọi hotline trước chuyến đi nếu cần gửi thú cưng hoặc hành lý cồng kềnh để xác nhận với nhà xe.</p></details>
+            <details class="faq-item"><summary>Chính sách hoàn tiền 150% áp dụng khi nào?</summary><p>Cam kết áp dụng khi nhà xe không giữ đúng chỗ đã xác nhận. Hãy liên hệ hotline 1900 8888 và cung cấp mã đặt chỗ để đội ngũ hỗ trợ kiểm tra, hướng dẫn xử lý.</p></details>
+            <details class="faq-item"><summary>Tôi có thể đổi giờ khởi hành không?</summary><p>Khả năng đổi giờ phụ thuộc điều kiện vé và chỗ trống của nhà xe. Gọi 1900 8888 càng sớm càng tốt, cung cấp mã đặt chỗ và giờ đi mong muốn để được hỗ trợ.</p></details>
+            <details class="faq-item"><summary>Tôi cần có mặt tại điểm đón trước bao lâu?</summary><p>Nên có mặt trước giờ khởi hành ít nhất 30 phút. Vui lòng kiểm tra điểm đón trên vé điện tử và giữ điện thoại liên lạc trong ngày đi.</p></details>
+        </section>
+    </div>
+</section>
+
+<style>
+    .support-page { min-height: 100vh; padding: 46px 22px 72px; background: #f2f6f8; color: #183042; }
+    .support-wrap { max-width: 1040px; margin: auto; }
+    .support-heading { margin-bottom: 26px; }
+    .support-eyebrow, .panel-kicker { color: #0d5cb6; font-size: 11px; font-weight: 800; letter-spacing: .07em; }
+    .support-heading h1 { margin: 8px 0 5px; font-size: 32px; font-weight: 800; }
+    .support-heading p { margin: 0; color: #647784; }
+    .support-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 18px; }
+    .support-contact, .callback-panel { padding: 25px; border: 1px solid #dce5e9; border-radius: 8px; background: white; }
+    .support-contact { color: white; background: #0d5cb6; border-color: #0d5cb6; }
+    .contact-icon { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 23px; border-radius: 50%; background: rgba(255,255,255,.14); font-size: 21px; }
+    .contact-kicker { color: #cfe4ff; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+    .hotline-number { display: block; margin: 5px 0; color: white; font-size: 34px; font-weight: 850; text-decoration: none; }
+    .support-contact p { max-width: 280px; color: #d7e9fb; font-size: 13px; }
+    .call-button { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 14px; border-radius: 5px; background: #ffd333; color: #203443; font-size: 13px; font-weight: 800; text-decoration: none; }
+    .contact-hours { display: flex; gap: 7px; margin-top: 24px; color: #d7e9fb; font-size: 12px; }
+    .panel-heading { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .panel-heading h2, .faq-heading h2 { margin: 5px 0; font-size: 21px; font-weight: 800; }
+    .panel-heading p { margin: 0; color: #71838e; font-size: 13px; }
+    .panel-heading > i { color: #0d5cb6; font-size: 25px; }
+    .support-field { display: grid; gap: 6px; margin-top: 13px; font-size: 12px; font-weight: 750; }
+    .support-field input { height: 43px; padding: 0 11px; border: 1px solid #d6e0e4; border-radius: 5px; outline-color: #0d5cb6; }
+    .callback-button { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 11px 15px; border: 0; border-radius: 5px; background: #0d5cb6; color: white; font-weight: 750; }
+    .form-error { margin-top: 9px; color: #b42318; font-size: 12px; }
+    .callback-success { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 6px; background: #e8f6ed; color: #17683d; }
+    .callback-success > i { font-size: 21px; }
+    .callback-success span { display: grid; gap: 5px; }
+    .callback-success small { color: #47765b; }
+    .faq-section { margin-top: 34px; }
+    .faq-heading { margin-bottom: 12px; }
+    .faq-item { margin-bottom: 8px; border: 1px solid #dce5e9; border-radius: 6px; background: white; }
+    .faq-item summary { padding: 15px 17px; cursor: pointer; font-size: 14px; font-weight: 750; list-style-position: inside; }
+    .faq-item[open] summary { color: #0d5cb6; border-bottom: 1px solid #edf1f3; }
+    .faq-item p { margin: 0; padding: 14px 18px 17px; color: #607580; font-size: 13px; line-height: 1.6; }
+    @@media (max-width: 700px) { .support-page { padding: 30px 14px; } .support-grid { grid-template-columns: 1fr; } .hotline-number { font-size: 30px; } }
+</style>
+
+@code {
+    private string callbackName = string.Empty;
+    private string callbackPhone = string.Empty;
+    private string? formError;
+    private bool callbackSent;
+
+    private async Task SubmitCallback()
+    {
+        formError = null;
+        if (!await TripService.SubmitSupportCallbackAsync(callbackName, callbackPhone))
+        {
+            formError = "Vui lòng nhập tên và số điện thoại hợp lệ.";
+            return;
+        }
+        callbackSent = true;
+    }
+}
