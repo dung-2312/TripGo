@@ -1,74 +1,358 @@
-@page "/search-trips"
+﻿@page "/search-trips"
 @page "/"
-@layout Tripgo.Web.Components.Layout.CustomerLayout
 @using Tripgo.Domain.Interfaces
+@using Tripgo.Web.Components.Layout
 @inject ITripService TripService
-@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
-<div class="vexere-wrapper">
-    <!-- Hero Banner -->
-    <div class="vexere-hero">
-        <div class="container text-center text-white py-4">
-            <h2 class="fw-bold mb-2">TripGo - Cam kết hoàn 150% nếu nhà xe không giữ chỗ</h2>
-            <p class="text-white-50 small mb-4">Nền tảng kết nối hành khách với hơn 2000+ nhà xe chất lượng cao</p>
+<div class="vexere-portal tripgo-page">
+    <!-- Top Header Navigation -->
+<style>
+    .tripgo-page {
+        --tripgo-blue: #0d5cb6;
+        --tripgo-yellow: #ffd333;
+        --tripgo-green: #00a651;
+    }
 
-            <!-- Khung tìm kiếm nổi -->
-            <div class="vexere-search-box bg-white text-dark shadow rounded-4 p-3 mx-auto">
-                <div class="d-flex gap-3 mb-3 border-bottom pb-2">
-                    <button class="btn btn-sm btn-tab active"><i class="bi bi-bus-front me-1"></i> Xe khách</button>
-                    <button class="btn btn-sm btn-tab text-muted"><i class="bi bi-airplane me-1"></i> Máy bay</button>
-                    <button class="btn btn-sm btn-tab text-muted"><i class="bi bi-train-front me-1"></i> Tàu hỏa</button>
+    .trip-photo {
+        width: 150px;
+        height: 112px;
+        object-fit: cover;
+        border-radius: 8px;
+    }
+
+    .trip-feature {
+        display: inline-block;
+        color: #078447;
+        font-size: .72rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .sort-options, .filter-group {
+        display: grid;
+        gap: 9px;
+        font-size: .88rem;
+    }
+
+    .sort-options label, .filter-group label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+
+    .sort-options input, .filter-group input[type="checkbox"] {
+        accent-color: var(--tripgo-blue);
+    }
+
+    .filter-group label:first-child {
+        justify-content: space-between;
+    }
+
+    .booking-drawer {
+        padding: 20px;
+        border: 1px solid #dce4ef;
+        border-radius: 8px;
+        background: #f7f9fc;
+        clear: both;
+    }
+
+    .booking-steps {
+        display: flex;
+        gap: 24px;
+        padding-bottom: 16px;
+        margin-bottom: 18px;
+        border-bottom: 1px solid #dce4ef;
+        color: #667085;
+        font-size: .88rem;
+        font-weight: 700;
+    }
+
+    .booking-step {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .booking-step span {
+        display: grid;
+        place-items: center;
+        width: 25px;
+        height: 25px;
+        border: 1px solid #cbd5e1;
+        border-radius: 50%;
+        background: white;
+    }
+
+    .booking-step.active { color: var(--tripgo-blue); }
+    .booking-step.active span, .booking-step.complete span { color: white; background: var(--tripgo-green); border-color: var(--tripgo-green); }
+
+    .seat-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin: 0 0 16px;
+        color: #667085;
+        font-size: .8rem;
+    }
+
+    .seat-key {
+        display: inline-grid;
+        place-items: center;
+        width: 19px;
+        height: 19px;
+        margin-right: 5px;
+        border: 1px solid #cbd5e1;
+        border-radius: 5px;
+        vertical-align: middle;
+        background: white;
+        font-style: normal;
+    }
+
+    .seat-key.chosen { color: white; background: var(--tripgo-green); border-color: var(--tripgo-green); }
+    .seat-key.unavailable { background: repeating-linear-gradient(135deg, #e5e7eb, #e5e7eb 4px, #f8fafc 4px, #f8fafc 8px); }
+
+    .coach-floors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+    .coach-floor { min-width: 0; }
+    .coach-floor-title { margin: 0 0 9px; color: #344054; font-size: .76rem; font-weight: 800; letter-spacing: .04em; }
+    .coach-shell { overflow: hidden; padding: 9px; border: 2px solid #b9c9d7; border-radius: 72px 72px 26px 26px; background: #eaf0f4; box-shadow: inset 0 0 0 4px #f8fafc, 0 8px 22px rgba(16, 24, 40, .08); }
+    .coach-front { padding: 7px 7px 12px; border-bottom: 1px solid #cbd5df; }
+    .coach-windshield { display: grid; place-items: center; height: 34px; border: 1px solid #a9c2d2; border-radius: 45px 45px 9px 9px; background: linear-gradient(180deg, #bdd9e7, #e5f3fa); color: #536e7b; font-size: .58rem; font-weight: 800; letter-spacing: .08em; }
+    .coach-front-deck { display: flex; align-items: center; justify-content: space-between; min-height: 58px; padding: 7px 10px 0; }
+    .driver-position, .upper-front-label { display: grid; justify-items: center; gap: 2px; color: #267547; font-size: .55rem; font-weight: 800; }
+    .driver-position i { font-size: 1.55rem; }
+    .upper-front-label { color: #667085; }
+    .upper-front-label i { font-size: 1rem; }
+    .coach-door { position: relative; display: grid; justify-items: center; gap: 2px; width: 58px; padding: 2px; color: #637384; font-size: .5rem; font-weight: 800; }
+    .coach-door b { display: block; width: 45px; height: 3px; border-radius: 2px; background: #9aabb8; }
+    .coach-cabins { display: grid; gap: 7px; padding: 9px 2px; }
+    .cabin-row { display: grid; grid-template-columns: minmax(44px, 1fr) 30px minmax(44px, 1fr); gap: 5px; align-items: stretch; }
+    .coach-aisle { display: grid; place-items: center; border-left: 1px dashed #abb8c3; border-right: 1px dashed #abb8c3; color: #82909c; }
+    .coach-aisle span { writing-mode: vertical-rl; font-size: .48rem; font-weight: 800; letter-spacing: .08em; }
+    .berth { position: relative; display: grid; place-items: center; justify-self: center; width: min(100px, 100%); min-width: 0; height: 70px; padding: 7px 3px 4px; overflow: hidden; border: 1px solid #c7d0d8; border-radius: 10px; background: #fff; color: #344054; font-size: .7rem; font-weight: 800; box-shadow: 0 2px 5px rgba(16, 24, 40, .04); transition: transform .15s, box-shadow .15s, border-color .15s, background .15s; }
+    .berth:not(:disabled):hover { transform: translateY(-2px); border-color: #28a745; box-shadow: 0 5px 12px rgba(16, 24, 40, .14); }
+    .berth.seat-selected { color: white; background: #28a745; border-color: #218838; }
+    .berth:disabled { color: #858e98; background: repeating-linear-gradient(135deg, #c8cdd2, #c8cdd2 5px, #dce0e3 5px, #dce0e3 10px); border-color: #b1b8be; cursor: not-allowed; box-shadow: none; }
+    .berth-pillow { position: absolute; top: 5px; left: 50%; width: 20px; height: 6px; transform: translateX(-50%); border: 1px solid #d8dee5; border-radius: 6px; color: transparent; background: #edf1f4; }
+    .seat-selected .berth-pillow { border-color: rgba(255,255,255,.55); background: rgba(255,255,255,.32); }
+    .berth-code { margin-top: 8px; }
+    .berth.double-berth { width: min(150px, 100%); height: 90px; border-color: #c7b98c; background: #fffdf7; }
+    .berth.double-berth.seat-selected { background: #28a745; border-color: #218838; }
+    .berth-pillows { position: absolute; top: 5px; left: 0; right: 0; display: flex; justify-content: center; gap: 4px; }
+    .berth-pillows i { width: 17px; height: 7px; border: 1px solid #d8dee5; border-radius: 6px; color: transparent; background: #edf1f4; }
+    .seat-selected .berth-pillows i { border-color: rgba(255,255,255,.55); background: rgba(255,255,255,.32); }
+    .berth-kind { margin-top: 8px; color: #8a6d26; font-size: .48rem; }
+    .double-berth.seat-selected .berth-kind { color: white; }
+    .berth-state-icon { position: absolute; top: 4px; right: 4px; font-size: .8rem; }
+    .berth-sold-mark { position: absolute; inset: 0; display: grid; place-items: center; color: #626b74; font-size: 1.8rem; line-height: 1; }
+    .coach-rear { display: flex; align-items: center; justify-content: space-between; height: 18px; padding: 0 12px; border-top: 1px solid #cbd5df; color: #87939e; font-size: .48rem; font-weight: 800; }
+    .coach-rear i { width: 13px; height: 5px; border-radius: 4px; background: #d66b62; }
+
+    .booking-footer {
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 14px 0 0;
+        margin-top: 18px;
+        border-top: 1px solid #dce4ef;
+        background: #f7f9fc;
+    }
+
+    .booking-footer .btn-primary { background: var(--tripgo-blue); border-color: var(--tripgo-blue); }
+
+    .point-heading { margin-bottom: 12px; font-weight: 700; }
+
+    .point-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 13px;
+        margin-bottom: 8px;
+        border: 1px solid #dce4ef;
+        border-radius: 6px;
+        background: white;
+        cursor: pointer;
+    }
+
+    .point-option:has(input:checked) { border-color: var(--tripgo-blue); background: #f1f7ff; }
+    .point-option input { margin-top: 4px; accent-color: var(--tripgo-blue); }
+    .point-option > strong { min-width: 46px; color: var(--tripgo-blue); }
+    .point-option span { display: grid; gap: 3px; }
+    .point-option small, .insurance-option small { color: #667085; }
+
+    .insurance-option { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #dce4ef; border-radius: 6px; cursor: pointer; }
+    .insurance-option input { margin-top: 4px; accent-color: var(--tripgo-green); }
+    .insurance-option span { display: grid; gap: 3px; }
+
+    .checkout-summary { padding: 18px; border: 1px solid #dce4ef; border-radius: 8px; background: white; }
+    .rating-chip { padding: 3px 7px; border-radius: 4px; background: #fff4cc; color: #8a5a00; font-size: .8rem; }
+    .rating-chip i { color: #e5a600; }
+    .summary-line { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0; font-size: .88rem; }
+    .summary-line > span { color: #667085; }
+    .summary-line > b { text-align: right; }
+    .total-line { font-size: 1rem; }
+    .total-line > b { color: var(--tripgo-blue); font-size: 1.15rem; }
+
+    @@media (max-width: 767.98px) {
+        .trip-photo { width: 100%; height: 170px; float: none !important; margin: 0 0 14px !important; }
+        .booking-drawer { padding: 14px; }
+        .coach-floors { grid-template-columns: 1fr; }
+        .coach-shell { max-width: 420px; margin-inline: auto; }
+        .booking-steps { justify-content: space-between; gap: 8px; font-size: .75rem; }
+        .booking-footer { flex-wrap: wrap; gap: 10px; }
+        .booking-footer .flex-grow-1 { display: none; }
+        .booking-footer > div { flex: 1; }
+        .booking-footer .btn { flex: 1 1 auto; }
+    }
+</style>
+
+    <header class="vexere-header">
+        <div class="container d-flex align-items-center justify-content-between py-2">
+            <div class="d-flex align-items-center gap-3">
+                <a href="/" class="d-flex align-items-center text-decoration-none text-white gap-2">
+                    <i class="bi bi-bus-front-fill fs-3 text-warning"></i>
+                    <span class="fs-4 fw-bold tracking-tight text-white">TripGo</span>
+                </a>
+                <span class="text-warning small d-none d-md-inline border-start ps-3 border-secondary">
+                    Cam kết hoàn 150% nếu nhà xe không giữ chỗ (*)
+                </span>
+            </div>
+
+            <div class="d-flex align-items-center gap-3">
+                <a href="/admin/trips" class="btn btn-sm btn-outline-light rounded-pill px-3">
+                    <i class="bi bi-shield-lock me-1"></i> Trang Quản Trị
+                </a>
+                <button type="button" class="d-flex align-items-center gap-1 bg-white text-dark px-3 py-1 rounded-pill fw-bold small border-0" @onclick="() => showSupportDrawer = true">
+                    <i class="bi bi-telephone-fill text-primary"></i> Hotline 24/7
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Banner & Floating Search Card -->
+    <section class="vexere-hero position-relative">
+        <div class="container py-4 text-center position-relative z-2">
+            <div class="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill bg-white text-primary fw-bold small shadow-sm mb-2">
+                <span class="badge bg-primary">ƯU ĐÃI</span> MỪNG TỰU TRƯỜNG - GIẢM ĐẾN 50%
+            </div>
+            <h1 class="hero-title fw-bold text-white mb-4">
+                ĐẶT VÉ XE KHÁCH NHANH CHÓNG & TIỆN LỢI
+            </h1>
+
+            <!-- Search Card -->
+            <div class="vexere-search-card shadow-lg bg-white rounded-4 p-3 mx-auto text-start">
+                <div class="d-flex align-items-center gap-4 border-bottom pb-2 mb-3">
+                    <button class="search-tab active d-flex align-items-center gap-2">
+                        <i class="bi bi-bus-front"></i> Xe khách
+                    </button>
+                    <button class="search-tab text-muted d-flex align-items-center gap-2">
+                        <i class="bi bi-airplane"></i> Máy bay
+                    </button>
+                    <button class="search-tab text-muted d-flex align-items-center gap-2">
+                        <i class="bi bi-train-front"></i> Tàu hỏa
+                    </button>
                 </div>
 
-                <div class="row g-2 align-items-center">
+                <!-- Input Grid -->
+                <div class="search-inputs-grid">
                     <!-- Điểm xuất phát -->
-                    <div class="col-lg-3 col-md-6 text-start">
-                        <label class="form-label text-muted small mb-0 fw-bold">Nơi xuất phát</label>
-                        <select class="form-select border-0 ps-0 fw-bold fs-6" @bind="searchModel.OriginLocationId">
-                            <option value="0">Chọn điểm đi</option>
-                            @foreach (var loc in locations)
-                            {
-                                <option value="@loc.Id">@loc.Name (@loc.Province)</option>
-                            }
-                        </select>
+                    <div class="search-input-box position-relative" @onclick="() => ToggleDropdown(true)">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-circle-fill text-primary dot-icon"></i>
+                            <div>
+                                <span class="label-muted">Nơi xuất phát</span>
+                                <div class="selected-text fw-bold">
+                                    @(originLocation != null ? $"{originLocation.Name} ({originLocation.Province})" : "Chọn điểm đi")
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (showOriginDropdown)
+                        {
+                            <div class="custom-dropdown shadow" @onclick:stopPropagation="true">
+                                <div class="p-2 border-bottom">
+                                    <input type="text" class="form-control form-control-sm" placeholder="Tìm tỉnh/thành..." @bind="originSearchText" @bind:event="oninput" />
+                                </div>
+                                <div class="dropdown-list">
+                                    @foreach (var loc in FilteredOriginLocations)
+                                    {
+                                        <div class="dropdown-item-custom @(searchModel.OriginLocationId == loc.Id ? "active" : "")"
+                                             @onclick="() => SelectOrigin(loc)">
+                                            <i class="bi bi-geo-alt me-2 text-secondary"></i>
+                                            <span><strong>@loc.Name</strong> (@loc.Province)</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
                     </div>
 
-                    <!-- Nút hoán đổi điểm đi/đến -->
-                    <div class="col-auto d-none d-lg-block">
-                        <button class="btn btn-light rounded-circle shadow-sm p-2" type="button" @onclick="SwapLocations" title="Đảo chiều">
-                            <i class="bi bi-arrow-left-right text-primary"></i>
+                    <!-- Nút Đảo chiều -->
+                    <div class="swap-btn-col text-center">
+                        <button class="btn btn-swap" type="button" @onclick="SwapLocations" title="Đảo chiều">
+                            <i class="bi bi-arrow-left-right"></i>
                         </button>
                     </div>
 
                     <!-- Điểm đến -->
-                    <div class="col-lg-3 col-md-6 text-start">
-                        <label class="form-label text-muted small mb-0 fw-bold">Nơi đến</label>
-                        <select class="form-select border-0 ps-0 fw-bold fs-6" @bind="searchModel.DestinationLocationId">
-                            <option value="0">Chọn điểm đến</option>
-                            @foreach (var loc in locations)
-                            {
-                                <option value="@loc.Id">@loc.Name (@loc.Province)</option>
-                            }
-                        </select>
+                    <div class="search-input-box position-relative" @onclick="() => ToggleDropdown(false)">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-geo-alt-fill text-danger dot-icon"></i>
+                            <div>
+                                <span class="label-muted">Nơi đến</span>
+                                <div class="selected-text fw-bold">
+                                    @(destLocation != null ? $"{destLocation.Name} ({destLocation.Province})" : "Chọn điểm đến")
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (showDestDropdown)
+                        {
+                            <div class="custom-dropdown shadow" @onclick:stopPropagation="true">
+                                <div class="p-2 border-bottom">
+                                    <input type="text" class="form-control form-control-sm" placeholder="Tìm tỉnh/thành..." @bind="destSearchText" @bind:event="oninput" />
+                                </div>
+                                <div class="dropdown-list">
+                                    @foreach (var loc in FilteredDestLocations)
+                                    {
+                                        <div class="dropdown-item-custom @(searchModel.DestinationLocationId == loc.Id ? "active" : "")"
+                                             @onclick="() => SelectDestination(loc)">
+                                            <i class="bi bi-geo-alt me-2 text-secondary"></i>
+                                            <span><strong>@loc.Name</strong> (@loc.Province)</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
                     </div>
 
                     <!-- Ngày đi -->
-                    <div class="col-lg-3 col-md-6 text-start">
-                        <label class="form-label text-muted small mb-0 fw-bold">Ngày đi</label>
-                        <InputDate @bind-Value="searchModel.DepartureDate" class="form-control border-0 ps-0 fw-bold fs-6" />
+                    <div class="search-input-box">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-calendar3 text-primary dot-icon"></i>
+                            <div class="flex-grow-1">
+                                <span class="label-muted">Ngày đi</span>
+                                <InputDate @bind-Value="searchModel.DepartureDate" class="form-control date-clean fw-bold" />
+                                        <small class="text-muted">@DepartureDateLabel</small>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Nút tìm chuyến -->
-                    <div class="col-lg-2 col-md-6">
-                        <button class="btn btn-vexere-search w-100 py-3 fw-bold rounded-3 shadow-sm" @onclick="HandleSearch" disabled="@isLoading">
+                    <!-- Nút Tìm kiếm Vàng -->
+                    <div class="search-btn-col">
+                        <button class="btn btn-vexere-yellow w-100 fw-bold fs-5" @onclick="HandleSearch" disabled="@isLoading">
                             @if (isLoading)
                             {
                                 <span class="spinner-border spinner-border-sm me-1"></span>
                             }
                             else
                             {
-                                <span>Tìm chuyến</span>
+                                <span>Tìm kiếm</span>
                             }
                         </button>
                     </div>
@@ -76,220 +360,489 @@
 
                 @if (!string.IsNullOrEmpty(errorMessage))
                 {
-                    <div class="alert alert-warning py-1 mt-2 mb-0 small text-start">@errorMessage</div>
+                    <div class="alert alert-warning py-1 mt-2 mb-0 small">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> @errorMessage
+                    </div>
                 }
             </div>
-        </div>
-    </div>
 
-    <!-- Kết quả tìm kiếm -->
-    <div class="container my-4">
+            <!-- Cam kết dịch vụ -->
+            <div class="d-flex flex-wrap justify-content-center gap-4 mt-4 text-white small fw-semibold">
+                <div><i class="bi bi-patch-check-fill text-warning me-1"></i> Chắc chắn có chỗ</div>
+                <div><i class="bi bi-headset text-warning me-1"></i> Hỗ trợ 24/7</div>
+                <div><i class="bi bi-percent text-warning me-1"></i> Nhiều ưu đãi</div>
+                <div><i class="bi bi-credit-card-2-front-fill text-warning me-1"></i> Thanh toán an toàn</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Kết quả tìm kiếm & Sơ đồ ghế -->
+    <main class="container my-4">
         @if (hasSearched)
         {
             <div class="row">
-                <!-- Bộ lọc bên trái -->
-                <div class="col-lg-3 mb-4">
-                    <div class="card border-0 shadow-sm rounded-3 p-3">
+                <!-- Cột lọc bên trái -->
+                <aside class="col-lg-3 mb-4">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 bg-white">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="fw-bold mb-0">Bộ lọc tìm kiếm</h6>
-                            <span class="text-primary small" role="button">Xóa lọc</span>
+                            <span class="fw-bold fs-6">Sắp xếp theo</span>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Giờ khởi hành</label>
-                            <div class="form-check small"><input class="form-check-input" type="checkbox" id="t1"><label class="form-check-label" for="t1">Sáng sớm 00:00 - 06:00</label></div>
-                            <div class="form-check small"><input class="form-check-input" type="checkbox" id="t2"><label class="form-check-label" for="t2">Buổi sáng 06:01 - 12:00</label></div>
-                            <div class="form-check small"><input class="form-check-input" type="checkbox" id="t3"><label class="form-check-label" for="t3">Buổi chiều 12:01 - 18:00</label></div>
-                            <div class="form-check small"><input class="form-check-input" type="checkbox" id="t4"><label class="form-check-label" for="t4">Buổi tối 18:01 - 23:59</label></div>
+                        <div class="sort-options">
+                            <label><input type="radio" name="sort-trip" value="default" checked='@(sortOrder == "default")' @onchange="HandleSortChange" /> Mặc định</label>
+                            <label><input type="radio" name="sort-trip" value="departure_asc" checked='@(sortOrder == "departure_asc")' @onchange="HandleSortChange" /> Giờ đi sớm nhất</label>
+                            <label><input type="radio" name="sort-trip" value="departure_desc" checked='@(sortOrder == "departure_desc")' @onchange="HandleSortChange" /> Giờ đi muộn nhất</label>
+                            <label><input type="radio" name="sort-trip" value="price_asc" checked='@(sortOrder == "price_asc")' @onchange="HandleSortChange" /> Giá tăng dần</label>
+                            <label><input type="radio" name="sort-trip" value="price_desc" checked='@(sortOrder == "price_desc")' @onchange="HandleSortChange" /> Giá giảm dần</label>
                         </div>
                         <hr />
-                        <div>
-                            <label class="form-label small fw-bold">Loại xe</label>
-                            <div class="form-check small"><input class="form-check-input" type="checkbox" id="v1" checked><label class="form-check-label" for="v1">Giường nằm cao cấp</label></div>
-                            <div class="form-check small"><input class="form-check-input" type="checkbox" id="v2"><label class="form-check-label" for="v2">Limousine VIP</label></div>
+                        <div class="filter-group">
+                            <strong>Giờ đi</strong>
+                            <label><input type="checkbox" @bind="filterMorning" /> Sáng (00:00–11:59)</label>
+                            <label><input type="checkbox" @bind="filterAfternoon" /> Chiều (12:00–17:59)</label>
+                            <label><input type="checkbox" @bind="filterEvening" /> Tối (18:00–23:59)</label>
                         </div>
+                        <hr />
+                        <div class="filter-group">
+                            <strong>Nhà xe</strong>
+                            @foreach (var operatorName in searchResults.Select(item => item.OperatorName).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().OrderBy(name => name))
+                            {
+                                <label><input type="checkbox" checked="@selectedOperators.Contains(operatorName)" @onchange="args => ToggleOperatorFilter(operatorName, args)" /> @operatorName</label>
+                            }
+                        </div>
+                        <hr />
+                        <div class="filter-group">
+                            <label for="max-ticket-price"><strong>Giá vé tối đa</strong><span>@maximumPrice.ToString("N0") đ</span></label>
+                            <input id="max-ticket-price" class="form-range" type="range" min="0" max="5000000" step="50000" @bind="maximumPrice" @bind:event="oninput" />
+                        </div>
+                        <div class="small text-muted mt-3"><i class="bi bi-info-circle me-1"></i> Giá vé hiển thị là giá chính thức từ nhà xe.</div>
                     </div>
-                </div>
+                </aside>
 
-                <!-- Danh sách chuyến xe bên phải -->
-                <div class="col-lg-9">
+                <!-- Cột danh sách chuyến xe -->
+                <section id="trip-results" class="col-lg-9">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <span class="fw-bold fs-6">Kết quả: <strong class="text-primary">@searchResults.Count chuyến</strong></span>
-                        <div class="small text-muted">Sắp xếp: <span class="text-primary fw-bold">Giờ đi sớm nhất</span></div>
+                        <span class="fw-bold">Kết quả: <strong class="text-primary">@VisibleSearchResults.Count() chuyến</strong></span>
                     </div>
-
-                    @if (searchResults.Count == 0)
+                    @if (HasNearbyDateSuggestions)
                     {
-                        <div class="card border-0 shadow-sm p-5 text-center">
-                            <i class="bi bi-calendar-x display-4 text-muted mb-2"></i>
-                            <h6 class="text-muted">Không tìm thấy chuyến xe nào trong ngày đã chọn.</h6>
+                        <div class="alert alert-info py-2 small">Không có chuyến đúng ngày @searchModel.DepartureDate.ToString("dd/MM/yyyy"). Đang gợi ý các chuyến gần nhất trong phạm vi 3 ngày.</div>
+                    }
+
+                    @if (!VisibleSearchResults.Any())
+                    {
+                        <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
+                            <i class="bi bi-bus-front text-muted display-3 mb-3"></i>
+                            <h5 class="fw-bold text-secondary">Không tìm thấy chuyến xe nào</h5>
+                            <p class="text-muted small">Vui lòng chọn ngày khác hoặc thử lại tuyến đường khác.</p>
                         </div>
                     }
                     else
                     {
-                        @foreach (var trip in searchResults)
+                        @foreach (var trip in VisibleSearchResults)
                         {
-                            <div class="card border-0 shadow-sm rounded-3 mb-3 trip-card">
-                                <div class="card-body p-3">
-                                    <div class="row align-items-center">
-                                        <div class="col-md-8">
-                                            <div class="d-flex align-items-center gap-2 mb-2">
-                                                <h6 class="fw-bold text-dark mb-0">@trip.OperatorName</h6>
-                                                <span class="badge bg-warning text-dark px-2 py-1"><i class="bi bi-star-fill text-danger me-1"></i>4.9 (250+)</span>
-                                                <span class="badge bg-light text-secondary border">@trip.BusTypeName</span>
-                                            </div>
+                            <div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3">
+                                <div class="row align-items-center">
+                                    <div class="col-md-8">
+                                        <img class="trip-photo float-start me-3 mb-2" src="https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=480&q=80" alt="Xe khách đường dài" />
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            <h5 class="fw-bold mb-0 text-dark">@trip.OperatorName</h5>
+                                            <span class="badge bg-warning text-dark px-2"><i class="bi bi-star-fill text-danger me-1"></i>4.8 (250)</span>
+                                            <span class="badge bg-light text-secondary border">@trip.BusTypeName</span>
+                                        </div>
 
-                                            <div class="d-flex align-items-center gap-3 my-2">
-                                                <div class="text-center">
-                                                    <span class="fs-5 fw-bold text-dark">@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</span>
-                                                    <div class="text-muted small">Xuất phát</div>
-                                                </div>
-                                                <div class="flex-grow-1 text-center position-relative timeline-line">
-                                                    <span class="badge bg-light text-muted border small px-2">khoảng 30 giờ</span>
-                                                </div>
-                                                <div class="text-center">
-                                                    <span class="fs-5 fw-bold text-dark">
-                                                        @trip.ArrivalTime.ToLocalTime().ToString("HH:mm")
-                                                    </span>
-                                                    <div class="text-muted small">Đến nơi</div>
-                                                </div>
+                                        <div class="d-flex align-items-center gap-4 my-3">
+                                            <div class="text-start">
+                                                <span class="fs-4 fw-bold text-dark">@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</span>
+                                                <div class="text-muted small">@(originLocation?.Name ?? "Điểm đi")</div>
+                                                <div class="text-muted small">@trip.DepartureTime.ToLocalTime().ToString("ddd, dd/MM")</div>
                                             </div>
-
-                                            <div class="small text-muted mt-2">
-                                                <i class="bi bi-shield-check text-success me-1"></i> Cam kết giữ đúng chỗ | Đổi trả linh hoạt
+                                            <div class="flex-grow-1 text-center position-relative line-container">
+                                                <span class="badge bg-light text-muted border px-2 py-1 small">@GetDurationText(trip.DepartureTime, trip.ArrivalTime)</span>
+                                            </div>
+                                            <div class="text-end">
+                                                <span class="fs-4 fw-bold text-dark">@trip.ArrivalTime.ToLocalTime().ToString("HH:mm")</span>
+                                                <div class="text-muted small">@(destLocation?.Name ?? "Điểm đến")</div>
                                             </div>
                                         </div>
 
-                                        <div class="col-md-4 text-md-end text-start mt-3 mt-md-0 border-start ps-md-4">
-                                            <div class="small text-muted mb-1">Giá từ</div>
-                                            <div class="fs-4 fw-bold text-primary mb-1">@trip.BasePrice.ToString("N0") đ</div>
-                                            <div class="small text-success fw-semibold mb-2">Còn @trip.AvailableSeats chỗ trống</div>
-                                            <button class="btn btn-warning fw-bold px-4 py-2 w-100 rounded-pill text-dark"
-                                                    @onclick="() => ToggleSelectTrip(trip.Id)">
-                                                @(selectedTripId == trip.Id ? "Đóng chỗ" : "Chọn chuyến")
-                                            </button>
+                                        <div class="small text-muted">
+                                            <span class="trip-feature"><i class="bi bi-house-check-fill me-1"></i>ĐÓN TẬN NƠI</span>
+                                            <span class="trip-feature ms-2"><i class="bi bi-lightning-charge-fill me-1"></i>XÁC NHẬN TỨC THÌ</span>
                                         </div>
                                     </div>
 
-                                    <!-- Sơ đồ ghế mở rộng (Interactive Seat Map) -->
-                                    @if (selectedTripId == trip.Id && selectedTripDetail != null)
-                                    {
-                                        <div class="border-top mt-3 pt-3 bg-light rounded-3 p-3">
-                                            <h6 class="fw-bold mb-3 text-center">SƠ ĐỒ CHỖ NGỒI - XE @selectedTripDetail.BusLicensePlate</h6>
-
-                                            <div class="row justify-content-center g-4">
-                                                <!-- Tầng dưới (Floor 1) -->
-                                                <div class="col-sm-5 border-end pe-sm-4 text-center">
-                                                    <div class="badge bg-secondary mb-3">TẦNG DƯỚI (TẦNG 1)</div>
-                                                    <div class="d-flex flex-wrap justify-content-center gap-2">
-                                                        @foreach (var seat in selectedTripDetail.Seats.Where(s => s.Floor == 1))
-                                                        {
-                                                            <button class="seat-btn @GetSeatClass(seat)"
-                                                                    disabled="@(!seat.IsAvailable)"
-                                                                    @onclick="() => ToggleSeat(seat.SeatCode)">
-                                                                <i class="bi bi-person-fill seat-icon"></i>
-                                                                <span class="seat-label">@seat.SeatCode</span>
-                                                            </button>
-                                                        }
-                                                    </div>
-                                                </div>
-
-                                                <!-- Tầng trên (Floor 2) -->
-                                                <div class="col-sm-5 text-center">
-                                                    <div class="badge bg-secondary mb-3">TẦNG TRÊN (TẦNG 2)</div>
-                                                    <div class="d-flex flex-wrap justify-content-center gap-2">
-                                                        @foreach (var seat in selectedTripDetail.Seats.Where(s => s.Floor == 2))
-                                                        {
-                                                            <button class="seat-btn @GetSeatClass(seat)"
-                                                                    disabled="@(!seat.IsAvailable)"
-                                                                    @onclick="() => ToggleSeat(seat.SeatCode)">
-                                                                <i class="bi bi-person-fill seat-icon"></i>
-                                                                <span class="seat-label">@seat.SeatCode</span>
-                                                            </button>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- Ghi chú trạng thái ghế -->
-                                            <div class="d-flex justify-content-center gap-4 mt-3 small text-muted">
-                                                <div><span class="seat-sample seat-available me-1"></span> Còn trống</div>
-                                                <div><span class="seat-sample seat-selected me-1"></span> Đang chọn</div>
-                                                <div><span class="seat-sample seat-disabled me-1"></span> Đã bán</div>
-                                            </div>
-
-                                            <!-- Thanh thanh toán -->
-                                            <div class="card mt-3 border-0 bg-white shadow-sm p-3">
-                                                <div class="d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <div>Ghế đã chọn: <strong class="text-primary">@(selectedSeats.Count > 0 ? string.Join(", ", selectedSeats) : "Chưa chọn")</strong></div>
-                                                        <div class="fs-5 fw-bold text-danger">Tổng thanh toán: @((selectedSeats.Count * selectedTripDetail.BasePrice).ToString("N0")) đ</div>
-                                                    </div>
-                                                    <button class="btn btn-warning fw-bold px-4 py-2 text-dark rounded-pill" disabled="@(selectedSeats.Count == 0)" @onclick="ProceedToCheckout">
-                                                        Tiếp tục thanh toán <i class="bi bi-arrow-right ms-1"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
+                                    <div class="col-md-4 text-md-end text-start border-start ps-md-4 mt-3 mt-md-0">
+                                        <div class="small text-muted">Giá vé chỉ từ</div>
+                                        <div class="fs-3 fw-bold text-primary mb-1">@trip.BasePrice.ToString("N0") đ</div>
+                                        <div class="small text-success fw-bold mb-3">Còn @trip.AvailableSeats chỗ trống</div>
+                                        <button class="btn btn-warning fw-bold px-4 py-2 w-100 rounded-pill text-dark shadow-sm"
+                                                @onclick="() => ToggleSelectTrip(trip.Id)">
+                                            @(selectedTripId == trip.Id ? "Đóng" : "Chọn chỗ")
+                                        </button>
+                                    </div>
                                 </div>
+
+                                <!-- Interactive Seat Map -->
+                                @if (selectedTripId == trip.Id && selectedTripDetail != null)
+                                {
+                                    <div class="booking-drawer mt-3">
+                                        <div class="booking-steps" aria-label="Các bước đặt vé">
+                                            <div class="booking-step @(bookingStep == 0 ? "active" : bookingStep > 0 ? "complete" : "")"><span>1</span> Chọn chỗ</div>
+                                            <div class="booking-step @(bookingStep == 1 ? "active" : bookingStep > 1 ? "complete" : "")"><span>2</span> Đón trả</div>
+                                            <div class="booking-step @(bookingStep == 2 ? "active" : "")"><span>3</span> Thông tin</div>
+                                        </div>
+
+                                        @if (bookingStep == 0)
+                                        {
+                                            <h6 class="fw-bold mb-3">Sơ đồ chỗ ngồi <span class="text-muted fw-normal">· @selectedTripDetail.BusLicensePlate</span></h6>
+                                            <div class="seat-legend">
+                                                <span><i class="seat-key unavailable"></i> Không bán</span>
+                                                <span><i class="seat-key chosen">✓</i> Đang chọn</span>
+                                                <span><i class="seat-key available"></i> Phòng trống</span>
+                                            </div>
+                                            <div class="coach-floors">
+                                                @foreach (var floor in new[] { 1, 2 })
+                                                {
+                                                    var floorSeats = selectedTripDetail.Seats.Where(seat => seat.Floor == floor).ToList();
+                                                    <section class="coach-floor">
+                                                        <div class="coach-floor-title">TẦNG @(floor == 1 ? "DƯỚI" : "TRÊN")</div>
+                                                        <div class="coach-shell">
+                                                            <div class="coach-front">
+                                                                <div class="coach-windshield"><span>KÍNH CHẮN GIÓ</span></div>
+                                                                <div class="coach-front-deck">
+                                                                    @if (floor == 1)
+                                                                    {
+                                                                        <div class="driver-position"><i class="bi bi-vinyl-fill"></i><small>TÀI XẾ</small></div>
+                                                                        <div class="coach-door"><span>CỬA LÊN</span><i class="bi bi-box-arrow-in-up-right"></i><b></b><b></b><b></b></div>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <div class="upper-front-label"><i class="bi bi-window"></i> TẦNG TRÊN</div>
+                                                                        <div class="upper-front-label"><i class="bi bi-window"></i> CỬA SỔ</div>
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                            <div class="coach-cabins">
+                                                                @foreach (var row in floorSeats.Select(seat => seat.Row).Distinct().OrderBy(row => row))
+                                                                {
+                                                                    <div class="cabin-row">
+                                                                        @foreach (var seat in floorSeats.Where(seat => seat.Row == row && seat.Column == 1).OrderBy(seat => seat.SeatCode))
+                                                                        {
+                                                                            <button type="button" class="berth @GetBerthClasses(seat)" disabled="@(!seat.IsAvailable)" @onclick="() => ToggleSeat(seat.SeatCode)" title="@($"{seat.SeatCode} - {selectedTripDetail.BasePrice:N0} VND")" aria-label="Giường @seat.SeatCode">
+                                                                                @if (seat.IsAvailable && selectedSeats.Contains(seat.SeatCode)) { <i class="bi bi-check berth-state-icon"></i> }
+                                                                                @if (!seat.IsAvailable) { <span class="berth-sold-mark">×</span> }
+                                                                                @if (seat.SeatType == "DoubleBed") { <span class="berth-pillows"><i class="bi bi-dash-lg"></i><i class="bi bi-dash-lg"></i></span><span class="berth-kind">PHÒNG ĐÔI</span> }
+                                                                                else { <i class="bi bi-dash-lg berth-pillow"></i> }
+                                                                                <span class="berth-code">@seat.SeatCode</span>
+                                                                            </button>
+                                                                        }
+                                                                        <div class="coach-aisle"><span>LỐI ĐI</span></div>
+                                                                        @foreach (var seat in floorSeats.Where(seat => seat.Row == row && seat.Column == 2).OrderBy(seat => seat.SeatCode))
+                                                                        {
+                                                                            <button type="button" class="berth @GetBerthClasses(seat)" disabled="@(!seat.IsAvailable)" @onclick="() => ToggleSeat(seat.SeatCode)" title="@($"{seat.SeatCode} - {selectedTripDetail.BasePrice:N0} VND")" aria-label="Giường @seat.SeatCode">
+                                                                                @if (seat.IsAvailable && selectedSeats.Contains(seat.SeatCode)) { <i class="bi bi-check berth-state-icon"></i> }
+                                                                                @if (!seat.IsAvailable) { <span class="berth-sold-mark">×</span> }
+                                                                                @if (seat.SeatType == "DoubleBed") { <span class="berth-pillows"><i class="bi bi-dash-lg"></i><i class="bi bi-dash-lg"></i></span><span class="berth-kind">PHÒNG ĐÔI</span> }
+                                                                                else { <i class="bi bi-dash-lg berth-pillow"></i> }
+                                                                                <span class="berth-code">@seat.SeatCode</span>
+                                                                            </button>
+                                                                        }
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                            <div class="coach-rear"><i></i><span>ĐUÔI XE</span><i></i></div>
+                                                        </div>
+                                                    </section>
+                                                }
+                                            </div>
+                                            <div class="booking-footer">
+                                                <div><small class="text-muted d-block">Ghế đã chọn</small><strong>@(selectedSeats.Count == 0 ? "Chưa chọn" : string.Join(", ", selectedSeats.OrderBy(code => code)))</strong></div>
+                                                <div class="text-end"><small class="text-muted d-block">Tổng cộng</small><strong class="fs-5 text-primary">@SeatTotal.ToString("N0") đ</strong></div>
+                                                <button class="btn btn-primary fw-bold px-4" disabled="@(selectedSeats.Count == 0)" @onclick="ContinueToPoints">Tiếp tục: Chọn điểm đón/trả <i class="bi bi-arrow-right ms-1"></i></button>
+                                            </div>
+                                        }
+                                        else if (bookingStep == 1)
+                                        {
+                                            <h6 class="fw-bold mb-3">Chọn điểm đón và điểm trả</h6>
+                                            <div class="row g-4">
+                                                <div class="col-lg-6">
+                                                    <h6 class="point-heading"><i class="bi bi-circle-fill text-primary me-2"></i>Điểm đón</h6>
+                                                    @foreach (var point in selectedTripDetail.PickupPoints)
+                                                    {
+                                                        <label class="point-option">
+                                                            <input type="radio" name="pickup-point" value="@point.Id" checked="@(selectedPickupPoint?.Id == point.Id)" @onchange="() => SelectPickup(point)" />
+                                                            <strong>@point.Time</strong><span><b>@point.Name</b><small>@point.Address</small></span>
+                                                        </label>
+                                                    }
+                                                </div>
+                                                <div class="col-lg-6">
+                                                    <h6 class="point-heading"><i class="bi bi-geo-alt-fill text-danger me-2"></i>Điểm trả</h6>
+                                                    @foreach (var point in selectedTripDetail.DropoffPoints)
+                                                    {
+                                                        <label class="point-option">
+                                                            <input type="radio" name="dropoff-point" value="@point.Id" checked="@(selectedDropoffPoint?.Id == point.Id)" @onchange="() => SelectDropoff(point)" />
+                                                            <strong>@point.Time</strong><span><b>@point.Name</b><small>@point.Address</small></span>
+                                                        </label>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="booking-footer">
+                                                <button class="btn btn-outline-secondary" @onclick="() => bookingStep = 0"><i class="bi bi-arrow-left me-1"></i>Quay lại</button>
+                                                <span class="flex-grow-1"></span>
+                                                <button class="btn btn-primary fw-bold px-4" disabled="@(selectedPickupPoint == null || selectedDropoffPoint == null)" @onclick="() => bookingStep = 2">Tiếp tục <i class="bi bi-arrow-right ms-1"></i></button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="row g-4">
+                                                <div class="col-lg-7">
+                                                    <h6 class="fw-bold mb-3">Thông tin liên hệ</h6>
+                                                    <label class="form-label small fw-semibold">Họ và tên</label>
+                                                    <input class="form-control mb-3" autocomplete="name" placeholder="Nguyễn Văn A" @bind="booker.Name" />
+                                                    <label class="form-label small fw-semibold">Số điện thoại</label>
+                                                    <div class="input-group mb-3"><span class="input-group-text">+84</span><input class="form-control" autocomplete="tel" inputmode="tel" placeholder="912 345 678" @bind="booker.Phone" /></div>
+                                                    <label class="form-label small fw-semibold">Email nhận vé</label>
+                                                    <input class="form-control mb-3" type="email" autocomplete="email" placeholder="ten@email.com" @bind="booker.Email" />
+                                                    <label class="insurance-option"><input type="checkbox" @bind="booker.HasInsurance" /><span><b>Bảo hiểm chuyến đi</b><small>Bảo vệ hành trình của bạn · 20.000 đ/ghế</small></span></label>
+                                                    @if (!string.IsNullOrWhiteSpace(bookingError)) { <div class="alert alert-warning py-2 mt-3 mb-0">@bookingError</div> }
+                                                </div>
+                                                <div class="col-lg-5">
+                                                    <div class="checkout-summary">
+                                                        <h6 class="fw-bold mb-3">Tóm tắt chuyến đi</h6>
+                                                        <div class="d-flex justify-content-between"><b>@selectedTripDetail.OperatorName</b><span class="rating-chip"><i class="bi bi-star-fill"></i> @selectedTripDetail.Rating.ToString("0.0")</span></div>
+                                                        <div class="small text-muted mt-1">@selectedTripDetail.BusTypeName · @selectedTripDetail.TripCode</div>
+                                                        <hr />
+                                                        <div class="summary-line"><span>Ghế</span><b>@string.Join(", ", selectedSeats.OrderBy(code => code))</b></div>
+                                                        <div class="summary-line"><span>Điểm đón</span><b>@selectedPickupPoint?.Name</b></div>
+                                                        <div class="summary-line"><span>Điểm trả</span><b>@selectedDropoffPoint?.Name</b></div>
+                                                        <hr />
+                                                        <div class="summary-line"><span>@selectedSeats.Count × vé xe</span><b>@SeatTotal.ToString("N0") đ</b></div>
+                                                        @if (booker.HasInsurance) { <div class="summary-line"><span>Bảo hiểm</span><b>@InsuranceTotal.ToString("N0") đ</b></div> }
+                                                        <div class="summary-line total-line"><span>Tổng thanh toán</span><b>@BookingTotal.ToString("N0") đ</b></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="booking-footer">
+                                                <button class="btn btn-outline-secondary" @onclick="() => bookingStep = 1"><i class="bi bi-arrow-left me-1"></i>Quay lại</button>
+                                                <span class="flex-grow-1"></span>
+                                                <button class="btn btn-warning fw-bold px-4" disabled="@isBooking" @onclick="ConfirmBooking">
+                                                    @if (isBooking) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                                    Thanh toán / Đặt vé <i class="bi bi-arrow-right ms-1"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                     }
+                </section>
+            </div>
+        }
+        else
+        {
+            <!-- Tuyến đường phổ biến hiển thị khi chưa tìm kiếm -->
+            <div class="my-5">
+                <h4 class="fw-bold mb-4 text-dark">Tuyến đường phổ biến</h4>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm rounded-4 overflow-hidden popular-card" role="button" tabindex="0" @onclick='() => QuickSearchAsync("SGN", "DLI")'>
+                            <img src="https://picsum.photos/400/220?random=1" class="card-img-top" style="height: 140px; object-fit: cover;" alt="Sài Gòn - Đà Lạt" />
+                            <div class="card-body p-3">
+                                <h6 class="fw-bold mb-1">Sài Gòn - Đà Lạt</h6>
+                                <div class="text-primary fw-bold small">Từ 300.000đ</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm rounded-4 overflow-hidden popular-card" role="button" tabindex="0" @onclick='() => QuickSearchAsync("HAN", "SAP")'>
+                            <img src="https://picsum.photos/400/220?random=2" class="card-img-top" style="height: 140px; object-fit: cover;" alt="Hà Nội - Sapa" />
+                            <div class="card-body p-3">
+                                <h6 class="fw-bold mb-1">Hà Nội - Sapa</h6>
+                                <div class="text-primary fw-bold small">Từ 250.000đ</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm rounded-4 overflow-hidden popular-card" role="button" tabindex="0" @onclick='() => QuickSearchAsync("SGN", "NHA")'>
+                            <img src="https://picsum.photos/400/220?random=3" class="card-img-top" style="height: 140px; object-fit: cover;" alt="Sài Gòn - Nha Trang" />
+                            <div class="card-body p-3">
+                                <h6 class="fw-bold mb-1">Sài Gòn - Nha Trang</h6>
+                                <div class="text-primary fw-bold small">Từ 280.000đ</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm rounded-4 overflow-hidden popular-card" role="button" tabindex="0" @onclick='() => QuickSearchAsync("SGN", "UIH")'>
+                            <img src="https://picsum.photos/400/220?random=4" class="card-img-top" style="height: 140px; object-fit: cover;" alt="Sài Gòn - Quy Nhơn" />
+                            <div class="card-body p-3">
+                                <h6 class="fw-bold mb-1">Sài Gòn - Quy Nhơn</h6>
+                                <div class="text-primary fw-bold small">Từ 350.000đ</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         }
-    </div>
+    </main>
 </div>
+<SupportDrawer IsOpen="@showSupportDrawer" OnClose="CloseSupportDrawerAsync" />
 
 <style>
-    .vexere-hero {
-        background: linear-gradient(135deg, #0d5cb6 0%, #1890ff 100%);
-        padding-bottom: 30px;
+    .vexere-header {
+        background-color: #0d5cb6;
     }
 
-    .vexere-search-box {
-        max-width: 980px;
+    .vexere-hero {
+        background: radial-gradient(circle at 50% 30%, #1a73e8 0%, #0d5cb6 100%);
+        padding: 40px 0 50px 0;
+    }
+
+    .hero-title {
+        letter-spacing: 0.5px;
+    }
+
+    .vexere-search-card {
+        max-width: 1040px;
+    }
+
+    .search-tab {
+        border: none;
+        background: transparent;
+        font-weight: 700;
+        font-size: 0.95rem;
+        padding-bottom: 8px;
+        color: #6c757d;
         position: relative;
     }
 
-    .btn-tab {
-        border: none;
-        background: none;
-        font-weight: 600;
-        padding-bottom: 8px;
-    }
-
-        .btn-tab.active {
+        .search-tab.active {
             color: #0d5cb6;
-            border-bottom: 2px solid #0d5cb6;
+            border-bottom: 3px solid #0d5cb6;
         }
 
-    .btn-vexere-search {
-        background-color: #ffd333;
-        color: #212529;
-        transition: 0.2s;
+    .search-inputs-grid {
+        display: flex;
+        align-items: center;
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        overflow: visible;
+        background-color: #fff;
     }
 
-        .btn-vexere-search:hover {
+    .search-input-box {
+        flex: 1;
+        padding: 10px 14px;
+        cursor: pointer;
+        position: relative;
+    }
+
+        .search-input-box:hover {
+            background-color: #f8f9fa;
+        }
+
+        .search-input-box:not(:last-child) {
+            border-right: 1px solid #dee2e6;
+        }
+
+    .label-muted {
+        font-size: 0.75rem;
+        color: #8c939b;
+        display: block;
+    }
+
+    .selected-text {
+        font-size: 0.95rem;
+        color: #212529;
+    }
+
+    .dot-icon {
+        font-size: 1rem;
+    }
+
+    .date-clean {
+        border: none;
+        padding: 0;
+        font-size: 0.95rem;
+        background: transparent;
+    }
+
+        .date-clean:focus {
+            box-shadow: none;
+        }
+
+    .btn-swap {
+        border: 1px solid #dee2e6;
+        border-radius: 50%;
+        background-color: #fff;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #0d5cb6;
+        margin: 0 -8px;
+        z-index: 2;
+        transition: transform 0.2s;
+    }
+
+        .btn-swap:hover {
+            transform: rotate(180deg);
+            background-color: #f1f3f5;
+        }
+
+    .btn-vexere-yellow {
+        background-color: #ffd333;
+        border: none;
+        height: 60px;
+        border-radius: 0 10px 10px 0;
+        color: #000;
+        transition: background-color 0.2s;
+    }
+
+        .btn-vexere-yellow:hover {
             background-color: #ffc700;
         }
 
-    .trip-card {
-        transition: transform 0.15s ease-in-out;
+    .custom-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 320px;
+        background: white;
+        border-radius: 12px;
+        z-index: 1050;
+        max-height: 280px;
+        overflow: hidden;
+        border: 1px solid #e9ecef;
     }
 
-        .trip-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+    .dropdown-list {
+        max-height: 220px;
+        overflow-y: auto;
+    }
+
+    .dropdown-item-custom {
+        padding: 10px 14px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+    }
+
+        .dropdown-item-custom:hover, .dropdown-item-custom.active {
+            background-color: #e8f0fe;
+            color: #0d5cb6;
         }
 
-    .timeline-line {
-        border-bottom: 2px dashed #dee2e6;
+    .line-container {
+        border-bottom: 2px dashed #ced4da;
         top: -6px;
     }
 
     .seat-btn {
-        width: 52px;
-        height: 60px;
+        width: 48px;
+        height: 56px;
         border-radius: 8px;
         display: inline-flex;
         flex-direction: column;
@@ -298,7 +851,6 @@
         border: 1px solid #ced4da;
         background-color: #fff;
         cursor: pointer;
-        transition: 0.15s;
     }
 
         .seat-btn.seat-selected {
@@ -337,6 +889,255 @@
         background-color: #e9ecef;
         border: 1px solid #dee2e6;
     }
+
+    .popular-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+        .popular-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1) !important;
+        }
+</style>
+
+
+<style>
+    /* ===== TripGo 2026 premium UI override ===== */
+    :root {
+        --tg-blue: #0d5cb6;
+        --tg-blue-dark: #0d5cb6;
+        --tg-navy: #071b3d;
+        --tg-yellow: #ffd333;
+        --tg-bg: #f4f7fb;
+        --tg-text: #172033;
+        --tg-muted: #667085;
+        --tg-border: #e7ebf2;
+    }
+
+    .tripgo-page {
+        min-height: 100vh;
+        background: var(--tg-bg);
+        color: var(--tg-text);
+    }
+
+        .tripgo-page .container {
+            max-width: 1180px;
+        }
+
+    .vexere-header {
+        position: sticky;
+        top: 0;
+        z-index: 1100;
+        background: rgba(13, 92, 182, .96);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 8px 30px rgba(8, 43, 95, .14);
+    }
+
+    .vexere-hero {
+        background: radial-gradient(circle at 18% 15%, rgba(80, 169, 255, .35), transparent 30%), radial-gradient(circle at 85% 30%, rgba(29, 112, 230, .38), transparent 26%), linear-gradient(135deg, #0756b8 0%, #2474e5 55%, #0f64cb 100%);
+        padding: 54px 0 72px;
+        overflow: visible;
+    }
+
+    .hero-title {
+        font-size: clamp(1.8rem, 3vw, 2.65rem);
+        line-height: 1.15;
+        text-shadow: 0 5px 24px rgba(0,0,0,.12);
+    }
+
+    .vexere-search-card {
+        max-width: 1080px;
+        border: 1px solid rgba(255,255,255,.6);
+        box-shadow: 0 22px 55px rgba(0, 40, 100, .24) !important;
+    }
+
+    .search-inputs-grid {
+        min-height: 72px;
+        border-color: #dfe5ee;
+        box-shadow: inset 0 0 0 1px rgba(36,116,229,.02);
+    }
+
+    .search-input-box {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        transition: background .18s ease;
+    }
+
+        .search-input-box:hover {
+            background: #f6f9ff;
+        }
+
+    .selected-text {
+        max-width: 210px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .btn-swap {
+        box-shadow: 0 5px 16px rgba(23,32,51,.12);
+    }
+
+    .btn-vexere-yellow {
+        min-width: 145px;
+        height: 70px;
+        border-radius: 0 11px 11px 0;
+        background: var(--tg-yellow);
+    }
+
+        .btn-vexere-yellow:hover {
+            background: #ffbd00;
+            transform: translateY(-1px);
+        }
+
+    main.container {
+        margin-top: 32px !important;
+    }
+
+    .trip-card {
+        border: 1px solid var(--tg-border) !important;
+        box-shadow: 0 7px 24px rgba(16, 24, 40, .06) !important;
+        transition: .22s ease;
+    }
+
+        .trip-card:hover {
+            transform: translateY(-2px);
+            border-color: #cbdcf7 !important;
+            box-shadow: 0 15px 34px rgba(16,24,40,.10) !important;
+        }
+
+        .trip-card .btn-warning {
+            background: var(--tg-yellow);
+            border: none;
+        }
+
+    .custom-dropdown {
+        border: 1px solid var(--tg-border);
+        box-shadow: 0 18px 45px rgba(16,24,40,.16) !important;
+    }
+
+    .dropdown-item-custom {
+        border-radius: 8px;
+        margin: 3px 6px;
+    }
+
+    .seat-btn {
+        width: 52px;
+        height: 60px;
+        border: 1px solid #b9d3f8;
+        background: #f4f8ff;
+        color: #2474e5;
+        transition: .16s ease;
+    }
+
+        .seat-btn:not(:disabled):hover {
+            transform: translateY(-2px);
+            border-color: #2474e5;
+        }
+
+        .seat-btn.seat-selected {
+            background: #dff2ff;
+            border: 2px solid #2474e5;
+            color: #0756b8;
+        }
+
+        .seat-btn:disabled {
+            background: #f0f1f3;
+            color: #a9afb8;
+            border-color: #e1e4e8;
+        }
+
+    .seat-selected {
+        background: #dff2ff;
+        border-color: #2474e5;
+    }
+
+    .popular-card {
+        border: 1px solid var(--tg-border) !important;
+        min-height: 230px;
+    }
+
+        .popular-card img {
+            transition: transform .35s ease;
+        }
+
+        .popular-card:hover img {
+            transform: scale(1.045);
+        }
+
+    .modal-content {
+        box-shadow: 0 30px 80px rgba(0,0,0,.24) !important;
+    }
+
+    .modal-header {
+        background: linear-gradient(135deg, #0756b8, #2474e5) !important;
+    }
+
+    @@media (max-width: 991.98px) {
+        .vexere-hero
+
+    {
+        padding: 34px 0 44px;
+    }
+
+    .search-inputs-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow: visible;
+        border: 0;
+        gap: 10px;
+    }
+
+    .search-input-box {
+        border: 1px solid #dee2e6 !important;
+        border-radius: 12px;
+        background: #fff;
+    }
+
+    .swap-btn-col {
+        display: none;
+    }
+
+    .search-btn-col {
+        grid-column: 1 / -1;
+    }
+
+    .btn-vexere-yellow {
+        border-radius: 12px;
+        height: 56px;
+    }
+
+    }
+
+    @@media (max-width: 575.98px) {
+        .vexere-header .container
+
+    {
+        gap: 8px;
+    }
+
+    .vexere-header .text-white-50, .vexere-header .btn-outline-light {
+        display: none !important;
+    }
+
+    .search-inputs-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .search-btn-col {
+        grid-column: auto;
+    }
+
+    .vexere-search-card {
+        padding: 12px !important;
+    }
+
+    .hero-title {
+        font-size: 1.65rem;
+    }
+
+    }
 </style>
 
 @code {
@@ -347,37 +1148,125 @@
         DepartureDate = DateOnly.FromDateTime(DateTime.Today)
     };
 
+    private LocationDto? originLocation;
+    private LocationDto? destLocation;
+
+    private bool showOriginDropdown = false;
+    private bool showDestDropdown = false;
+    private string originSearchText = "";
+    private string destSearchText = "";
+
     private bool isLoading = false;
     private bool hasSearched = false;
+    private bool showSupportDrawer;
     private string? errorMessage;
 
     private long? selectedTripId;
     private TripDetailDto? selectedTripDetail;
     private HashSet<string> selectedSeats = new();
+    private int bookingStep;
+    private PickupDropoffPointDto? selectedPickupPoint;
+    private PickupDropoffPointDto? selectedDropoffPoint;
+    private bool isBooking;
+    private string? bookingError;
+
+    private string sortOrder = "departure_asc";
+    private CustomerBookingInfoDto booker = new();
+    private bool filterMorning;
+    private bool filterAfternoon;
+    private bool filterEvening;
+    private decimal maximumPrice = 5_000_000m;
+    private HashSet<string> selectedOperators = new(StringComparer.OrdinalIgnoreCase);
+    private decimal SeatTotal => selectedSeats.Count * (selectedTripDetail?.BasePrice ?? 0);
+    private decimal InsuranceTotal => booker.HasInsurance ? selectedSeats.Count * 20_000m : 0;
+    private decimal BookingTotal => SeatTotal + InsuranceTotal;
+    private string DepartureDateLabel => searchModel.DepartureDate.ToDateTime(TimeOnly.MinValue)
+        .ToString("dddd, dd/MM/yyyy", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"));
+
+    private IEnumerable<TripSearchResultDto> VisibleSearchResults
+    {
+        get
+        {
+            var trips = searchResults.AsEnumerable();
+            if (selectedOperators.Count > 0)
+                trips = trips.Where(trip => selectedOperators.Contains(trip.OperatorName));
+
+            if (filterMorning || filterAfternoon || filterEvening)
+                trips = trips.Where(trip => IsWithinSelectedDeparturePeriod(trip.DepartureTime));
+
+            return trips.Where(trip => trip.BasePrice <= maximumPrice);
+        }
+    }
+
+    private bool HasNearbyDateSuggestions => searchResults.Any(trip =>
+        trip.DepartureTime.ToLocalTime().Date != searchModel.DepartureDate.ToDateTime(TimeOnly.MinValue).Date);
+
+    private IEnumerable<LocationDto> FilteredOriginLocations =>
+        string.IsNullOrWhiteSpace(originSearchText)
+            ? locations
+            : locations.Where(l => l.Name.Contains(originSearchText, StringComparison.OrdinalIgnoreCase) ||
+                                  (l.Province?.Contains(originSearchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private IEnumerable<LocationDto> FilteredDestLocations =>
+        string.IsNullOrWhiteSpace(destSearchText)
+            ? locations
+            : locations.Where(l => l.Name.Contains(destSearchText, StringComparison.OrdinalIgnoreCase) ||
+                                  (l.Province?.Contains(destSearchText, StringComparison.OrdinalIgnoreCase) ?? false));
 
     protected override async Task OnInitializedAsync()
     {
         locations = await TripService.GetLocationsAsync();
-        if (locations.Count >= 2)
+    }
+
+    private Task CloseSupportDrawerAsync()
+    {
+        showSupportDrawer = false;
+        return Task.CompletedTask;
+    }
+
+    private void ToggleDropdown(bool isOrigin)
+    {
+        if (isOrigin)
         {
-            searchModel.OriginLocationId = locations[0].Id;
-            searchModel.DestinationLocationId = locations[1].Id;
-            await HandleSearch(); // Tự động load chuyến xe mẫu
+            showOriginDropdown = !showOriginDropdown;
+            showDestDropdown = false;
         }
+        else
+        {
+            showDestDropdown = !showDestDropdown;
+            showOriginDropdown = false;
+        }
+    }
+
+    private void SelectOrigin(LocationDto loc)
+    {
+        originLocation = loc;
+        searchModel.OriginLocationId = loc.Id;
+        showOriginDropdown = false;
+    }
+
+    private void SelectDestination(LocationDto loc)
+    {
+        destLocation = loc;
+        searchModel.DestinationLocationId = loc.Id;
+        showDestDropdown = false;
     }
 
     private void SwapLocations()
     {
-        (searchModel.OriginLocationId, searchModel.DestinationLocationId) =
-            (searchModel.DestinationLocationId, searchModel.OriginLocationId);
+        (originLocation, destLocation) = (destLocation, originLocation);
+        (searchModel.OriginLocationId, searchModel.DestinationLocationId) = (searchModel.DestinationLocationId, searchModel.OriginLocationId);
     }
 
     private async Task HandleSearch()
     {
         errorMessage = null;
+        showOriginDropdown = false;
+        showDestDropdown = false;
+
         if (searchModel.OriginLocationId == 0 || searchModel.DestinationLocationId == 0)
         {
-            errorMessage = "Vui lòng chọn nơi xuất phát và nơi đến.";
+            errorMessage = "Vui lòng chọn đầy đủ nơi xuất phát và nơi đến.";
             return;
         }
 
@@ -394,12 +1283,83 @@
         try
         {
             searchResults = await TripService.SearchTripsAsync(searchModel);
+            ApplySort();
             hasSearched = true;
         }
         finally
         {
             isLoading = false;
         }
+    }
+
+    private void ApplySort()
+    {
+        searchResults = sortOrder switch
+        {
+            "default" => searchResults.OrderBy(s => s.DepartureTime).ToList(),
+            "departure_asc" => searchResults.OrderBy(s => s.DepartureTime).ToList(),
+            "departure_desc" => searchResults.OrderByDescending(s => s.DepartureTime).ToList(),
+            "price_asc" => searchResults.OrderBy(s => s.BasePrice).ToList(),
+            "price_desc" => searchResults.OrderByDescending(s => s.BasePrice).ToList(),
+            _ => searchResults
+        };
+    }
+
+    private void SetSortOrder(string order)
+    {
+        sortOrder = order;
+        ApplySort();
+    }
+
+    private void HandleSortChange(ChangeEventArgs args)
+    {
+        if (args.Value is string order)
+            SetSortOrder(order);
+    }
+
+    private bool IsWithinSelectedDeparturePeriod(DateTimeOffset departureTime)
+    {
+        var hour = departureTime.ToLocalTime().Hour;
+        return (filterMorning && hour < 12) ||
+               (filterAfternoon && hour >= 12 && hour < 18) ||
+               (filterEvening && hour >= 18);
+    }
+
+    private void ToggleOperatorFilter(string operatorName, ChangeEventArgs args)
+    {
+        if (args.Value is true)
+            selectedOperators.Add(operatorName);
+        else
+            selectedOperators.Remove(operatorName);
+    }
+
+    private static string GetDurationText(DateTimeOffset departure, DateTimeOffset arrival)
+    {
+        var duration = arrival - departure;
+        if (duration < TimeSpan.Zero)
+            duration = duration.Add(TimeSpan.FromDays(1));
+
+        return $"{(int)duration.TotalHours}h{duration.Minutes:00}m";
+    }
+
+    private string GetBerthClasses(SeatLayoutItemDto seat) =>
+        $"{GetSeatClass(seat)} {(seat.SeatType == "DoubleBed" ? "double-berth" : string.Empty)}";
+
+    private async Task QuickSearchAsync(string originCode, string destinationCode)
+    {
+        originLocation = locations.FirstOrDefault(location => location.Code == originCode);
+        destLocation = locations.FirstOrDefault(location => location.Code == destinationCode);
+        if (originLocation == null || destLocation == null)
+        {
+            errorMessage = "Tuyến đường hiện chưa có trong danh mục địa điểm.";
+            return;
+        }
+
+        searchModel.OriginLocationId = originLocation.Id;
+        searchModel.DestinationLocationId = destLocation.Id;
+        searchModel.DepartureDate = DateOnly.FromDateTime(DateTime.Today);
+        await HandleSearch();
+        await JSRuntime.InvokeVoidAsync("tripgo.scrollToResults");
     }
 
     private async Task ToggleSelectTrip(long tripId)
@@ -409,11 +1369,17 @@
             selectedTripId = null;
             selectedTripDetail = null;
             selectedSeats.Clear();
+            bookingStep = 0;
             return;
         }
 
         selectedTripId = tripId;
         selectedSeats.Clear();
+        selectedPickupPoint = null;
+        selectedDropoffPoint = null;
+        bookingStep = 0;
+        bookingError = null;
+        booker = new CustomerBookingInfoDto();
         selectedTripDetail = await TripService.GetTripDetailsAsync(tripId);
     }
 
@@ -432,10 +1398,66 @@
         return "";
     }
 
-    private void ProceedToCheckout()
+    private void ContinueToPoints()
     {
-        if (selectedTripDetail == null || !selectedSeats.Any()) return;
-        var seatsStr = string.Join(",", selectedSeats);
-        Nav.NavigateTo($"/thanh-toan/{selectedTripDetail.Id}?seats={Uri.EscapeDataString(seatsStr)}");
+        if (selectedSeats.Count > 0)
+            bookingStep = 1;
     }
-}
+
+    private void SelectPickup(PickupDropoffPointDto point) => selectedPickupPoint = point;
+
+    private void SelectDropoff(PickupDropoffPointDto point) => selectedDropoffPoint = point;
+
+    private async Task ConfirmBooking()
+    {
+        if (selectedTripDetail == null || selectedSeats.Count == 0 || isBooking) return;
+
+        if (string.IsNullOrWhiteSpace(booker.Name) || string.IsNullOrWhiteSpace(booker.Phone))
+        {
+            bookingError = "Vui lòng nhập đầy đủ họ tên và số điện thoại.";
+            return;
+        }
+
+        if (selectedPickupPoint == null || selectedDropoffPoint == null)
+        {
+            bookingError = "Vui lòng chọn điểm đón và điểm trả.";
+            return;
+        }
+
+        bookingError = null;
+        isBooking = true;
+        booker.SelectedPickupPoint = selectedPickupPoint.Name;
+        booker.SelectedDropoffPoint = selectedDropoffPoint.Name;
+        booker.PickupPoint = selectedPickupPoint.Name;
+
+        try
+        {
+            var tripId = selectedTripDetail.Id;
+            var success = await TripService.BookSeatsAsync(tripId, selectedSeats.ToList(), booker);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Đặt vé thành công! Mã đặt chỗ: {booker.BookingCode}");
+                searchResults = await TripService.SearchTripsAsync(searchModel);
+                ApplySort();
+                selectedSeats.Clear();
+                selectedTripId = null;
+                selectedTripDetail = null;
+                selectedPickupPoint = null;
+                selectedDropoffPoint = null;
+                bookingStep = 0;
+                booker = new CustomerBookingInfoDto();
+            }
+            else
+            {
+                bookingError = "Một số ghế vừa được đặt. Vui lòng chọn lại ghế còn trống.";
+                selectedTripDetail = await TripService.GetTripDetailsAsync(tripId);
+                selectedSeats.Clear();
+                bookingStep = 0;
+            }
+        }
+        finally
+        {
+            isBooking = false;
+        }
+    }
+}
