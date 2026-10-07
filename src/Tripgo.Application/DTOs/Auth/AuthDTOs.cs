@@ -1,6 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
-namespace Tripgo.Application.DTO;
+namespace Tripgo.Application.DTOs;
 
 public class LoginViewModel
 {

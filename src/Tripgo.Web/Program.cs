@@ -1,22 +1,21 @@
+using System;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
-using Tripgo.Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Tripgo.Application;
+using Tripgo.Infrastructure;
 using Tripgo.Infrastructure.Persistence;
-using Tripgo.Infrastructure.Services;
 using Tripgo.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Đăng ký DbContext với chuỗi kết nối từ appsettings.json
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+// 1. Clean Architecture Modules
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
-
-// 2. Đăng ký TripService vào DI container
-builder.Services.AddScoped<ITripService, TripService>();
-
-// 3. Add services to the container.
+// 2. Add UI & Razor Components
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -25,7 +24,7 @@ builder.Services.AddSingleton<Tripgo.Web.Services.ICustomerBookingService, Tripg
 
 var app = builder.Build();
 
-// 4. Tự động nạp dữ liệu mẫu khi khởi động (nếu có kết nối DB)
+// 4. Auto-migration & Database Seeding on startup
 try
 {
     using (var scope = app.Services.CreateScope())
@@ -45,7 +44,6 @@ catch (Exception ex)
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 

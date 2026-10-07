@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.20">
@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tripgo.Application\Tripgo.Application.csproj" />
-    <ProjectReference Include="..\Tripgo.Domain\Tripgo.Domain.csproj" />
     <ProjectReference Include="..\Tripgo.Infrastructure\Tripgo.Infrastructure.csproj" />
   </ItemGroup>
 
