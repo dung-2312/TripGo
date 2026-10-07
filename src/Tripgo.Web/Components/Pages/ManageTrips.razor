@@ -1,0 +1,853 @@
+﻿@page "/admin/trips"
+@using Tripgo.Domain.Interfaces
+@inject ITripService TripService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<div class="admin-shell">
+    <div class="admin-container">
+        <div class="admin-topbar">
+            <div>
+                <div class="eyebrow"><i class="bi bi-grid-1x2-fill"></i> TRIPGO ADMIN CENTER</div>
+                <h2>Quản lý chuyến xe</h2>
+                <p>Theo dõi vận hành, mở bán chuyến mới và kiểm soát tình trạng ghế.</p>
+            </div>
+            <a href="/" class="btn-back"><i class="bi bi-arrow-left"></i><span>Trang đặt vé</span></a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-bus-front-fill"></i></div><div><span>Chuyến đã mở</span><strong>@allTrips.Count(t => t.Status != "Cancelled")</strong></div></div>
+            <div class="stat-card"><div class="stat-icon green"><i class="bi bi-person-check-fill"></i></div><div><span>Ghế còn trống</span><strong>@allTrips.Where(t => t.Status != "Cancelled").Sum(t => t.AvailableSeats)</strong></div></div>
+            <div class="stat-card"><div class="stat-icon violet"><i class="bi bi-signpost-split-fill"></i></div><div><span>Tuyến đường</span><strong>@routes.Count</strong></div></div>
+            <div class="stat-card"><div class="stat-icon orange"><i class="bi bi-buildings-fill"></i></div><div><span>Nhà xe</span><strong>@operators.Count</strong></div></div>
+        </div>
+
+        <nav class="admin-tabs" role="tablist" aria-label="Quản trị vận hành Tripgo">
+            <button class="@(activeTab == "operators" ? "active" : "")" @onclick='() => SetActiveTab("operators")'><i class="bi bi-buildings"></i> Nhà xe</button>
+            <button class="@(activeTab == "fleet" ? "active" : "")" @onclick='() => SetActiveTab("fleet")'><i class="bi bi-bus-front"></i> Đội xe</button>
+            <button class="@(activeTab == "routes" ? "active" : "")" @onclick='() => SetActiveTab("routes")'><i class="bi bi-signpost-split"></i> Tuyến đường</button>
+            <button class="@(activeTab == "trips" ? "active" : "")" @onclick='() => SetActiveTab("trips")'><i class="bi bi-calendar2-check"></i> Chuyến xe</button>
+        </nav>
+
+        @if (!string.IsNullOrWhiteSpace(statusMsg))
+        {
+            <div class="status-box @(isSuccess ? "success" : "warning")" role="status"><i class="bi @(isSuccess ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i> @statusMsg</div>
+        }
+
+        @if (activeTab == "operators")
+        {
+            <section class="admin-card tab-panel">
+                <div class="section-head"><div class="section-icon"><i class="bi bi-building-add"></i></div><div><h4>Thêm nhà xe mới</h4><p>Đăng ký đối tác vận tải để quản lý đội xe và lịch chạy.</p></div></div>
+                <div class="form-grid">
+                    <div class="field span-2"><label>Tên nhà xe</label><input @bind="newOperator.Name" placeholder="Ví dụ: Sao Việt" /></div>
+                    <div class="field"><label>Mã nhà xe</label><input @bind="newOperator.Code" placeholder="SAOVIET" /></div>
+                    <div class="field"><label>Hotline</label><input @bind="newOperator.Hotline" inputmode="tel" placeholder="1900 1234" /></div>
+                    <div class="field span-2"><label>Địa chỉ</label><input @bind="newOperator.Address" placeholder="Địa chỉ văn phòng" /></div>
+                </div>
+                <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateOperator"><i class="bi bi-plus-lg"></i> Thêm nhà xe</button></div>
+                <div class="table-responsive"><table class="trip-table"><thead><tr><th>Mã</th><th>Nhà xe</th><th>Hotline</th><th>Địa chỉ</th></tr></thead><tbody>
+                    @foreach (var op in operators) { <tr><td><strong>@op.Code</strong></td><td>@op.Name</td><td>@op.Hotline</td><td>@op.Address</td></tr> }
+                </tbody></table></div>
+            </section>
+        }
+        else if (activeTab == "fleet")
+        {
+            <section class="admin-card tab-panel">
+                <div class="section-head"><div class="section-icon"><i class="bi bi-bus-front"></i></div><div><h4>Thêm xe vào đội</h4><p>Mỗi xe mới được tạo kèm sơ đồ hai tầng, 24 giường.</p></div></div>
+                <div class="form-grid">
+                    <div class="field"><label>Nhà xe</label><select @bind="newBus.OperatorId"><option value="0">Chọn nhà xe</option>@foreach (var op in operators) { <option value="@op.Id">@op.Name</option> }</select></div>
+                    <div class="field"><label>Loại xe</label><select @bind="newBus.BusTypeId"><option value="0">Chọn loại xe</option>@foreach (var type in busTypes) { <option value="@type.Id">@type.Name</option> }</select></div>
+                    <div class="field"><label>Biển số xe</label><input @bind="newBus.LicensePlate" placeholder="51B-888.88" /></div>
+                    <div class="field"><label>Tên xe</label><input @bind="newBus.Name" placeholder="Limousine VIP 01" /></div>
+                </div>
+                <div class="fleet-note"><i class="bi bi-grid-3x3-gap"></i> Sơ đồ sẽ gồm 12 giường tầng dưới (A01–A12) và 12 giường tầng trên (B01–B12).</div>
+                <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateBus"><i class="bi bi-check2-circle"></i> Đăng ký xe</button></div>
+                <div class="table-responsive"><table class="trip-table"><thead><tr><th>Biển số</th><th>Tên xe</th><th>Nhà xe</th><th>Loại xe</th><th>Sơ đồ</th></tr></thead><tbody>
+                    @foreach (var bus in buses) { <tr><td><strong>@bus.LicensePlate</strong></td><td>@bus.Name</td><td>@bus.OperatorName</td><td>@bus.BusTypeName</td><td>@bus.TotalSeats giường · 2 tầng</td></tr> }
+                </tbody></table></div>
+            </section>
+        }
+        else if (activeTab == "routes")
+        {
+            <section class="admin-card tab-panel">
+                <div class="section-head"><div class="section-icon"><i class="bi bi-signpost-split"></i></div><div><h4>Tạo tuyến đường</h4><p>Gắn tuyến với nhà xe và các điểm đi, đến đã khai báo.</p></div></div>
+                <div class="form-grid">
+                    <div class="field"><label>Nhà xe khai thác</label><select @bind="newRoute.OperatorId"><option value="0">Chọn nhà xe</option>@foreach (var op in operators) { <option value="@op.Id">@op.Name</option> }</select></div>
+                    <div class="field"><label>Điểm đi</label><select @bind="newRoute.OriginLocationId"><option value="0">Chọn điểm đi</option>@foreach (var location in locations) { <option value="@location.Id">@location.Name</option> }</select></div>
+                    <div class="field"><label>Điểm đến</label><select @bind="newRoute.DestinationLocationId"><option value="0">Chọn điểm đến</option>@foreach (var location in locations) { <option value="@location.Id">@location.Name</option> }</select></div>
+                    <div class="field"><label>Cự ly (km)</label><input type="number" min="1" step="1" @bind="newRoute.DistanceKm" /></div>
+                    <div class="field"><label>Thời gian dự kiến (phút)</label><input type="number" min="1" step="15" @bind="newRoute.EstimatedDurationMinutes" /></div>
+                </div>
+                <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateRoute"><i class="bi bi-plus-lg"></i> Tạo tuyến</button></div>
+                <div class="table-responsive"><table class="trip-table"><thead><tr><th>Tuyến</th><th>Nhà xe</th><th>Cự ly</th><th>Thời lượng</th></tr></thead><tbody>
+                    @foreach (var route in routes) { <tr><td><strong>@route.OriginName → @route.DestinationName</strong></td><td>@GetOperatorName(route.OperatorId)</td><td>@route.DistanceKm km</td><td>@route.EstimatedDurationMinutes phút</td></tr> }
+                </tbody></table></div>
+            </section>
+        }
+        else
+        {
+            <section class="admin-card tab-panel">
+                <div class="section-head"><div class="section-icon"><i class="bi bi-calendar2-plus"></i></div><div><h4>Mở bán chuyến xe</h4><p>Chọn tuyến, xe tương ứng và thời gian vận hành.</p></div></div>
+                <div class="form-grid">
+                    <div class="field span-2"><label>Tuyến đường</label><select @bind="newTrip.RouteId" @bind:after="OnTripRouteChanged"><option value="0">Chọn tuyến</option>@foreach (var route in routes) { <option value="@route.Id">@route.OriginName → @route.DestinationName</option> }</select></div>
+                    <div class="field"><label>Nhà xe</label><input value="@GetOperatorName(selectedTripOperatorId)" readonly placeholder="Tự động theo tuyến" /></div>
+                    <div class="field"><label>Xe</label><select @bind="newTrip.BusId" disabled="@(selectedTripOperatorId == 0)"><option value="0">Chọn xe</option>@foreach (var bus in TripBuses) { <option value="@bus.Id">@bus.LicensePlate · @bus.BusTypeName</option> }</select></div>
+                    <div class="field"><label>Ngày giờ xuất phát</label><input type="datetime-local" @bind="departureInput" /></div>
+                    <div class="field"><label>Ngày giờ đến dự kiến</label><input type="datetime-local" @bind="arrivalInput" /></div>
+                    <div class="field span-2"><label>Giá vé cơ sở</label><div class="money-input"><input type="number" min="1" step="10000" @bind="newTrip.BasePrice" /><span>VNĐ</span></div></div>
+                </div>
+                <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateTrip"><i class="bi bi-megaphone-fill"></i> Mở bán chuyến xe</button></div>
+            </section>
+
+            <section class="admin-card list-card">
+                <div class="list-toolbar"><div><h4>Danh sách chuyến xe</h4><p>@FilteredTrips.Count() chuyến phù hợp</p></div><div class="toolbar-actions"><div class="search-box"><i class="bi bi-search"></i><input placeholder="Tìm mã, tuyến, nhà xe, biển số..." @bind="searchText" @bind:event="oninput" /></div><select class="filter-select" @bind="tripFilter"><option value="all">Tất cả chuyến</option><option value="future">Sắp khởi hành</option><option value="today">Hôm nay</option></select><button class="refresh-btn" @onclick="RefreshTrips" title="Làm mới"><i class="bi bi-arrow-clockwise"></i></button></div></div>
+                @if (isLoadingTrips) { <div class="empty-state"><div class="spinner-border text-primary"></div><span>Đang tải chuyến xe...</span></div> }
+                else if (!FilteredTrips.Any()) { <div class="empty-state"><i class="bi bi-inbox"></i><strong>Chưa có chuyến phù hợp</strong></div> }
+                else
+                {
+                    <div class="table-responsive"><table class="trip-table"><thead><tr><th>Mã chuyến</th><th>Tuyến</th><th>Nhà xe / Biển số</th><th>Khởi hành</th><th>Giá vé</th><th>Ghế trống</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+                        @foreach (var trip in FilteredTrips)
+                        {
+                            <tr><td><strong>@trip.TripCode</strong></td><td>@trip.RouteName</td><td><strong>@trip.OperatorName</strong><span class="table-subtitle">@trip.BusLicensePlate · @trip.BusTypeName</span></td><td>@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td><td><strong class="price">@trip.BasePrice.ToString("N0") đ</strong></td><td>@trip.AvailableSeats / @trip.TotalSeats</td><td><span class="status-pill @(trip.Status == "Cancelled" ? "cancelled" : "scheduled")">@(trip.Status == "Cancelled" ? "Đã hủy" : "Đang mở bán")</span></td><td><button class="cancel-trip" disabled="@(trip.Status == "Cancelled")" @onclick="() => CancelTrip(trip.Id)" title="Hủy chuyến"><i class="bi bi-x-circle"></i> Hủy</button></td></tr>
+                        }
+                    </tbody></table></div>
+                }
+            </section>
+        }
+    </div>
+</div>
+
+<style>
+    :root {
+        --a-blue: #2474e5;
+        --a-blue2: #0756b8;
+        --a-bg: #f4f7fb;
+        --a-text: #172033;
+        --a-muted: #667085;
+        --a-border: #e7ebf2;
+    }
+
+    .admin-shell {
+        min-height: 100vh;
+        background: var(--a-bg);
+        color: var(--a-text);
+        padding: 36px 24px 64px;
+    }
+
+    .admin-container {
+        max-width: 1240px;
+        margin: auto;
+    }
+
+    .admin-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 26px;
+    }
+
+    .eyebrow {
+        color: var(--a-blue);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        margin-bottom: 8px;
+    }
+
+    .admin-topbar h2 {
+        margin: 0 0 6px;
+        font-size: 30px;
+        font-weight: 800;
+    }
+
+    .admin-topbar p, .section-head p, .list-toolbar p {
+        margin: 0;
+        color: var(--a-muted);
+    }
+
+    .btn-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        color: #344054;
+        background: #fff;
+        border: 1px solid var(--a-border);
+        padding: 11px 16px;
+        border-radius: 12px;
+        font-weight: 700;
+        box-shadow: 0 4px 14px rgba(16,24,40,.04);
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4,1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        background: #fff;
+        border: 1px solid var(--a-border);
+        border-radius: 18px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        box-shadow: 0 6px 22px rgba(16,24,40,.045);
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+    }
+
+        .stat-icon.blue {
+            background: #eaf2ff;
+            color: #2474e5
+        }
+
+        .stat-icon.green {
+            background: #e9f8ef;
+            color: #159455
+        }
+
+        .stat-icon.violet {
+            background: #f2ecff;
+            color: #7547d8
+        }
+
+        .stat-icon.orange {
+            background: #fff1e6;
+            color: #e56b1f
+        }
+
+    .stat-card span {
+        display: block;
+        color: var(--a-muted);
+        font-size: 13px;
+        margin-bottom: 3px;
+    }
+
+    .stat-card strong {
+        font-size: 24px;
+        line-height: 1
+    }
+
+    .admin-card {
+        background: #fff;
+        border: 1px solid var(--a-border);
+        border-radius: 20px;
+        box-shadow: 0 8px 28px rgba(16,24,40,.05);
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+
+    .admin-tabs {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--a-border);
+        margin: 0 0 18px;
+    }
+
+    .admin-tabs button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+        padding: 13px 18px;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        background: transparent;
+        color: var(--a-muted);
+        font-weight: 750;
+    }
+
+    .admin-tabs button.active {
+        border-bottom-color: #0d5cb6;
+        color: #0d5cb6;
+    }
+
+    .tab-panel { padding: 24px; }
+    .fleet-note { padding: 12px 14px; margin-top: 16px; border-radius: 8px; background: #edf7f1; color: #187243; font-size: 13px; }
+    .table-subtitle { display: block; margin-top: 4px; color: var(--a-muted); font-size: 12px; }
+    .status-pill { padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 750; white-space: nowrap; }
+    .status-pill.scheduled { color: #146c43; background: #dff4e7; }
+    .status-pill.cancelled { color: #667085; background: #eef0f3; }
+    .cancel-trip { padding: 6px 9px; border: 1px solid #f0c7c7; border-radius: 6px; background: #fff; color: #b42318; font-size: 12px; white-space: nowrap; }
+    .cancel-trip:disabled { opacity: .55; cursor: default; }
+
+    .admin-shell { --a-blue: #0d5cb6; --a-blue2: #0d5cb6; }
+
+    .create-card {
+        padding: 24px;
+    }
+
+    .section-head {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eef1f5;
+        margin-bottom: 22px
+    }
+
+        .section-head h4, .list-toolbar h4 {
+            margin: 0 0 4px;
+            font-size: 18px;
+            font-weight: 800
+        }
+
+    .section-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: #eaf2ff;
+        color: var(--a-blue);
+        display: grid;
+        place-items: center;
+        font-size: 20px
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(4,1fr);
+        gap: 18px
+    }
+
+    .field.span-2 {
+        grid-column: span 2
+    }
+
+    .field label {
+        display: block;
+        font-size: 13px;
+        font-weight: 750;
+        margin-bottom: 8px;
+        color: #344054
+    }
+
+        .field label i {
+            color: var(--a-blue);
+            margin-right: 6px
+        }
+
+    .field select, .field input, .filter-select {
+        width: 100%;
+        height: 46px;
+        border: 1px solid #d9dee8;
+        border-radius: 11px;
+        background: #fff;
+        padding: 0 13px;
+        outline: none;
+        color: #273043
+    }
+
+        .field select:focus, .field input:focus, .filter-select:focus, .search-box:focus-within {
+            border-color: #79aaf0;
+            box-shadow: 0 0 0 3px rgba(36,116,229,.10)
+        }
+
+        .field select:disabled {
+            background: #f5f6f8;
+            color: #98a2b3
+        }
+
+    .money-input {
+        display: flex;
+        border: 1px solid #d9dee8;
+        border-radius: 11px;
+        overflow: hidden
+    }
+
+        .money-input input {
+            border: 0;
+            border-radius: 0
+        }
+
+        .money-input span {
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            background: #f7f8fa;
+            border-left: 1px solid #e3e6eb;
+            color: #667085;
+            font-size: 12px;
+            font-weight: 800
+        }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 20px
+    }
+
+    .btn-create {
+        border: 0;
+        border-radius: 11px;
+        background: linear-gradient(135deg,var(--a-blue),var(--a-blue2));
+        color: #fff;
+        padding: 12px 22px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 8px 18px rgba(36,116,229,.22)
+    }
+
+        .btn-create:disabled {
+            opacity: .65
+        }
+
+    .status-box {
+        margin-top: 18px;
+        padding: 12px 14px;
+        border-radius: 11px;
+        font-size: 14px
+    }
+
+        .status-box.success {
+            background: #eaf8ef;
+            color: #16784a
+        }
+
+        .status-box.warning {
+            background: #fff7e6;
+            color: #a15c00
+        }
+
+    .list-toolbar {
+        padding: 22px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        border-bottom: 1px solid #eef1f5
+    }
+
+    .toolbar-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center
+    }
+
+    .search-box {
+        width: 290px;
+        height: 42px;
+        border: 1px solid #d9dee8;
+        border-radius: 11px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 12px
+    }
+
+        .search-box i {
+            color: #98a2b3
+        }
+
+        .search-box input {
+            border: 0;
+            outline: 0;
+            width: 100%;
+            font-size: 13px
+        }
+
+    .filter-select {
+        width: 160px;
+        height: 42px;
+        font-size: 13px
+    }
+
+    .refresh-btn {
+        width: 42px;
+        height: 42px;
+        border: 1px solid #d9dee8;
+        background: #fff;
+        border-radius: 11px;
+        color: var(--a-blue)
+    }
+
+    .trip-table {
+        width: 100%;
+        border-collapse: collapse
+    }
+
+        .trip-table th {
+            background: #f8fafc;
+            color: #667085;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 13px 18px;
+            border-bottom: 1px solid #e9edf3;
+            white-space: nowrap
+        }
+
+        .trip-table td {
+            padding: 16px 18px;
+            border-bottom: 1px solid #eef1f5;
+            vertical-align: middle;
+            font-size: 13px
+        }
+
+        .trip-table tbody tr:hover {
+            background: #fbfdff
+        }
+
+    .route-cell {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        min-width: 190px
+    }
+
+    .route-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        background: #eaf2ff;
+        color: var(--a-blue);
+        display: grid;
+        place-items: center
+    }
+
+    .route-cell strong, .operator-cell strong, .time-cell strong {
+        display: block
+    }
+
+    .route-cell span, .operator-cell span, .time-cell span {
+        display: block;
+        color: #8a94a6;
+        font-size: 12px;
+        margin-top: 3px
+    }
+
+    .price {
+        color: var(--a-blue);
+        white-space: nowrap
+    }
+
+    .seat-status {
+        min-width: 130px
+    }
+
+        .seat-status span {
+            color: #8a94a6;
+            font-size: 11px
+        }
+
+    .progress-track {
+        height: 6px;
+        background: #edf0f4;
+        border-radius: 999px;
+        margin-top: 7px;
+        overflow: hidden
+    }
+
+        .progress-track span {
+            display: block;
+            height: 100%;
+            background: #24a36a;
+            border-radius: 999px
+        }
+
+    .empty-state {
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: #98a2b3
+    }
+
+        .empty-state > i {
+            font-size: 40px
+        }
+
+        .empty-state strong {
+            color: #475467
+        }
+
+    @@media(max-width:991px) {
+        .stats-grid {
+            grid-template-columns: repeat(2,1fr)
+        }
+
+        .form-grid {
+            grid-template-columns: repeat(2,1fr)
+        }
+
+        .list-toolbar {
+            align-items: flex-start;
+            flex-direction: column
+        }
+
+        .toolbar-actions {
+            width: 100%
+        }
+
+        .search-box {
+            flex: 1
+        }
+    }
+
+    @@media(max-width:600px) {
+        .admin-shell {
+            padding: 20px 12px
+        }
+
+        .admin-topbar {
+            align-items: flex-start
+        }
+
+        .btn-back span {
+            display: none
+        }
+
+        .stats-grid, .form-grid {
+            grid-template-columns: 1fr
+        }
+
+        .field.span-2 {
+            grid-column: span 1
+        }
+
+        .toolbar-actions {
+            flex-wrap: wrap
+        }
+
+        .search-box {
+            width: 100%;
+            flex-basis: 100%
+        }
+
+        .filter-select {
+            flex: 1
+        }
+
+        .stat-card {
+            padding: 15px
+        }
+    }
+</style>
+
+@code {
+    private List<LocationDto> locations = new();
+    private List<BusTypeDto> busTypes = new();
+    private List<RouteDto> routes = new();
+    private List<OperatorDto> operators = new();
+    private List<BusSelectDto> buses = new();
+    private List<TripSearchResultDto> allTrips = new();
+
+    private string activeTab = "operators";
+    private long selectedTripOperatorId;
+    private CreateOperatorDto newOperator = new();
+    private CreateBusDto newBus = new();
+    private CreateRouteDto newRoute = new();
+    private CreateTripDto newTrip = new() { BasePrice = 500000 };
+    private DateTime departureInput = DateTime.Today.AddHours(8);
+    private DateTime arrivalInput = DateTime.Today.AddDays(1).AddHours(14);
+    private string? statusMsg;
+    private bool isSubmitting;
+    private bool isSuccess;
+    private bool isLoadingTrips;
+    private string searchText = "";
+    private string tripFilter = "all";
+    private IEnumerable<BusSelectDto> TripBuses => buses.Where(bus => bus.OperatorId == selectedTripOperatorId);
+
+    private IEnumerable<TripSearchResultDto> FilteredTrips
+    {
+        get
+        {
+            IEnumerable<TripSearchResultDto> query = allTrips;
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var keyword = searchText.Trim();
+                query = query.Where(t =>
+                    (t.TripCode?.Contains(keyword, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (t.RouteName?.Contains(keyword, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (t.OperatorName?.Contains(keyword, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (t.BusTypeName?.Contains(keyword, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (t.BusLicensePlate?.Contains(keyword, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            var today = DateTime.Today;
+            query = tripFilter switch
+            {
+                "future" => query.Where(t => t.Status != "Cancelled" && t.DepartureTime.ToLocalTime().DateTime >= DateTime.Now),
+                "today" => query.Where(t => t.DepartureTime.ToLocalTime().Date == today),
+                _ => query
+            };
+            return query.OrderByDescending(t => t.DepartureTime);
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        operators = await TripService.GetOperatorsAsync();
+        busTypes = await TripService.GetBusTypesAsync();
+        locations = await TripService.GetLocationsAsync();
+        routes = await TripService.GetRoutesAsync();
+        allTrips = await TripService.GetAllTripsAdminAsync();
+        await RefreshBuses();
+    }
+
+    private void SetActiveTab(string tab) => activeTab = tab;
+
+    private string GetOperatorName(long operatorId) => operators.FirstOrDefault(op => op.Id == operatorId)?.Name ?? "-";
+
+    private async Task RefreshBuses()
+    {
+        var fleet = new List<BusSelectDto>();
+        foreach (var op in operators)
+            fleet.AddRange(await TripService.GetBusesByOperatorAsync(op.Id));
+        buses = fleet;
+    }
+
+    private async Task RefreshTrips()
+    {
+        isLoadingTrips = true;
+        try { await LoadData(); }
+        finally { isLoadingTrips = false; }
+    }
+
+    private Task OnTripRouteChanged()
+    {
+        selectedTripOperatorId = routes.FirstOrDefault(route => route.Id == newTrip.RouteId)?.OperatorId ?? 0;
+        if (!TripBuses.Any(bus => bus.Id == newTrip.BusId))
+            newTrip.BusId = 0;
+        return Task.CompletedTask;
+    }
+
+    private async Task CreateOperator()
+    {
+        if (string.IsNullOrWhiteSpace(newOperator.Name) || string.IsNullOrWhiteSpace(newOperator.Code))
+        {
+            SetStatus("Vui lòng nhập tên và mã nhà xe.", false);
+            return;
+        }
+        isSubmitting = true;
+        try
+        {
+            await TripService.CreateOperatorAsync(newOperator);
+            newOperator = new CreateOperatorDto();
+            await LoadData();
+            SetStatus("Đã thêm nhà xe.", true);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Không thể thêm nhà xe: {exception.Message}", false);
+        }
+        finally { isSubmitting = false; }
+    }
+
+    private async Task CreateBus()
+    {
+        if (newBus.OperatorId <= 0 || newBus.BusTypeId <= 0 || string.IsNullOrWhiteSpace(newBus.LicensePlate))
+        {
+            SetStatus("Vui lòng chọn nhà xe, loại xe và nhập biển số.", false);
+            return;
+        }
+        isSubmitting = true;
+        try
+        {
+            await TripService.CreateBusWithLayoutAsync(newBus);
+            newBus = new CreateBusDto();
+            await LoadData();
+            SetStatus("Đã đăng ký xe và tạo sơ đồ 24 giường.", true);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Không thể đăng ký xe: {exception.Message}", false);
+        }
+        finally { isSubmitting = false; }
+    }
+
+    private async Task CreateRoute()
+    {
+        var origin = locations.FirstOrDefault(location => location.Id == newRoute.OriginLocationId);
+        var destination = locations.FirstOrDefault(location => location.Id == newRoute.DestinationLocationId);
+        if (newRoute.OperatorId <= 0 || origin == null || destination == null || origin.Id == destination.Id || newRoute.DistanceKm <= 0 || newRoute.EstimatedDurationMinutes <= 0)
+        {
+            SetStatus("Vui lòng chọn nhà xe, hai điểm khác nhau, cự ly và thời lượng hợp lệ.", false);
+            return;
+        }
+        newRoute.Name = $"{origin.Name} - {destination.Name}";
+        newRoute.Code = $"{origin.Code}-{destination.Code}-{DateTime.UtcNow.Ticks % 100000}";
+        isSubmitting = true;
+        try
+        {
+            await TripService.CreateRouteAsync(newRoute);
+            newRoute = new CreateRouteDto();
+            await LoadData();
+            SetStatus("Đã tạo tuyến đường.", true);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Không thể tạo tuyến: {exception.Message}", false);
+        }
+        finally { isSubmitting = false; }
+    }
+
+    private async Task CreateTrip()
+    {
+        if (newTrip.RouteId <= 0 || newTrip.BusId <= 0 || selectedTripOperatorId <= 0)
+        {
+            SetStatus("Vui lòng chọn tuyến và xe thuộc nhà xe khai thác tuyến đó.", false);
+            return;
+        }
+        if (departureInput < DateTime.Now || arrivalInput <= departureInput || newTrip.BasePrice <= 0)
+        {
+            SetStatus("Thời gian và giá vé chuyến xe chưa hợp lệ.", false);
+            return;
+        }
+        isSubmitting = true;
+        try
+        {
+            newTrip.DepartureTime = new DateTimeOffset(departureInput);
+            newTrip.ExpectedArrivalTime = new DateTimeOffset(arrivalInput);
+            await TripService.CreateTripAsync(newTrip);
+            newTrip = new CreateTripDto { BasePrice = 500000 };
+            selectedTripOperatorId = 0;
+            await LoadData();
+            SetStatus("Đã mở bán chuyến xe.", true);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Không thể mở bán chuyến: {exception.Message}", false);
+        }
+        finally { isSubmitting = false; }
+    }
+
+    private async Task CancelTrip(long tripId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "Hủy chuyến xe này? Chuyến đã hủy không còn xuất hiện trong kết quả tìm kiếm."))
+            return;
+        try
+        {
+            var cancelled = await TripService.DeleteTripAsync(tripId);
+            await LoadData();
+            SetStatus(cancelled ? "Đã hủy chuyến xe." : "Không tìm thấy chuyến xe.", cancelled);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Không thể hủy chuyến: {exception.Message}", false);
+        }
+    }
+
+    private void SetStatus(string message, bool success)
+    {
+        statusMsg = message;
+        isSuccess = success;
+    }
+}
