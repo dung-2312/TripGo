@@ -1,7 +1,10 @@
-﻿using Microsoft.EntityFrameworkCore;
+using System;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tripgo.Application.Interfaces.Persistence;
 using Tripgo.Infrastructure.Persistence;
+using Tripgo.Infrastructure.Persistence.Repositories;
 
 namespace Tripgo.Infrastructure;
 
@@ -21,6 +24,8 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(connectionString));
+
+        services.AddScoped<ITripRepository, TripRepository>();
 
         return services;
     }

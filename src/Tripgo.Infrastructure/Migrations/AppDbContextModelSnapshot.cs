@@ -123,33 +123,42 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.Property<string>("FullName")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("LicenseClass")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<DateOnly?>("LicenseExpiryDate")
                         .HasColumnType("date");
 
                     b.Property<string>("LicenseNumber")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<long>("OperatorId")
                         .HasColumnType("bigint");
 
                     b.Property<string>("Phone")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OperatorId");
+                    b.HasIndex("LicenseNumber");
 
-                    b.ToTable("Drivers");
+                    b.HasIndex("OperatorId", "LicenseNumber")
+                        .IsUnique();
+
+                    b.ToTable("Drivers", (string)null);
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Location", b =>
@@ -280,10 +289,13 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.Property<string>("Address")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<decimal?>("Latitude")
                         .HasPrecision(9, 6)
@@ -298,7 +310,8 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<long>("OperatorId")
                         .HasColumnType("bigint");
@@ -312,7 +325,12 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("OperatorId");
 
-                    b.ToTable("PickupDropoffPoints");
+                    b.ToTable("PickupDropoffPoints", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PickupDropoffPoints_Latitude", "[Latitude] IS NULL OR ([Latitude] >= -90.0 AND [Latitude] <= 90.0)");
+
+                            t.HasCheckConstraint("CK_PickupDropoffPoints_Longitude", "[Longitude] IS NULL OR ([Longitude] >= -180.0 AND [Longitude] <= 180.0)");
+                        });
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Role", b =>
@@ -324,15 +342,20 @@ namespace Tripgo.Infrastructure.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Roles");
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Roles", (string)null);
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Route", b =>
@@ -345,7 +368,8 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
@@ -361,11 +385,14 @@ namespace Tripgo.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<long>("OperatorId")
                         .HasColumnType("bigint");
@@ -377,11 +404,19 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("DestinationLocationId");
 
-                    b.HasIndex("OperatorId");
-
                     b.HasIndex("OriginLocationId");
 
-                    b.ToTable("Routes");
+                    b.HasIndex("OperatorId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("Routes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Routes_DistanceKm", "[DistanceKm] IS NULL OR [DistanceKm] > 0");
+
+                            t.HasCheckConstraint("CK_Routes_EstimatedDurationMinutes", "[EstimatedDurationMinutes] IS NULL OR [EstimatedDurationMinutes] > 0");
+
+                            t.HasCheckConstraint("CK_Routes_Origin_Destination_Different", "[OriginLocationId] <> [DestinationLocationId]");
+                        });
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.RouteStop", b =>
@@ -417,9 +452,13 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("PointId");
 
-                    b.HasIndex("RouteId");
+                    b.HasIndex("RouteId", "StopOrder")
+                        .IsUnique();
 
-                    b.ToTable("RouteStops");
+                    b.ToTable("RouteStops", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RouteStops_StopOrder", "[StopOrder] > 0");
+                        });
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.SeatLayout", b =>
@@ -538,15 +577,13 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Property<long>("RouteId")
                         .HasColumnType("bigint");
 
-                    b.Property<long?>("RouteId1")
-                        .HasColumnType("bigint");
-
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
                     b.Property<string>("TripCode")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -557,9 +594,17 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("RouteId");
 
-                    b.HasIndex("RouteId1");
+                    b.HasIndex("TripCode")
+                        .IsUnique();
 
-                    b.ToTable("Trips");
+                    b.HasIndex("DepartureTime", "Status");
+
+                    b.ToTable("Trips", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Trips_Arrival_After_Departure", "[ExpectedArrivalTime] > [DepartureTime]");
+
+                            t.HasCheckConstraint("CK_Trips_BasePrice", "[BasePrice] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.TripDriver", b =>
@@ -583,9 +628,10 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("DriverId");
 
-                    b.HasIndex("TripId");
+                    b.HasIndex("TripId", "DriverId")
+                        .IsUnique();
 
-                    b.ToTable("TripDrivers");
+                    b.ToTable("TripDrivers", (string)null);
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.TripStop", b =>
@@ -621,9 +667,13 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("PointId");
 
-                    b.HasIndex("TripId");
+                    b.HasIndex("TripId", "StopOrder")
+                        .IsUnique();
 
-                    b.ToTable("TripStops");
+                    b.ToTable("TripStops", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TripStops_StopOrder", "[StopOrder] > 0");
+                        });
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.User", b =>
@@ -639,31 +689,43 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<int>("RoleId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique();
+
                     b.HasIndex("RoleId");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Bus", b =>
@@ -698,7 +760,7 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasOne("Tripgo.Domain.Entities.Operator", "Operator")
                         .WithMany()
                         .HasForeignKey("OperatorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Operator");
@@ -709,13 +771,13 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasOne("Tripgo.Domain.Entities.Location", "Location")
                         .WithMany()
                         .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Tripgo.Domain.Entities.Operator", "Operator")
                         .WithMany()
                         .HasForeignKey("OperatorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Location");
@@ -755,7 +817,7 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasOne("Tripgo.Domain.Entities.PickupDropoffPoint", "Point")
                         .WithMany()
                         .HasForeignKey("PointId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Tripgo.Domain.Entities.Route", "Route")
@@ -789,14 +851,10 @@ namespace Tripgo.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Tripgo.Domain.Entities.Route", "Route")
-                        .WithMany()
+                        .WithMany("Trips")
                         .HasForeignKey("RouteId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Tripgo.Domain.Entities.Route", null)
-                        .WithMany("Trips")
-                        .HasForeignKey("RouteId1");
 
                     b.Navigation("Bus");
 
@@ -808,7 +866,7 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasOne("Tripgo.Domain.Entities.Driver", "Driver")
                         .WithMany("TripAssignments")
                         .HasForeignKey("DriverId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Tripgo.Domain.Entities.Trip", "Trip")
@@ -827,7 +885,7 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasOne("Tripgo.Domain.Entities.PickupDropoffPoint", "Point")
                         .WithMany()
                         .HasForeignKey("PointId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Tripgo.Domain.Entities.Trip", "Trip")
@@ -846,7 +904,7 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasOne("Tripgo.Domain.Entities.Role", "Role")
                         .WithMany("Users")
                         .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Role");

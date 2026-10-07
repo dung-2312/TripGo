@@ -1,13 +1,16 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using Tripgo.Application.Interfaces;
+using Tripgo.Application.Services;
+using Tripgo.Application.Services.Temporary;
 
 namespace Tripgo.Application;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddApplication(
-        this IServiceCollection services)
+    public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        // Register Application services here later
+        services.AddSingleton<ITemporaryBookingStore, InMemoryTemporaryBookingStore>();
+        services.AddScoped<ITripService, TripService>();
 
         return services;
     }

@@ -1,46 +1,40 @@
-﻿using System;
-using System.Collections.Concurrent;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
+using Tripgo.Application.DTOs;
+using Tripgo.Application.Interfaces;
+using Tripgo.Application.Interfaces.Persistence;
+using Tripgo.Application.Services.Temporary;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
-using Tripgo.Domain.Interfaces;
-using Tripgo.Infrastructure.Persistence;
 
-namespace Tripgo.Infrastructure.Services;
+namespace Tripgo.Application.Services;
 
 public class TripService : ITripService
 {
-    private readonly AppDbContext _context;
-    private static readonly ConcurrentDictionary<long, HashSet<string>> _bookedSeatsMemory = new();
-    private static readonly ConcurrentQueue<CustomerBookingInfoDto> _bookingsMemory = new();
-    private static readonly ConcurrentQueue<SupportCallbackRequestDto> _supportCallbacksMemory = new();
+    private readonly ITripRepository _repository;
+    private readonly ITemporaryBookingStore _bookingStore;
 
-    public TripService(AppDbContext context)
+    public TripService(ITripRepository repository, ITemporaryBookingStore bookingStore)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _bookingStore = bookingStore ?? throw new ArgumentNullException(nameof(bookingStore));
     }
 
     public async Task<List<LocationDto>> GetLocationsAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.Locations
-            .AsNoTracking()
-            .Where(l => l.IsActive)
-            .OrderBy(l => l.Name)
-            .Select(l => new LocationDto
-            {
-                Id = l.Id,
-                Code = l.Code,
-                Name = l.Name,
-                Province = l.Province,
-                Country = l.Country,
-                IsActive = l.IsActive
-            })
-            .ToListAsync(cancellationToken);
+        var locations = await _repository.GetActiveLocationsAsync(cancellationToken);
+        return locations.Select(l => new LocationDto
+        {
+            Id = l.Id,
+            Code = l.Code,
+            Name = l.Name,
+            Province = l.Province,
+            Country = l.Country,
+            IsActive = l.IsActive
+        }).ToList();
     }
 
     public async Task<long> CreateOperatorAsync(CreateOperatorDto dto, CancellationToken ct = default)
@@ -60,8 +54,7 @@ public class TripService : ITripService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _context.Operators.Add(operatorEntity);
-        await _context.SaveChangesAsync(ct);
+        await _repository.AddOperatorAsync(operatorEntity, ct);
         return operatorEntity.Id;
     }
 
@@ -71,15 +64,12 @@ public class TripService : ITripService
         if (dto.OperatorId <= 0 || dto.BusTypeId <= 0 || string.IsNullOrWhiteSpace(dto.LicensePlate))
             throw new ArgumentException("Nhà xe, loại xe và biển số là bắt buộc.", nameof(dto));
 
-        var hasOperator = await _context.Operators.AnyAsync(o => o.Id == dto.OperatorId && o.IsActive, ct);
-        var hasBusType = await _context.BusTypes.AnyAsync(t => t.Id == dto.BusTypeId && t.IsActive, ct);
-        if (!hasOperator || !hasBusType)
+        var hasOperator = await _repository.OperatorExistsAndActiveAsync(dto.OperatorId, ct);
+        var busType = await _repository.GetActiveBusTypeByIdAsync(dto.BusTypeId, ct);
+        if (!hasOperator || busType == null)
             throw new InvalidOperationException("Nhà xe hoặc loại xe không còn hoạt động.");
 
-        var busTypeName = await _context.BusTypes
-            .Where(type => type.Id == dto.BusTypeId)
-            .Select(type => type.Name)
-            .FirstAsync(ct);
+        var busTypeName = busType.Name;
         var isCoupleSuite = busTypeName.Contains("đôi", StringComparison.OrdinalIgnoreCase) ||
                             busTypeName.Contains("double", StringComparison.OrdinalIgnoreCase);
         var seatCount = isCoupleSuite ? 16 : 24;
@@ -119,24 +109,19 @@ public class TripService : ITripService
             SeatLayout = layout
         };
 
-        _context.Buses.Add(bus);
-        await _context.SaveChangesAsync(ct);
+        await _repository.AddBusAsync(bus, ct);
         return bus.Id;
     }
 
     public async Task<List<BusTypeDto>> GetBusTypesAsync(CancellationToken ct = default)
     {
-        return await _context.BusTypes
-            .AsNoTracking()
-            .Where(type => type.IsActive)
-            .OrderBy(type => type.Name)
-            .Select(type => new BusTypeDto
-            {
-                Id = type.Id,
-                Name = type.Name,
-                Description = type.Description ?? string.Empty
-            })
-            .ToListAsync(ct);
+        var busTypes = await _repository.GetActiveBusTypesAsync(ct);
+        return busTypes.Select(type => new BusTypeDto
+        {
+            Id = type.Id,
+            Name = type.Name,
+            Description = type.Description ?? string.Empty
+        }).ToList();
     }
 
     public async Task<List<TripSearchResultDto>> SearchTripsAsync(TripSearchRequestDto request, CancellationToken cancellationToken = default)
@@ -149,22 +134,12 @@ public class TripService : ITripService
         var windowStart = start.AddDays(-3);
         var windowEnd = end.AddDays(3);
 
-        var matchingTrips = await _context.Trips
-            .AsNoTracking()
-            .Include(t => t.Route)
-                .ThenInclude(r => r.Operator)
-            .Include(t => t.Bus)
-                .ThenInclude(b => b.BusType)
-            .Include(t => t.Bus)
-                .ThenInclude(b => b.SeatLayout)
-            .Where(t =>
-                t.Route.OriginLocationId == request.OriginLocationId &&
-                t.Route.DestinationLocationId == request.DestinationLocationId &&
-                t.DepartureTime >= windowStart &&
-                t.DepartureTime <= windowEnd &&
-                t.DepartureTime >= DateTimeOffset.Now &&
-                t.Status == TripStatus.Scheduled)
-            .ToListAsync(cancellationToken);
+        var matchingTrips = await _repository.SearchTripsAsync(
+            request.OriginLocationId,
+            request.DestinationLocationId,
+            windowStart,
+            windowEnd,
+            cancellationToken);
 
         var exactDateTrips = matchingTrips
             .Where(trip => trip.DepartureTime.ToLocalTime().Date == request.DepartureDate.ToDateTime(TimeOnly.MinValue).Date)
@@ -180,7 +155,7 @@ public class TripService : ITripService
         return trips.Select(t =>
         {
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? 0;
-            var bookedCount = GetBookedSeatCount(t.Id);
+            var bookedCount = _bookingStore.GetBookedSeatCount(t.Id);
 
             return new TripSearchResultDto
             {
@@ -202,21 +177,10 @@ public class TripService : ITripService
 
     public async Task<TripDetailDto?> GetTripDetailsAsync(long tripId, CancellationToken cancellationToken = default)
     {
-        var trip = await _context.Trips
-            .AsNoTracking()
-            .Where(t => t.Id == tripId)
-            .Include(t => t.Route)
-                .ThenInclude(r => r.Operator)
-            .Include(t => t.Bus)
-                .ThenInclude(b => b.BusType)
-            .Include(t => t.Bus)
-                .ThenInclude(b => b.SeatLayout)
-                    .ThenInclude(sl => sl.Items)
-            .FirstOrDefaultAsync(cancellationToken);
-
+        var trip = await _repository.GetTripWithDetailsAsync(tripId, cancellationToken);
         if (trip == null) return null;
 
-        var bookedSet = GetBookedSeatSnapshot(tripId);
+        var bookedSet = _bookingStore.GetBookedSeatSnapshot(tripId);
         var seatCodeMap = CreateSeatCodeMap(trip.Bus?.SeatLayout, trip.Bus?.BusType);
         var displayCodesByInternal = seatCodeMap.ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
 
@@ -265,62 +229,49 @@ public class TripService : ITripService
 
     public async Task<List<OperatorDto>> GetOperatorsAsync(CancellationToken ct = default)
     {
-        return await _context.Operators
-            .AsNoTracking()
-            .Where(o => o.IsActive)
-            .Select(o => new OperatorDto
-            {
-                Id = o.Id,
-                Code = o.Code,
-                Name = o.Name,
-                Hotline = o.Phone,
-                Address = o.Address
-            })
-            .ToListAsync(ct);
+        var operators = await _repository.GetActiveOperatorsAsync(ct);
+        return operators.Select(o => new OperatorDto
+        {
+            Id = o.Id,
+            Code = o.Code,
+            Name = o.Name,
+            Hotline = o.Phone,
+            Address = o.Address
+        }).ToList();
     }
 
     public async Task<List<BusSelectDto>> GetBusesByOperatorAsync(long operatorId, CancellationToken ct = default)
     {
-        return await _context.Buses
-            .AsNoTracking()
-            .Include(b => b.BusType)
-            .Include(b => b.SeatLayout)
-            .Where(b => b.OperatorId == operatorId && b.IsActive)
-            .Select(b => new BusSelectDto
-            {
-                Id = b.Id,
-                OperatorId = b.OperatorId,
-                BusTypeId = b.BusTypeId,
-                OperatorName = b.Operator != null ? b.Operator.Name : string.Empty,
-                LicensePlate = b.LicensePlate,
-                Name = b.Name ?? string.Empty,
-                BusTypeName = b.BusType != null ? b.BusType.Name : string.Empty,
-                TotalSeats = b.SeatLayout != null ? b.SeatLayout.TotalSeats : 0
-            })
-            .ToListAsync(ct);
+        var buses = await _repository.GetActiveBusesByOperatorAsync(operatorId, ct);
+        return buses.Select(b => new BusSelectDto
+        {
+            Id = b.Id,
+            OperatorId = b.OperatorId,
+            BusTypeId = b.BusTypeId,
+            OperatorName = b.Operator != null ? b.Operator.Name : string.Empty,
+            LicensePlate = b.LicensePlate,
+            Name = b.Name ?? string.Empty,
+            BusTypeName = b.BusType != null ? b.BusType.Name : string.Empty,
+            TotalSeats = b.SeatLayout != null ? b.SeatLayout.TotalSeats : 0
+        }).ToList();
     }
 
     public async Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default)
     {
-        return await _context.Routes
-            .AsNoTracking()
-            .Include(r => r.OriginLocation)
-            .Include(r => r.DestinationLocation)
-            .Where(r => r.IsActive)
-            .Select(r => new RouteDto
-            {
-                Id = r.Id,
-                Code = r.Code,
-                OperatorId = r.OperatorId,
-                Name = r.Name,
-                OriginLocationId = r.OriginLocationId,
-                DestinationLocationId = r.DestinationLocationId,
-                OriginName = r.OriginLocation != null ? r.OriginLocation.Name : string.Empty,
-                DestinationName = r.DestinationLocation != null ? r.DestinationLocation.Name : string.Empty,
-                DistanceKm = r.DistanceKm,
-                EstimatedDurationMinutes = r.EstimatedDurationMinutes
-            })
-            .ToListAsync(ct);
+        var routes = await _repository.GetActiveRoutesAsync(ct);
+        return routes.Select(r => new RouteDto
+        {
+            Id = r.Id,
+            Code = r.Code,
+            OperatorId = r.OperatorId,
+            Name = r.Name,
+            OriginLocationId = r.OriginLocationId,
+            DestinationLocationId = r.DestinationLocationId,
+            OriginName = r.OriginLocation != null ? r.OriginLocation.Name : string.Empty,
+            DestinationName = r.DestinationLocation != null ? r.DestinationLocation.Name : string.Empty,
+            DistanceKm = r.DistanceKm,
+            EstimatedDurationMinutes = r.EstimatedDurationMinutes
+        }).ToList();
     }
 
     public async Task<long> CreateRouteAsync(CreateRouteDto dto, CancellationToken ct = default)
@@ -338,22 +289,15 @@ public class TripService : ITripService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _context.Routes.Add(route);
-        await _context.SaveChangesAsync(ct);
+        await _repository.AddRouteAsync(route, ct);
         return route.Id;
     }
 
     public async Task<long> CreateTripAsync(CreateTripDto dto, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(dto);
-        var routeOperatorId = await _context.Routes
-            .Where(route => route.Id == dto.RouteId && route.IsActive)
-            .Select(route => (long?)route.OperatorId)
-            .FirstOrDefaultAsync(ct);
-        var busOperatorId = await _context.Buses
-            .Where(bus => bus.Id == dto.BusId && bus.IsActive)
-            .Select(bus => (long?)bus.OperatorId)
-            .FirstOrDefaultAsync(ct);
+        var routeOperatorId = await _repository.GetRouteOperatorIdAsync(dto.RouteId, ct);
+        var busOperatorId = await _repository.GetBusOperatorIdAsync(dto.BusId, ct);
         if (routeOperatorId == null || busOperatorId == null || routeOperatorId != busOperatorId)
             throw new InvalidOperationException("Tuyến và xe phải thuộc cùng một nhà xe đang hoạt động.");
 
@@ -369,28 +313,17 @@ public class TripService : ITripService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _context.Trips.Add(trip);
-        await _context.SaveChangesAsync(ct);
+        await _repository.AddTripAsync(trip, ct);
         return trip.Id;
     }
 
     public async Task<List<TripSearchResultDto>> GetAllTripsAdminAsync(CancellationToken ct = default)
     {
-        var trips = await _context.Trips
-            .AsNoTracking()
-            .Include(t => t.Route)
-                .ThenInclude(r => r.Operator)
-            .Include(t => t.Bus)
-                .ThenInclude(b => b.BusType)
-            .Include(t => t.Bus)
-                .ThenInclude(b => b.SeatLayout)
-            .OrderByDescending(t => t.DepartureTime)
-            .ToListAsync(ct);
-
+        var trips = await _repository.GetAllTripsAdminAsync(ct);
         return trips.Select(t =>
         {
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? 0;
-            var bookedCount = GetBookedSeatCount(t.Id);
+            var bookedCount = _bookingStore.GetBookedSeatCount(t.Id);
 
             return new TripSearchResultDto
             {
@@ -412,14 +345,11 @@ public class TripService : ITripService
 
     public async Task<bool> DeleteTripAsync(long tripId, CancellationToken ct = default)
     {
-        var trip = await _context.Trips.FirstOrDefaultAsync(item => item.Id == tripId, ct);
-        if (trip == null)
+        var cancelled = await _repository.CancelTripAsync(tripId, ct);
+        if (!cancelled)
             return false;
 
-        trip.Status = TripStatus.Cancelled;
-        trip.UpdatedAt = DateTimeOffset.UtcNow;
-        await _context.SaveChangesAsync(ct);
-        _bookedSeatsMemory.TryRemove(tripId, out _);
+        _bookingStore.RemoveTripBookedSeats(tripId);
         return true;
     }
 
@@ -430,12 +360,7 @@ public class TripService : ITripService
         var requestedCodes = seatCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (requestedCodes.Count != seatCodes.Count) return false;
 
-        var trip = await _context.Trips
-            .AsNoTracking()
-            .Include(item => item.Route).ThenInclude(route => route.Operator)
-            .Include(item => item.Bus).ThenInclude(bus => bus.BusType)
-            .Include(item => item.Bus).ThenInclude(bus => bus.SeatLayout).ThenInclude(layout => layout.Items)
-            .FirstOrDefaultAsync(item => item.Id == tripId && item.Status == TripStatus.Scheduled, ct);
+        var trip = await _repository.GetTripForBookingAsync(tripId, ct);
         if (trip?.Bus?.SeatLayout?.Items == null)
             return false;
 
@@ -447,59 +372,32 @@ public class TripService : ITripService
             return false;
         var internalCodes = activeSeatCodes.Select(code => code!).ToList();
 
-        var currentBooked = _bookedSeatsMemory.GetOrAdd(tripId, _ => new HashSet<string>());
-
-        lock (currentBooked)
-        {
-            if (internalCodes.Any(currentBooked.Contains))
-            {
-                return false;
-            }
-
-            foreach (var code in internalCodes)
-            {
-                currentBooked.Add(code);
-            }
-
-            var booking = CloneBooking(customerInfo);
-            booking.TripId = trip.Id;
-            booking.BookingCode = $"TRIPGO-{Convert.ToHexString(RandomNumberGenerator.GetBytes(3))[..5]}";
-            booking.SeatCodes = requestedCodes;
-            booking.RouteName = trip.Route?.Name ?? string.Empty;
-            booking.OperatorName = trip.Route?.Operator?.Name ?? string.Empty;
-            booking.BusTypeName = trip.Bus.BusType?.Name ?? string.Empty;
-            booking.BusLicensePlate = trip.Bus.LicensePlate;
-            booking.DepartureTime = trip.DepartureTime;
-            booking.BasePrice = trip.BasePrice;
-            booking.BookedAt = DateTimeOffset.UtcNow;
-            booking.InsuranceAmount = booking.HasInsurance ? requestedCodes.Count * 20_000m : 0m;
-            customerInfo.BookingCode = booking.BookingCode;
-            _bookingsMemory.Enqueue(booking);
-        }
-
-        return true;
+        return _bookingStore.TryBookSeats(
+            tripId,
+            internalCodes,
+            requestedCodes,
+            customerInfo,
+            trip.Route?.Name ?? string.Empty,
+            trip.Route?.Operator?.Name ?? string.Empty,
+            trip.Bus.BusType?.Name ?? string.Empty,
+            trip.Bus.LicensePlate,
+            trip.DepartureTime,
+            trip.BasePrice);
     }
 
     public Task<List<CustomerBookingInfoDto>> GetBookingsByPhoneAsync(string phone, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         var normalizedPhone = NormalizePhone(phone);
-        var bookings = string.IsNullOrEmpty(normalizedPhone)
-            ? new List<CustomerBookingInfoDto>()
-            : _bookingsMemory
-                .Where(booking => NormalizePhone(booking.Phone) == normalizedPhone)
-                .OrderByDescending(booking => booking.BookedAt)
-                .Select(CloneBooking)
-                .ToList();
+        var bookings = _bookingStore.GetBookingsByPhone(normalizedPhone);
         return Task.FromResult(bookings);
     }
 
     public Task<CustomerBookingInfoDto?> GetBookingByCodeAsync(string bookingCode, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var booking = _bookingsMemory.FirstOrDefault(item =>
-            string.Equals(item.BookingCode, bookingCode?.Trim(), StringComparison.OrdinalIgnoreCase));
-        return Task.FromResult(booking == null ? null : CloneBooking(booking));
+        var booking = _bookingStore.GetBookingByCode(bookingCode);
+        return Task.FromResult(booking);
     }
 
     public Task<bool> SubmitSupportCallbackAsync(string name, string phone, CancellationToken ct = default)
@@ -508,7 +406,7 @@ public class TripService : ITripService
         if (string.IsNullOrWhiteSpace(name) || NormalizePhone(phone).Length < 9)
             return Task.FromResult(false);
 
-        _supportCallbacksMemory.Enqueue(new SupportCallbackRequestDto
+        _bookingStore.EnqueueSupportCallback(new SupportCallbackRequestDto
         {
             Name = name.Trim(),
             Phone = phone.Trim(),
@@ -544,49 +442,6 @@ public class TripService : ITripService
         return seatMap;
     }
 
-    private static int GetBookedSeatCount(long tripId)
-    {
-        return _bookedSeatsMemory.TryGetValue(tripId, out var seats)
-            ? GetSeatSnapshotCount(seats)
-            : 0;
-    }
-
-    private static int GetSeatSnapshotCount(HashSet<string> seats)
-    {
-        lock (seats)
-            return seats.Count;
-    }
-
-    private static HashSet<string> GetBookedSeatSnapshot(long tripId)
-    {
-        if (!_bookedSeatsMemory.TryGetValue(tripId, out var seats))
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        lock (seats)
-            return new HashSet<string>(seats, StringComparer.OrdinalIgnoreCase);
-    }
-
     private static string NormalizePhone(string? phone) =>
         new((phone ?? string.Empty).Where(char.IsDigit).ToArray());
-
-    private static CustomerBookingInfoDto CloneBooking(CustomerBookingInfoDto booking) => new()
-    {
-        TripId = booking.TripId,
-        BookingCode = booking.BookingCode,
-        Name = booking.Name,
-        Phone = booking.Phone,
-        Email = booking.Email,
-        PickupPoint = booking.PickupPoint,
-        SelectedPickupPoint = booking.SelectedPickupPoint,
-        SelectedDropoffPoint = booking.SelectedDropoffPoint,
-        HasInsurance = booking.HasInsurance,
-        SeatCodes = new List<string>(booking.SeatCodes),
-        RouteName = booking.RouteName,
-        OperatorName = booking.OperatorName,
-        BusTypeName = booking.BusTypeName,
-        BusLicensePlate = booking.BusLicensePlate,
-        DepartureTime = booking.DepartureTime,
-        BookedAt = booking.BookedAt,
-        BasePrice = booking.BasePrice,
-        InsuranceAmount = booking.InsuranceAmount
-    };
 }

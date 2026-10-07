@@ -1,4 +1,5 @@
-﻿using Tripgo.Application.DTO;
+using System.Threading.Tasks;
+using Tripgo.Application.DTOs;
 using Tripgo.Domain.Entities;
 
 namespace Tripgo.Application.Interfaces;
