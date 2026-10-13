@@ -22,6 +22,204 @@ namespace Tripgo.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.Booking", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("BaseAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BookingCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("DropoffPointId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DropoffPointNote")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("HasInsurance")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("HoldToken")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("InsuranceAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsDemoBooking")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PassengerEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PassengerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PassengerPhone")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("PaymentStatus")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("PickupPointId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PickupPointNote")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("SurchargeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<long>("TripId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingCode")
+                        .IsUnique();
+
+                    b.HasIndex("DropoffPointId");
+
+                    b.HasIndex("HoldToken")
+                        .IsUnique()
+                        .HasFilter("[HoldToken] IS NOT NULL");
+
+                    b.HasIndex("PickupPointId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("PassengerPhone", "CreatedAt");
+
+                    b.HasIndex("TripId", "Status");
+
+                    b.ToTable("Bookings", (string)null);
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.BookingPassenger", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BookingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("IdentityCard")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsPrimaryContact")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.ToTable("BookingPassengers", (string)null);
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.BookingSeat", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BookingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("SeatCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<long>("TripSeatId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TripSeatId")
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
+
+                    b.HasIndex("BookingId", "TripSeatId")
+                        .IsUnique();
+
+                    b.ToTable("BookingSeats", (string)null);
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.Bus", b =>
                 {
                     b.Property<long>("Id")
@@ -461,6 +659,46 @@ namespace Tripgo.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.SeatHold", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("HeldAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("HoldToken")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OwnerIdentifier")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TripSeatId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HoldToken", "OwnerIdentifier");
+
+                    b.HasIndex("HoldToken", "Status");
+
+                    b.HasIndex("TripSeatId", "Status", "ExpiresAt");
+
+                    b.ToTable("SeatHolds", (string)null);
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.SeatLayout", b =>
                 {
                     b.Property<long>("Id")
@@ -574,6 +812,11 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("ExpectedArrivalTime")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<bool>("IsDemoTrip")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<long>("RouteId")
                         .HasColumnType("bigint");
 
@@ -632,6 +875,70 @@ namespace Tripgo.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("TripDrivers", (string)null);
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.TripSeat", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Column")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Floor")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("Row")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SeatCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<long?>("SeatLayoutItemId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SeatType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TripId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeatLayoutItemId");
+
+                    b.HasIndex("TripId", "SeatCode")
+                        .IsUnique();
+
+                    b.HasIndex("TripId", "Status");
+
+                    b.ToTable("TripSeats", (string)null);
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.TripStop", b =>
@@ -726,6 +1033,68 @@ namespace Tripgo.Infrastructure.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.Booking", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.PickupDropoffPoint", "DropoffPoint")
+                        .WithMany()
+                        .HasForeignKey("DropoffPointId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Tripgo.Domain.Entities.PickupDropoffPoint", "PickupPoint")
+                        .WithMany()
+                        .HasForeignKey("PickupPointId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Tripgo.Domain.Entities.Trip", "Trip")
+                        .WithMany("Bookings")
+                        .HasForeignKey("TripId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Tripgo.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("DropoffPoint");
+
+                    b.Navigation("PickupPoint");
+
+                    b.Navigation("Trip");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.BookingPassenger", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.Booking", "Booking")
+                        .WithMany("Passengers")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.BookingSeat", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.Booking", "Booking")
+                        .WithMany("BookingSeats")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Tripgo.Domain.Entities.TripSeat", "TripSeat")
+                        .WithMany("BookingSeats")
+                        .HasForeignKey("TripSeatId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("TripSeat");
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Bus", b =>
@@ -831,6 +1200,17 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("Route");
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.SeatHold", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.TripSeat", "TripSeat")
+                        .WithMany("SeatHolds")
+                        .HasForeignKey("TripSeatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TripSeat");
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.SeatLayoutItem", b =>
                 {
                     b.HasOne("Tripgo.Domain.Entities.SeatLayout", "SeatLayout")
@@ -880,6 +1260,24 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("Trip");
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.TripSeat", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.SeatLayoutItem", "SeatLayoutItem")
+                        .WithMany()
+                        .HasForeignKey("SeatLayoutItemId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Tripgo.Domain.Entities.Trip", "Trip")
+                        .WithMany("Seats")
+                        .HasForeignKey("TripId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("SeatLayoutItem");
+
+                    b.Navigation("Trip");
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.TripStop", b =>
                 {
                     b.HasOne("Tripgo.Domain.Entities.PickupDropoffPoint", "Point")
@@ -910,6 +1308,13 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.Booking", b =>
+                {
+                    b.Navigation("BookingSeats");
+
+                    b.Navigation("Passengers");
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.Driver", b =>
                 {
                     b.Navigation("TripAssignments");
@@ -934,9 +1339,20 @@ namespace Tripgo.Infrastructure.Migrations
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Trip", b =>
                 {
+                    b.Navigation("Bookings");
+
                     b.Navigation("Drivers");
 
+                    b.Navigation("Seats");
+
                     b.Navigation("Stops");
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.TripSeat", b =>
+                {
+                    b.Navigation("BookingSeats");
+
+                    b.Navigation("SeatHolds");
                 });
 #pragma warning restore 612, 618
         }

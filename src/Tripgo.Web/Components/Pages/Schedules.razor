@@ -7,6 +7,9 @@
 
 <section class="schedule-page">
     <div class="schedule-wrap">
+        <div class="mb-3">
+            <BackButton Label="Quay lại trang chủ" FallbackUrl="/" />
+        </div>
         <header class="schedule-heading">
             <div><span class="eyebrow">LỊCH KHỞI HÀNH TOÀN QUỐC</span><h1>Lịch trình chuyến xe</h1><p>Tra cứu giờ chạy, loại xe và giá vé niêm yết.</p></div>
             <label class="schedule-date"><span>Ngày khởi hành</span><InputDate @bind-Value="selectedDate" /></label>
@@ -38,7 +41,7 @@
                                 <td>@trip.BusTypeName</td>
                                 <td><strong class="schedule-price">@trip.BasePrice.ToString("N0") đ</strong></td>
                                 <td>@trip.AvailableSeats / @trip.TotalSeats</td>
-                                <td><a class="schedule-book" href="/search-trips">Tìm vé</a></td>
+                                <td><a class="schedule-book" href="@GetSearchUrl(trip)">Tìm vé</a></td>
                             </tr>
                         }
                     </tbody>
@@ -110,5 +113,18 @@
     {
         var duration = trip.ArrivalTime - trip.DepartureTime;
         return $"{(int)duration.TotalHours}h {duration.Minutes:D2}m";
+    }
+
+    private static string GetSearchUrl(TripSearchResultDto trip)
+    {
+        var parts = trip.RouteName.Split('-', StringSplitOptions.TrimEntries);
+        if (parts.Length >= 2)
+        {
+            var origin = Uri.EscapeDataString(parts[0]);
+            var dest = Uri.EscapeDataString(parts[1]);
+            var date = trip.DepartureTime.ToLocalTime().ToString("yyyy-MM-dd");
+            return $"/search-trips?origin={origin}&dest={dest}&date={date}";
+        }
+        return "/search-trips";
     }
 }

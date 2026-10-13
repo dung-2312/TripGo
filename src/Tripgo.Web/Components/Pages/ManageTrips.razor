@@ -1,4 +1,6 @@
 @page "/admin/trips"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.EmptyLayout
 @using Tripgo.Application.Interfaces
 @inject ITripService TripService
 @inject IJSRuntime JSRuntime

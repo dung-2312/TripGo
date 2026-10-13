@@ -23,6 +23,9 @@ public class TripConfiguration : IEntityTypeConfiguration<Trip>
             .HasPrecision(18, 2)
             .IsRequired();
 
+        builder.Property(x => x.IsDemoTrip)
+            .HasDefaultValue(false);
+
         // Exactly ONE relationship between Trip and Route with explicit inverse navigation (prevents shadow FK RouteId1)
         builder.HasOne(x => x.Route)
             .WithMany(r => r.Trips)

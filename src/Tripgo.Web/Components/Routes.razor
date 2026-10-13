@@ -1,6 +1,15 @@
-﻿<Router AppAssembly="typeof(Program).Assembly">
+<Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.CustomerLayout)">
+            <NotAuthorized>
+                <LayoutView Layout="typeof(Layout.CustomerLayout)">
+                    <div class="container py-5" role="alert">
+                        <h1>Không có quyền truy cập</h1>
+                        <p>Trang này yêu cầu tài khoản quản trị được xác thực.</p>
+                    </div>
+                </LayoutView>
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>

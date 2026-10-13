@@ -19,6 +19,10 @@ public class TripDetailDto
     public List<SeatLayoutItemDto> Seats { get; set; } = new();
     public List<PickupDropoffPointDto> PickupPoints { get; set; } = new();
     public List<PickupDropoffPointDto> DropoffPoints { get; set; } = new();
+    public bool IsBookable { get; set; } = false;
+    public string OperationalTier { get; set; } = "PUBLISHED_REFERENCE_SCHEDULE";
+    public string OperationalTierLabel { get; set; } = "Lịch trình tham khảo";
+    public string OperatorHotline { get; set; } = string.Empty;
     public string DurationText { get; set; } = "12h15m";
     public double Rating { get; set; } = 4.8;
     public int ReviewCount { get; set; } = 250;

@@ -16,6 +16,12 @@ public class TripSearchResultDto
     public decimal BasePrice { get; set; }
     public int AvailableSeats { get; set; }
     public int TotalSeats { get; set; }
+    public List<PickupDropoffPointDto> PickupPoints { get; set; } = new();
+    public List<PickupDropoffPointDto> DropoffPoints { get; set; } = new();
+    public bool IsBookable { get; set; } = false;
+    public string OperationalTier { get; set; } = "PUBLISHED_REFERENCE_SCHEDULE";
+    public string OperationalTierLabel { get; set; } = "Lịch trình tham khảo";
+    public string OperatorHotline { get; set; } = string.Empty;
 
     public TripSearchResultDto() { }
     public TripSearchResultDto(long id, string tripCode, string routeName, string operatorName, string busTypeName, DateTimeOffset departureTime, decimal basePrice, int availableSeats, int totalSeats, DateTimeOffset? arrivalTime = null)
