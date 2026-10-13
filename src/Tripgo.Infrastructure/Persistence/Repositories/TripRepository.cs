@@ -131,11 +131,21 @@ public class TripRepository : ITripRepository
             .AsNoTracking()
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
+            .Include(t => t.Route)
+                .ThenInclude(r => r.OriginLocation)
+            .Include(t => t.Route)
+                .ThenInclude(r => r.DestinationLocation)
+            .Include(t => t.Route)
+                .ThenInclude(r => r.Stops)
+                    .ThenInclude(rs => rs.Point)
+            .Include(t => t.Stops)
+                .ThenInclude(ts => ts.Point)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.BusType)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.SeatLayout)
             .Where(t =>
+                t.Route.IsActive &&
                 t.Route.OriginLocationId == originLocationId &&
                 t.Route.DestinationLocationId == destinationLocationId &&
                 t.DepartureTime >= windowStart &&
@@ -152,11 +162,21 @@ public class TripRepository : ITripRepository
             .Where(t => t.Id == tripId)
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
+            .Include(t => t.Route)
+                .ThenInclude(r => r.OriginLocation)
+            .Include(t => t.Route)
+                .ThenInclude(r => r.DestinationLocation)
+            .Include(t => t.Route)
+                .ThenInclude(r => r.Stops)
+                    .ThenInclude(rs => rs.Point)
+            .Include(t => t.Stops)
+                .ThenInclude(ts => ts.Point)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.BusType)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.SeatLayout)
                     .ThenInclude(sl => sl.Items)
+            .Include(t => t.Seats)
             .FirstOrDefaultAsync(ct);
     }
 

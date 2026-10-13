@@ -1,138 +1,197 @@
 @inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
 
-<div class="customer-app d-flex flex-column min-vh-100">
-    <!-- Top Utility Bar -->
-    <div class="bg-dark text-white py-1 px-3 small border-bottom border-secondary">
-        <div class="container d-flex justify-content-between align-items-center">
-            <div>
-                <span class="me-3"><i class="bi bi-telephone-fill text-warning me-1"></i> Tổng đài CSKH: <strong>1900 6868</strong> (24/7)</span>
-                <span class="d-none d-md-inline text-secondary">|</span>
-                <span class="d-none d-md-inline ms-3"><i class="bi bi-shield-check text-success me-1"></i> Cam kết 100% hoàn tiền nếu nhà xe không giữ chỗ</span>
-            </div>
-            <div class="d-flex align-items-center gap-3">
-                <a href="/tra-cuu" class="text-white text-decoration-none hover-link">
-                    <i class="bi bi-ticket-perforated me-1"></i> Tra cứu vé
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Navigation Header -->
-    <header class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm py-2">
-        <div class="container">
-            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold fs-3 text-primary text-decoration-none" href="/">
-                <span class="badge bg-primary text-white p-2 rounded-circle shadow-sm">
-                    <i class="bi bi-bus-front-fill"></i>
-                </span>
-                <span>Trip<span class="text-warning">Go</span></span>
+<div class="tg-app-shell d-flex flex-column min-vh-100">
+    <!-- Main Customer Header -->
+    <header class="tg-header sticky-top">
+        <div class="container d-flex align-items-center justify-content-between py-2">
+            <!-- Brand Logo -->
+            <a href="/" class="tg-brand d-flex align-items-center gap-2 text-decoration-none">
+                <div class="tg-brand-badge">
+                    <svg class="tg-brand-bus" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="36" height="36" rx="9" fill="#ffd333" />
+                        <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#0d5cb6" />
+                        <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
+                        <circle cx="13.5" cy="21.5" r="2" fill="#ffd333" />
+                        <circle cx="22.5" cy="21.5" r="2" fill="#ffd333" />
+                    </svg>
+                </div>
+                <span class="tg-brand-title">Trip<span class="text-warning">Go</span></span>
             </a>
 
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCustomer" aria-controls="navbarCustomer" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <!-- Navigation Links -->
+            <nav class="d-none d-md-flex align-items-center gap-4">
+                <NavLink href="search-trips" class="tg-nav-link" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-bus-front me-1"></i> Vé xe khách
+                </NavLink>
+                <NavLink href="schedules" class="tg-nav-link">
+                    <i class="bi bi-calendar3 me-1"></i> Lịch trình
+                </NavLink>
+                <NavLink href="my-tickets" class="tg-nav-link">
+                    <i class="bi bi-ticket-perforated me-1"></i> Vé của tôi
+                </NavLink>
+                <NavLink href="support" class="tg-nav-link">
+                    <i class="bi bi-headset me-1"></i> Hỗ trợ 24/7
+                </NavLink>
+            </nav>
 
-            <div class="collapse navbar-collapse" id="navbarCustomer">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-lg-4 gap-lg-2">
-                    <li class="nav-item">
-                        <NavLink class="nav-link fw-semibold px-3" href="" Match="NavLinkMatch.All">
-                            <i class="bi bi-house-door me-1"></i> Trang chủ
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink class="nav-link fw-semibold px-3" href="tim-chuyen">
-                            <i class="bi bi-compass me-1"></i> Tìm chuyến xe
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink class="nav-link fw-semibold px-3" href="tra-cuu">
-                            <i class="bi bi-search me-1"></i> Tra cứu vé
-                        </NavLink>
-                    </li>
-                </ul>
-
-                <div class="d-flex align-items-center gap-2">
-                    <a href="tra-cuu" class="btn btn-outline-primary px-3 fw-bold rounded-pill">
-                        <i class="bi bi-ticket-detailed me-1"></i> Kiểm tra vé đã mua
-                    </a>
-                </div>
+            <!-- Hotline & Quick Actions -->
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="tg-hotline-btn" @onclick="() => isSupportOpen = true">
+                    <i class="bi bi-telephone-fill text-primary me-1"></i>
+                    <span>Hotline 24/7</span>
+                </button>
             </div>
         </div>
     </header>
 
-    <!-- Main Dynamic Content -->
-    <main class="flex-grow-1 bg-light">
+    <!-- Main Content Area -->
+    <main class="flex-grow-1">
         @Body
     </main>
 
-    <!-- Professional Footer -->
-    <footer class="bg-dark text-white pt-5 pb-3 mt-auto">
-        <div class="container">
+    <!-- Professional Customer Footer -->
+    <footer class="tg-footer mt-auto">
+        <div class="container py-5">
             <div class="row g-4 mb-4">
+                <!-- Col 1: About TripGo -->
                 <div class="col-lg-4 col-md-6">
-                    <div class="d-flex align-items-center gap-2 fw-bold fs-3 text-primary mb-3">
-                        <span class="badge bg-primary text-white p-2 rounded-circle">
-                            <i class="bi bi-bus-front-fill"></i>
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="badge bg-warning text-dark p-2 rounded-3 fs-5">
+                            <i class="bi bi-bus-front-fill text-primary"></i>
                         </span>
-                        <span class="text-white">Trip<span class="text-warning">Go</span></span>
+                        <span class="fs-4 fw-bold text-dark">Trip<span class="text-primary">Go</span></span>
                     </div>
-                    <p class="text-secondary small">
-                        TripGo là nền tảng kết nối hành khách với hàng trăm nhà xe chất lượng cao trên toàn quốc. Đặt vé an toàn, chọn đúng chỗ ngồi, thanh toán bảo mật và tiện lợi.
+                    <p class="text-secondary small mb-3">
+                        TripGo là nền tảng đặt vé xe khách trực tuyến chất lượng cao tại Việt Nam. Kết nối trực tiếp với các nhà xe uy tín, cung cấp thông tin lịch trình minh bạch và trải nghiệm chọn chỗ thuận tiện.
                     </p>
-                    <div class="d-flex gap-2">
-                        <span class="badge bg-secondary p-2"><i class="bi bi-facebook fs-6"></i></span>
-                        <span class="badge bg-secondary p-2"><i class="bi bi-youtube fs-6"></i></span>
-                        <span class="badge bg-secondary p-2"><i class="bi bi-tiktok fs-6"></i></span>
+                    <div class="text-secondary small">
+                        <div><i class="bi bi-geo-alt-fill text-danger me-2"></i> Hà Nội & TP. Hồ Chí Minh, Việt Nam</div>
+                        <div class="mt-1"><i class="bi bi-envelope-fill text-primary me-2"></i> hotro@tripgo.vn</div>
                     </div>
                 </div>
 
-                <div class="col-lg-2 col-md-6">
-                    <h6 class="text-uppercase fw-bold text-warning mb-3">Tuyến đường hot</h6>
-                    <ul class="list-unstyled text-secondary small d-flex flex-column gap-2">
-                        <li><a href="/tim-chuyen?origin=TP. Hồ Chí Minh&dest=Đà Lạt" class="text-secondary text-decoration-none hover-link">Sài Gòn ➔ Đà Lạt</a></li>
-                        <li><a href="/tim-chuyen?origin=Hà Nội&dest=Sapa" class="text-secondary text-decoration-none hover-link">Hà Nội ➔ Sapa</a></li>
-                        <li><a href="/tim-chuyen?origin=TP. Hồ Chí Minh&dest=Nha Trang" class="text-secondary text-decoration-none hover-link">Sài Gòn ➔ Nha Trang</a></li>
-                        <li><a href="/tim-chuyen?origin=Đà Nẵng&dest=Huế" class="text-secondary text-decoration-none hover-link">Đà Nẵng ➔ Huế</a></li>
-                        <li><a href="/tim-chuyen?origin=TP. Hồ Chí Minh&dest=Vũng Tàu" class="text-secondary text-decoration-none hover-link">Sài Gòn ➔ Vũng Tàu</a></li>
+                <!-- Col 2: Useful Links -->
+                <div class="col-lg-2 col-md-6 col-6">
+                    <h6 class="fw-bold text-dark text-uppercase mb-3">Dịch vụ</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small">
+                        <li><a href="/search-trips" class="text-secondary text-decoration-none hover-primary">Tìm vé xe khách</a></li>
+                        <li><a href="/schedules" class="text-secondary text-decoration-none hover-primary">Lịch trình xuất bến</a></li>
+                        <li><a href="/my-tickets" class="text-secondary text-decoration-none hover-primary">Tra cứu vé điện tử</a></li>
+                        <li><a href="/support" class="text-secondary text-decoration-none hover-primary">Trung tâm hỗ trợ</a></li>
                     </ul>
                 </div>
 
-                <div class="col-lg-3 col-md-6">
-                    <h6 class="text-uppercase fw-bold text-warning mb-3">Hỗ trợ khách hàng</h6>
-                    <ul class="list-unstyled text-secondary small d-flex flex-column gap-2">
-                        <li><i class="bi bi-geo-alt-fill text-danger me-2"></i> Tòa nhà FPT, Khu Công nghệ cao, TP.HCM</li>
-                        <li><i class="bi bi-envelope-fill text-info me-2"></i> hotro@tripgo.vn</li>
-                        <li><i class="bi bi-telephone-inbound-fill text-success me-2"></i> 1900 6868 (24/7)</li>
-                        <li><i class="bi bi-question-circle-fill text-warning me-2"></i> Hướng dẫn đặt vé trực tuyến</li>
+                <!-- Col 3: Policies -->
+                <div class="col-lg-3 col-md-6 col-6">
+                    <h6 class="fw-bold text-dark text-uppercase mb-3">Chính sách</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small">
+                        <li><a href="/support" class="text-secondary text-decoration-none hover-primary">Quy chế hoạt động</a></li>
+                        <li><a href="/support" class="text-secondary text-decoration-none hover-primary">Chính sách bảo mật</a></li>
+                        <li><a href="/support" class="text-secondary text-decoration-none hover-primary">Chính sách hoàn hủy vé</a></li>
+                        <li><a href="/support" class="text-secondary text-decoration-none hover-primary">Câu hỏi thường gặp</a></li>
                     </ul>
                 </div>
 
+                <!-- Col 4: Payment & Security Info -->
                 <div class="col-lg-3 col-md-6">
-                    <h6 class="text-uppercase fw-bold text-warning mb-3">Thanh toán bảo mật</h6>
-                    <p class="text-secondary small">Hỗ trợ đa dạng phương thức thanh toán an toàn, tức thì:</p>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-light text-dark p-2 border">VNPAY-QR</span>
-                        <span class="badge bg-light text-dark p-2 border">Ví MoMo</span>
-                        <span class="badge bg-light text-dark p-2 border">VietQR</span>
-                        <span class="badge bg-light text-dark p-2 border">Visa / Mastercard</span>
+                    <h6 class="fw-bold text-dark text-uppercase mb-3">Thanh toán & Bảo mật</h6>
+                    <p class="text-secondary small mb-2">Hỗ trợ các phương thức thanh toán an toàn phổ biến:</p>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <span class="badge bg-light text-dark border p-2">Chuyển khoản QR</span>
+                        <span class="badge bg-light text-dark border p-2">ATM Nội địa</span>
+                        <span class="badge bg-light text-dark border p-2">Visa / Mastercard</span>
+                        <span class="badge bg-light text-dark border p-2">Ví điện tử</span>
                     </div>
+                    <small class="text-muted d-block">
+                        <i class="bi bi-shield-lock-fill text-success me-1"></i> Mã hóa bảo mật giao dịch SSL 256-bit
+                    </small>
                 </div>
             </div>
 
-            <hr class="border-secondary my-3" />
+            <hr class="border-secondary-subtle my-3" />
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-center small text-secondary">
-                <div>&copy; 2026 TripGo - Nền tảng đặt vé xe trực tuyến. Dự án PRN222 Clean Architecture.</div>
-                <div class="mt-2 mt-md-0">
-                    <span class="me-3">Điều khoản dịch vụ</span>
-                    <span>Chính sách bảo mật</span>
+                <div>&copy; 2026 TripGo. Nền tảng đặt vé xe trực tuyến. Clean Architecture .NET 8.</div>
+                <div class="mt-2 mt-md-0 d-flex gap-3">
+                    <a href="/admin/trips" class="text-muted text-decoration-none" title="Khu vực quản trị"><i class="bi bi-gear-fill me-1"></i> Quản trị</a>
                 </div>
             </div>
         </div>
     </footer>
+
+    <!-- Global Support Drawer -->
+    <SupportDrawer IsOpen="@isSupportOpen" OnClose="() => isSupportOpen = false" />
 </div>
 
 <style>
-    .hover-link:hover {
-        color: #ffc107 !important;
+    .tg-app-shell {
+        background-color: var(--tripgo-background, #f4f7fb);
+        color: var(--tripgo-text, #172033);
+    }
+
+    .tg-header {
+        background-color: var(--tripgo-primary, #0d5cb6);
+        box-shadow: 0 2px 10px rgba(13, 92, 182, 0.12);
+        z-index: 1030;
+    }
+
+    .tg-brand-bus {
+        width: 32px;
+        height: 32px;
+    }
+
+    .tg-brand-title {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: -0.5px;
+    }
+
+    .tg-nav-link {
+        color: rgba(255, 255, 255, 0.88);
+        text-decoration: none;
+        font-size: 0.92rem;
+        font-weight: 600;
+        padding: 6px 10px;
+        border-radius: 6px;
+        transition: color 0.15s, background-color 0.15s;
+    }
+
+    .tg-nav-link:hover, .tg-nav-link.active {
+        color: #ffffff;
+        background-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .tg-hotline-btn {
+        background: #ffffff;
+        color: #1e293b;
+        border: none;
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .tg-hotline-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.14);
+    }
+
+    .tg-footer {
+        background: #ffffff;
+        border-top: 1px solid var(--tripgo-border, #e2e8f0);
+    }
+
+    .hover-primary:hover {
+        color: var(--tripgo-primary, #0d5cb6) !important;
         text-decoration: underline !important;
     }
 </style>
+
+@code {
+    private bool isSupportOpen = false;
+}

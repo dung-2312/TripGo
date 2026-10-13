@@ -33,6 +33,13 @@ public class AppDbContext : DbContext
     public DbSet<TripDriver> TripDrivers => Set<TripDriver>();
     public DbSet<TripStop> TripStops => Set<TripStop>();
 
+    // 5. Quản lý Đặt vé & Giữ chỗ (Phase 3A Persistent Booking Core)
+    public DbSet<TripSeat> TripSeats => Set<TripSeat>();
+    public DbSet<SeatHold> SeatHolds => Set<SeatHold>();
+    public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<BookingSeat> BookingSeats => Set<BookingSeat>();
+    public DbSet<BookingPassenger> BookingPassengers => Set<BookingPassenger>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

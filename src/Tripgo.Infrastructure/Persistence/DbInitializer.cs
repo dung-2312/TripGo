@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -106,6 +106,13 @@ public static class DbInitializer
             new BusClass("LUX", "Limousine Giường Phòng VIP 24", 450000m),
             new BusClass("DBL", "Limousine Cặp Đôi Cung Điện VIP (20 Phòng Đôi)", 680000m)
         };
+        // Phase 2.5: Synthetic generation is disabled to prevent recreating unverified records.
+        // Controlled, source-verified transport data should be introduced via verified migration scripts.
+        if (!EnableSyntheticGeneration)
+        {
+            return;
+        }
+
         var existingTripCodes = await context.Trips
             .AsNoTracking()
             .Select(trip => trip.TripCode)
@@ -235,6 +242,7 @@ public static class DbInitializer
         }
     }
 
+    private static readonly bool EnableSyntheticGeneration = false;
     private sealed record Corridor(string Code, string From, string To, decimal DistanceKm, int DurationMinutes, string StandardOperator, string LimousineOperator, string CoupleOperator);
     private sealed record BusClass(string Code, string BusTypeName, decimal BasePrice);
 }

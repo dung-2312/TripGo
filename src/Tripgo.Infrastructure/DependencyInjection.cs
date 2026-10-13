@@ -23,9 +23,11 @@ public static class DependencyInjection
         }
 
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(connectionString));
+            options.UseSqlServer(connectionString, sqlServer =>
+                sqlServer.EnableRetryOnFailure()));
 
         services.AddScoped<ITripRepository, TripRepository>();
+        services.AddScoped<IBookingRepository, BookingRepository>();
 
         return services;
     }

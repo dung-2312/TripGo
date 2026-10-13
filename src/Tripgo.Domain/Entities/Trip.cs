@@ -1,4 +1,4 @@
-﻿using Tripgo.Domain.Enums;
+using Tripgo.Domain.Enums;
 
 namespace Tripgo.Domain.Entities;
 
@@ -21,6 +21,8 @@ public class Trip
     public TripStatus Status { get; set; }
         = TripStatus.Draft;
 
+    public bool IsDemoTrip { get; set; } = false;
+
     public DateTimeOffset CreatedAt { get; set; }
         = DateTimeOffset.UtcNow;
 
@@ -35,4 +37,10 @@ public class Trip
 
     public ICollection<TripDriver> Drivers { get; set; }
         = new List<TripDriver>();
+
+    public ICollection<TripSeat> Seats { get; set; }
+        = new List<TripSeat>();
+
+    public ICollection<Booking> Bookings { get; set; }
+        = new List<Booking>();
 }

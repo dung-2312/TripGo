@@ -16,11 +16,18 @@ public class TripService : ITripService
 {
     private readonly ITripRepository _repository;
     private readonly ITemporaryBookingStore _bookingStore;
+    private readonly IBookingService? _bookingService;
 
-    public TripService(ITripRepository repository, ITemporaryBookingStore bookingStore)
+    public TripService(ITripRepository repository, ITemporaryBookingStore bookingStore, IBookingService bookingService)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _bookingStore = bookingStore ?? throw new ArgumentNullException(nameof(bookingStore));
+        _bookingService = bookingService;
+    }
+
+    public TripService(ITripRepository repository, ITemporaryBookingStore bookingStore)
+        : this(repository, bookingStore, null!)
+    {
     }
 
     public async Task<List<LocationDto>> GetLocationsAsync(CancellationToken cancellationToken = default)
@@ -154,8 +161,12 @@ public class TripService : ITripService
 
         return trips.Select(t =>
         {
+            var isDemo = t.IsDemoTrip || t.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
+            var isBookable = isDemo;
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? 0;
-            var bookedCount = _bookingStore.GetBookedSeatCount(t.Id);
+            var bookedCount = isDemo ? (t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0) : 0;
+            var (pickups, dropoffs) = ExtractTripStops(t);
+            var operatorHotline = t.Route?.Operator?.Phone ?? "1900 8888";
 
             return new TripSearchResultDto
             {
@@ -170,7 +181,13 @@ public class TripService : ITripService
                 ArrivalTime = t.ExpectedArrivalTime,
                 BasePrice = t.BasePrice,
                 TotalSeats = totalSeats,
-                AvailableSeats = Math.Max(0, totalSeats - bookedCount)
+                AvailableSeats = isDemo ? Math.Max(0, totalSeats - bookedCount) : 0,
+                PickupPoints = pickups,
+                DropoffPoints = dropoffs,
+                IsBookable = isBookable,
+                OperationalTier = isDemo ? "DEMO_SANDBOX_TRIP" : "PUBLISHED_REFERENCE_SCHEDULE",
+                OperationalTierLabel = isDemo ? "Chuyến xe chạy thử nghiệm (Demo Sandbox)" : "Lịch trình tham khảo",
+                OperatorHotline = operatorHotline
             };
         }).ToList();
     }
@@ -180,25 +197,35 @@ public class TripService : ITripService
         var trip = await _repository.GetTripWithDetailsAsync(tripId, cancellationToken);
         if (trip == null) return null;
 
-        var bookedSet = _bookingStore.GetBookedSeatSnapshot(tripId);
-        var seatCodeMap = CreateSeatCodeMap(trip.Bus?.SeatLayout, trip.Bus?.BusType);
-        var displayCodesByInternal = seatCodeMap.ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
+        var (pickupPoints, dropoffPoints) = ExtractTripStops(trip);
+        var operatorHotline = trip.Route?.Operator?.Phone ?? "1900 8888";
 
-        var seatItems = trip.Bus?.SeatLayout?.Items?
-            .OrderBy(i => i.Floor)
-            .ThenBy(i => i.Row)
-            .ThenBy(i => i.Column)
-            .Select(i => new SeatLayoutItemDto
+        List<SeatLayoutItemDto> seatItems;
+        int availableSeats = 0;
+
+        if (isDemo && _bookingService != null)
+        {
+            await _bookingService.EnsureDemoTripInventoryAsync(tripId, cancellationToken);
+            var tripSeats = await _bookingService.GetSeatsForTripAsync(tripId, cancellationToken);
+            seatItems = tripSeats.Select(s => new SeatLayoutItemDto
             {
-                Id = i.Id,
-                SeatCode = displayCodesByInternal.TryGetValue(i.SeatCode, out var displayCode) ? displayCode : i.SeatCode,
-                Floor = i.Floor,
-                Row = i.Row,
-                Column = i.Column,
-                SeatType = i.SeatType ?? string.Empty,
-                IsAvailable = i.IsActive && !bookedSet.Contains(i.SeatCode)
-            })
-            .ToList() ?? new List<SeatLayoutItemDto>();
+                Id = s.Id,
+                SeatCode = s.SeatCode,
+                Floor = s.Floor,
+                Row = s.Row,
+                Column = s.Column,
+                SeatType = s.SeatType,
+                IsAvailable = s.IsAvailable,
+                Price = s.Price
+            }).ToList();
+            availableSeats = seatItems.Count(s => s.IsAvailable);
+        }
+        else
+        {
+            seatItems = new List<SeatLayoutItemDto>();
+            availableSeats = 0;
+        }
 
         return new TripDetailDto
         {
@@ -211,19 +238,15 @@ public class TripService : ITripService
             DepartureTime = trip.DepartureTime,
             ArrivalTime = trip.ExpectedArrivalTime,
             BasePrice = trip.BasePrice,
-            TotalSeats = trip.Bus?.SeatLayout?.TotalSeats ?? 0,
-            AvailableSeats = Math.Max(0, (trip.Bus?.SeatLayout?.TotalSeats ?? 0) - bookedSet.Count),
+            TotalSeats = trip.Bus?.SeatLayout?.TotalSeats ?? seatItems.Count,
+            AvailableSeats = availableSeats,
             Seats = seatItems,
-            PickupPoints = new List<PickupDropoffPointDto>
-            {
-                new() { Id = 1, Time = trip.DepartureTime.ToLocalTime().ToString("HH:mm"), Name = "Bến xe Quy Nhơn", Address = "02 Nguyễn Tất Thành, TP. Quy Nhơn", IsPickup = true },
-                new() { Id = 2, Time = trip.DepartureTime.AddMinutes(25).ToLocalTime().ToString("HH:mm"), Name = "Văn phòng Diêu Trì", Address = "Ga Diêu Trì, huyện Tuy Phước", IsPickup = true }
-            },
-            DropoffPoints = new List<PickupDropoffPointDto>
-            {
-                new() { Id = 3, Time = trip.ExpectedArrivalTime.ToLocalTime().ToString("HH:mm"), Name = "Bến xe Miền Đông", Address = "292 Đinh Bộ Lĩnh, Bình Thạnh, TP. Hồ Chí Minh", IsPickup = false },
-                new() { Id = 4, Time = trip.ExpectedArrivalTime.AddMinutes(30).ToLocalTime().ToString("HH:mm"), Name = "Cầu vượt Linh Xuân", Address = "Xa lộ Hà Nội, TP. Thủ Đức", IsPickup = false }
-            }
+            PickupPoints = pickupPoints,
+            DropoffPoints = dropoffPoints,
+            IsBookable = isDemo,
+            OperationalTier = isDemo ? "DEMO_SANDBOX_TRIP" : "PUBLISHED_REFERENCE_SCHEDULE",
+            OperationalTierLabel = isDemo ? "Chuyến xe chạy thử nghiệm (Demo Sandbox)" : "Lịch trình tham khảo",
+            OperatorHotline = operatorHotline
         };
     }
 
@@ -357,47 +380,130 @@ public class TripService : ITripService
     {
         ArgumentNullException.ThrowIfNull(customerInfo);
         if (seatCodes == null || seatCodes.Count == 0) return false;
-        var requestedCodes = seatCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (requestedCodes.Count != seatCodes.Count) return false;
 
-        var trip = await _repository.GetTripForBookingAsync(tripId, ct);
-        if (trip?.Bus?.SeatLayout?.Items == null)
+        var trip = await _repository.GetTripWithDetailsAsync(tripId, ct);
+        if (trip == null) return false;
+
+        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
+        if (!isDemo || _bookingService == null)
+        {
+            // Reference trips strictly reject booking
             return false;
+        }
 
-        var seatCodeMap = CreateSeatCodeMap(trip.Bus.SeatLayout, trip.Bus.BusType);
-        var activeSeatCodes = requestedCodes
-            .Select(code => seatCodeMap.TryGetValue(code, out var internalCode) ? internalCode : null)
-            .ToList();
-        if (activeSeatCodes.Any(string.IsNullOrEmpty))
+        var holdResult = await _bookingService.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = tripId,
+            SeatCodes = seatCodes,
+            OwnerIdentifier = customerInfo.OwnerIdentifier,
+            HoldMinutes = 10
+        }, ct);
+
+        if (!holdResult.Success || string.IsNullOrEmpty(holdResult.HoldToken))
+        {
             return false;
-        var internalCodes = activeSeatCodes.Select(code => code!).ToList();
+        }
 
-        return _bookingStore.TryBookSeats(
-            tripId,
-            internalCodes,
-            requestedCodes,
-            customerInfo,
-            trip.Route?.Name ?? string.Empty,
-            trip.Route?.Operator?.Name ?? string.Empty,
-            trip.Bus.BusType?.Name ?? string.Empty,
-            trip.Bus.LicensePlate,
-            trip.DepartureTime,
-            trip.BasePrice);
+        var bookingResult = await _bookingService.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = tripId,
+            HoldToken = holdResult.HoldToken,
+            OwnerIdentifier = customerInfo.OwnerIdentifier,
+            SeatCodes = seatCodes,
+            PickupPointId = customerInfo.PickupPointId,
+            DropoffPointId = customerInfo.DropoffPointId,
+            PassengerName = customerInfo.Name,
+            PassengerPhone = customerInfo.Phone,
+            PassengerEmail = customerInfo.Email,
+            HasInsurance = customerInfo.HasInsurance
+        }, ct);
+
+        if (bookingResult.Success && !string.IsNullOrEmpty(bookingResult.BookingCode))
+        {
+            customerInfo.BookingCode = bookingResult.BookingCode;
+            customerInfo.TotalAmount = bookingResult.TotalAmount;
+            customerInfo.BookingStatus = BookingStatus.PendingPayment.ToString();
+            customerInfo.PaymentStatus = PaymentStatus.Unpaid.ToString();
+            return true;
+        }
+
+        return false;
     }
 
-    public Task<List<CustomerBookingInfoDto>> GetBookingsByPhoneAsync(string phone, CancellationToken ct = default)
+    public async Task<List<CustomerBookingInfoDto>> GetBookingsByPhoneAsync(string phone, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+        if (_bookingService != null)
+        {
+            var persistentList = await _bookingService.GetBookingsByPhoneAsync(phone, ct);
+            return persistentList.Select(persistent => new CustomerBookingInfoDto
+            {
+                    TripId = persistent.TripId,
+                    BookingCode = persistent.BookingCode,
+                    Name = persistent.PassengerName,
+                    Phone = persistent.PassengerPhone,
+                    Email = persistent.PassengerEmail,
+                    SelectedPickupPoint = persistent.PickupPointName,
+                    SelectedDropoffPoint = persistent.DropoffPointName,
+                    PickupPoint = persistent.PickupPointName,
+                    HasInsurance = persistent.InsuranceAmount > 0,
+                    SeatCodes = persistent.SeatCodes,
+                    RouteName = persistent.RouteName,
+                    OperatorName = persistent.OperatorName,
+                    BusTypeName = persistent.BusTypeName,
+                    BusLicensePlate = persistent.BusLicensePlate,
+                    DepartureTime = persistent.DepartureTime,
+                    BookedAt = persistent.CreatedAt,
+                    BasePrice = persistent.BaseAmount,
+                    InsuranceAmount = persistent.InsuranceAmount,
+                    TotalAmount = persistent.TotalAmount,
+                    BookingStatus = persistent.Status,
+                    PaymentStatus = persistent.PaymentStatus
+            }).ToList();
+        }
+
         var normalizedPhone = NormalizePhone(phone);
-        var bookings = _bookingStore.GetBookingsByPhone(normalizedPhone);
-        return Task.FromResult(bookings);
+        return _bookingStore.GetBookingsByPhone(normalizedPhone);
     }
 
-    public Task<CustomerBookingInfoDto?> GetBookingByCodeAsync(string bookingCode, CancellationToken ct = default)
+    public async Task<CustomerBookingInfoDto?> GetBookingByCodeAsync(string bookingCode, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var booking = _bookingStore.GetBookingByCode(bookingCode);
-        return Task.FromResult(booking);
+        if (_bookingService != null)
+        {
+            var persistent = await _bookingService.GetBookingByCodeAsync(bookingCode, ct);
+            if (persistent != null)
+            {
+                return new CustomerBookingInfoDto
+                {
+                    TripId = persistent.TripId,
+                    BookingCode = persistent.BookingCode,
+                    Name = persistent.PassengerName,
+                    Phone = persistent.PassengerPhone,
+                    Email = persistent.PassengerEmail,
+                    SelectedPickupPoint = persistent.PickupPointName,
+                    SelectedDropoffPoint = persistent.DropoffPointName,
+                    PickupPoint = persistent.PickupPointName,
+                    HasInsurance = persistent.InsuranceAmount > 0,
+                    SeatCodes = persistent.SeatCodes,
+                    RouteName = persistent.RouteName,
+                    OperatorName = persistent.OperatorName,
+                    BusTypeName = persistent.BusTypeName,
+                    BusLicensePlate = persistent.BusLicensePlate,
+                    DepartureTime = persistent.DepartureTime,
+                    BookedAt = persistent.CreatedAt,
+                    BasePrice = persistent.BaseAmount,
+                    InsuranceAmount = persistent.InsuranceAmount,
+                    TotalAmount = persistent.TotalAmount,
+                    BookingStatus = persistent.Status,
+                    PaymentStatus = persistent.PaymentStatus
+                };
+            }
+
+            return null;
+        }
+
+        return _bookingStore.GetBookingByCode(bookingCode);
     }
 
     public Task<bool> SubmitSupportCallbackAsync(string name, string phone, CancellationToken ct = default)
@@ -440,6 +546,98 @@ public class TripService : ITripService
         }
 
         return seatMap;
+    }
+
+    internal static (List<PickupDropoffPointDto> PickupPoints, List<PickupDropoffPointDto> DropoffPoints) ExtractTripStops(Trip trip)
+    {
+        var pickupPoints = new List<PickupDropoffPointDto>();
+        var dropoffPoints = new List<PickupDropoffPointDto>();
+
+        // 1. Prioritize scheduled TripStops if configured
+        if (trip.Stops != null && trip.Stops.Count > 0)
+        {
+            var stops = trip.Stops.OrderBy(s => s.StopOrder).ToList();
+            foreach (var stop in stops)
+            {
+                if (stop.Point == null) continue;
+                if (stop.AllowPickup)
+                {
+                    var hasFixed = stop.ScheduledDepartureTime.HasValue;
+                    var time = hasFixed
+                        ? stop.ScheduledDepartureTime!.Value.ToLocalTime().ToString("HH:mm")
+                        : PickupDropoffPointDto.UnknownTimeText;
+                    pickupPoints.Add(new PickupDropoffPointDto
+                    {
+                        Id = stop.Point.Id,
+                        Name = stop.Point.Name,
+                        Address = stop.Point.Address,
+                        Time = time,
+                        HasFixedTime = hasFixed,
+                        IsPickup = true
+                    });
+                }
+                if (stop.AllowDropoff)
+                {
+                    var hasFixed = stop.ScheduledArrivalTime.HasValue;
+                    var time = hasFixed
+                        ? stop.ScheduledArrivalTime!.Value.ToLocalTime().ToString("HH:mm")
+                        : PickupDropoffPointDto.UnknownTimeText;
+                    dropoffPoints.Add(new PickupDropoffPointDto
+                    {
+                        Id = stop.Point.Id,
+                        Name = stop.Point.Name,
+                        Address = stop.Point.Address,
+                        Time = time,
+                        HasFixedTime = hasFixed,
+                        IsPickup = false
+                    });
+                }
+            }
+        }
+        // 2. Otherwise check template RouteStops
+        else if (trip.Route?.Stops != null && trip.Route.Stops.Count > 0)
+        {
+            var rStops = trip.Route.Stops.OrderBy(s => s.StopOrder).ToList();
+            foreach (var stop in rStops)
+            {
+                if (stop.Point == null) continue;
+                if (stop.AllowPickup)
+                {
+                    var hasFixed = stop.DepartureOffsetMinutes.HasValue;
+                    var depTime = hasFixed
+                        ? trip.DepartureTime.AddMinutes(stop.DepartureOffsetMinutes!.Value).ToLocalTime().ToString("HH:mm")
+                        : PickupDropoffPointDto.UnknownTimeText;
+                    pickupPoints.Add(new PickupDropoffPointDto
+                    {
+                        Id = stop.Point.Id,
+                        Name = stop.Point.Name,
+                        Address = stop.Point.Address,
+                        Time = depTime,
+                        HasFixedTime = hasFixed,
+                        IsPickup = true
+                    });
+                }
+                if (stop.AllowDropoff)
+                {
+                    var hasFixed = stop.ArrivalOffsetMinutes.HasValue;
+                    var arrTime = hasFixed
+                        ? trip.DepartureTime.AddMinutes(stop.ArrivalOffsetMinutes!.Value).ToLocalTime().ToString("HH:mm")
+                        : PickupDropoffPointDto.UnknownTimeText;
+                    dropoffPoints.Add(new PickupDropoffPointDto
+                    {
+                        Id = stop.Point.Id,
+                        Name = stop.Point.Name,
+                        Address = stop.Point.Address,
+                        Time = arrTime,
+                        HasFixedTime = hasFixed,
+                        IsPickup = false
+                    });
+                }
+            }
+        }
+
+        // Return verified points only. Do NOT fabricate dummy fallback stops when DB has no stops.
+        return (pickupPoints, dropoffPoints);
     }
 
     private static string NormalizePhone(string? phone) =>

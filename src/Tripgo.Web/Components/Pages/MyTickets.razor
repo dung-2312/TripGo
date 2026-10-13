@@ -1,6 +1,4 @@
 @page "/my-tickets"
-@using System.Security.Cryptography
-@using System.Text
 @using Tripgo.Application.Interfaces
 @inject ITripService TripService
 @rendermode InteractiveServer
@@ -9,10 +7,13 @@
 
 <section class="ticket-page">
     <div class="ticket-wrap">
+        <div class="mb-3">
+            <BackButton Label="Quay lại trang chủ" FallbackUrl="/" />
+        </div>
         <header class="ticket-heading">
             <span class="eyebrow">TRIPGO · HÀNH TRÌNH CỦA BẠN</span>
-            <h1>Tra cứu vé điện tử</h1>
-            <p>Nhập số điện thoại đặt vé hoặc mã đặt chỗ để xem thông tin hành trình.</p>
+            <h1>Tra cứu đặt chỗ</h1>
+            <p>Nhập số điện thoại đặt chỗ hoặc mã đặt chỗ trong trình duyệt này.</p>
         </header>
 
         <div class="lookup-bar">
@@ -32,10 +33,9 @@
 
         @foreach (var ticket in tickets)
         {
-            var qrModules = CreateQrPattern(ticket.BookingCode);
             <article class="ticket-card">
                 <div class="ticket-main">
-                    <div class="ticket-topline"><span class="ticket-code">@ticket.BookingCode</span><span class="ticket-paid">ĐÃ XÁC NHẬN</span></div>
+                    <div class="ticket-topline"><span class="ticket-code">@ticket.BookingCode</span><span class="ticket-paid @(ticket.BookingStatus == "PendingPayment" ? "reservation" : "")">@GetBookingStatusLabel(ticket)</span></div>
                     <h2>@ticket.RouteName</h2>
                     <div class="ticket-operator"><i class="bi bi-bus-front-fill"></i><span>@ticket.OperatorName</span><span class="bus-type">@ticket.BusTypeName</span></div>
                     <div class="ticket-route-line">
@@ -51,18 +51,12 @@
                         <div><small>ĐIỂM TRẢ</small><b>@ticket.SelectedDropoffPoint</b></div>
                         <div><small>BẢO HIỂM</small><b>@(ticket.HasInsurance ? $"Có · {ticket.InsuranceAmount:N0} đ" : "Không")</b></div>
                     </div>
-                    <div class="boarding-note"><i class="bi bi-info-circle-fill"></i><span>Xuất trình mã QR cho nhân viên nhà xe tại điểm đón. Mã vé: <b>@ticket.BookingCode</b></span></div>
+                    <div class="boarding-note"><i class="bi bi-info-circle-fill"></i><span>Đây là thông tin đặt chỗ, không phải vé điện tử đã xác minh. TripGo chưa hỗ trợ thanh toán hoặc xác thực vé/QR.</span></div>
                 </div>
                 <aside class="ticket-qr-panel">
-                    <div class="qr-code" role="img" aria-label="Mã QR mô phỏng cho vé @ticket.BookingCode">
-                        @for (var index = 0; index < qrModules.Length; index++)
-                        {
-                            <span class="@(qrModules[index] ? "qr-dark" : "")"></span>
-                        }
-                    </div>
-                    <strong>VÉ ĐIỆN TỬ</strong>
+                    <strong>THÔNG TIN ĐẶT CHỖ</strong>
                     <small>Đặt lúc @ticket.BookedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>
-                    <div class="ticket-total">@((ticket.BasePrice * ticket.SeatCodes.Count + ticket.InsuranceAmount).ToString("N0")) đ</div>
+                    <div class="ticket-total">@ticket.TotalAmount.ToString("N0") đ</div>
                 </aside>
             </article>
         }
@@ -87,6 +81,7 @@
     .ticket-topline { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
     .ticket-code { color: #0d5cb6; font-weight: 800; }
     .ticket-paid { padding: 5px 8px; border-radius: 4px; background: #e4f5ea; color: #217445; font-size: 10px; font-weight: 800; }
+    .ticket-paid.reservation { background: #fff3d6; color: #8b5a00; }
     .ticket-main h2 { margin: 13px 0; font-size: 21px; font-weight: 800; }
     .ticket-operator { display: flex; align-items: center; gap: 9px; color: #304956; font-weight: 700; }
     .ticket-operator i { color: #0d5cb6; }
@@ -113,10 +108,30 @@
 </style>
 
 @code {
+    [SupplyParameterFromQuery(Name = "code")]
+    public string? QueryCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "phone")]
+    public string? QueryPhone { get; set; }
+
     private string lookupValue = string.Empty;
     private string? statusMessage;
     private bool isSearching;
     private List<CustomerBookingInfoDto> tickets = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(QueryCode))
+        {
+            lookupValue = QueryCode.Trim();
+            await LookupTickets();
+        }
+        else if (!string.IsNullOrWhiteSpace(QueryPhone))
+        {
+            lookupValue = QueryPhone.Trim();
+            await LookupTickets();
+        }
+    }
 
     private async Task HandleKeyDown(KeyboardEventArgs args)
     {
@@ -146,29 +161,22 @@
             {
                 tickets = await TripService.GetBookingsByPhoneAsync(lookupValue);
             }
-            statusMessage = tickets.Count > 0 ? $"Tìm thấy {tickets.Count} vé đã đặt." : "Không tìm thấy vé phù hợp trong phiên hệ thống này.";
+            statusMessage = tickets.Count > 0 ? $"Tìm thấy {tickets.Count} thông tin đặt chỗ trong trình duyệt này." : "Không tìm thấy đặt chỗ thuộc phiên trình duyệt này.";
         }
         finally { isSearching = false; }
     }
 
-    private static bool[] CreateQrPattern(string code)
+    private static string GetBookingStatusLabel(CustomerBookingInfoDto booking)
     {
-        const int size = 21;
-        var modules = new bool[size * size];
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(code));
-        for (var index = 0; index < modules.Length; index++)
-            modules[index] = (digest[(index / 8) % digest.Length] & (1 << (index % 8))) != 0;
-
-        AddFinderPattern(modules, size, 0, 0);
-        AddFinderPattern(modules, size, size - 7, 0);
-        AddFinderPattern(modules, size, 0, size - 7);
-        return modules;
-    }
-
-    private static void AddFinderPattern(bool[] modules, int size, int left, int top)
-    {
-        for (var row = 0; row < 7; row++)
-        for (var column = 0; column < 7; column++)
-            modules[(top + row) * size + left + column] = row == 0 || row == 6 || column == 0 || column == 6 || (row is >= 2 and <= 4 && column is >= 2 and <= 4);
+        if (booking.BookingStatus == "PendingPayment" && booking.PaymentStatus == "Unpaid")
+            return "CHỜ THANH TOÁN · ĐẶT CHỖ";
+        return booking.BookingStatus switch
+        {
+            "Cancelled" => "ĐÃ HỦY",
+            "Expired" => "ĐÃ HẾT HẠN",
+            "Completed" => "ĐÃ HOÀN TẤT · CHƯA XÁC THỰC VÉ",
+            "Confirmed" when booking.PaymentStatus == "Paid" => "ĐÃ THANH TOÁN · CHƯA XÁC THỰC VÉ",
+            _ => "ĐẶT CHỖ · CHƯA XÁC THỰC VÉ"
+        };
     }
 }

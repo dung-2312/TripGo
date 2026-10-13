@@ -11,6 +11,7 @@ public static class DependencyInjection
     {
         services.AddSingleton<ITemporaryBookingStore, InMemoryTemporaryBookingStore>();
         services.AddScoped<ITripService, TripService>();
+        services.AddScoped<IBookingService, BookingService>();
 
         return services;
     }

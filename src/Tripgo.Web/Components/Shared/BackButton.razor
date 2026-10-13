@@ -1,0 +1,46 @@
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+
+<button type="button"
+        class="btn @ButtonClass d-inline-flex align-items-center gap-2 @Class"
+        @onclick="HandleClick"
+        aria-label="@Label">
+    <i class="bi bi-arrow-left"></i>
+    <span>@Label</span>
+</button>
+
+@code {
+    [Parameter]
+    public string Label { get; set; } = "Quay lại";
+
+    [Parameter]
+    public string ButtonClass { get; set; } = "btn-outline-secondary btn-sm";
+
+    [Parameter]
+    public string Class { get; set; } = string.Empty;
+
+    [Parameter]
+    public string FallbackUrl { get; set; } = "/";
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync();
+            return;
+        }
+
+        try
+        {
+            // Use browser history if available, otherwise navigate to FallbackUrl
+            await JSRuntime.InvokeVoidAsync("tripgo.goBack", FallbackUrl);
+        }
+        catch
+        {
+            NavigationManager.NavigateTo(FallbackUrl);
+        }
+    }
+}

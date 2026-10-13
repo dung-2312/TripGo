@@ -9,6 +9,7 @@ public class SeatLayoutItemDto
     public int Column { get; set; }
     public string SeatType { get; set; } = string.Empty;
     public bool IsAvailable { get; set; } = true;
+    public decimal Price { get; set; }
 
     public SeatLayoutItemDto() { }
     public SeatLayoutItemDto(long id, string seatCode, int floor, int row, int column, string? seatType, bool isAvailable = true)
