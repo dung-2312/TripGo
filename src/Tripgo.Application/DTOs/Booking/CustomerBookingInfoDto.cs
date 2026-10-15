@@ -27,10 +27,12 @@ public class CustomerBookingInfoDto
     public DateTimeOffset DepartureTime { get; set; }
     public DateTimeOffset BookedAt { get; set; }
     public decimal BasePrice { get; set; }
+    public decimal SurchargeAmount { get; set; }
     public decimal InsuranceAmount { get; set; }
     public decimal TotalAmount { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
+    public List<BookingPassengerDto> Passengers { get; set; } = new();
 
     public CustomerBookingInfoDto() { }
     public CustomerBookingInfoDto(string name, string phone, string? email = null, string? pickupPoint = null)

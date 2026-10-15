@@ -338,10 +338,18 @@ public class BookingService : IBookingService
         }
 
         // 5. Server-authoritative pricing (Insurance disabled temporarily to avoid charging unsupported fees)
-        var baseAmount = requestedSeats.Sum(s => s.Price);
+        var totalSeatsPrice = requestedSeats.Sum(s => s.Price);
+        var baseAmount = requestedSeats.Count * trip.BasePrice;
+        var surchargeAmount = requestedSeats.Sum(s => Math.Max(0m, s.Price - trip.BasePrice));
+        if (baseAmount > totalSeatsPrice)
+        {
+            baseAmount = totalSeatsPrice;
+            surchargeAmount = 0m;
+        }
+
         var insuranceAmount = 0m;
         var hasInsurance = false;
-        var totalAmount = baseAmount + insuranceAmount;
+        var totalAmount = baseAmount + surchargeAmount + insuranceAmount;
 
         var bookingCode = GenerateBookingCode();
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
@@ -358,7 +366,7 @@ public class BookingService : IBookingService
             PassengerPhone = normalizedPhone,
             PassengerEmail = email,
             BaseAmount = baseAmount,
-            SurchargeAmount = requestedSeats.Sum(s => s.Price) - baseAmount,
+            SurchargeAmount = surchargeAmount,
             InsuranceAmount = insuranceAmount,
             HasInsurance = hasInsurance,
             TotalAmount = totalAmount,
@@ -366,7 +374,8 @@ public class BookingService : IBookingService
             PaymentStatus = PaymentStatus.Unpaid,
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = expiresAt,
-            IsDemoBooking = true
+            IsDemoBooking = true,
+            OwnerIdentifier = ownerIdentifier
         };
 
         var bookingSeats = requestedSeats.Select(s => new BookingSeat
@@ -377,16 +386,114 @@ public class BookingService : IBookingService
             IsActive = true
         }).ToList();
 
-        var passengers = new List<BookingPassenger>
+        var passengers = new List<BookingPassenger>();
+        if (request.Passengers != null && request.Passengers.Count > 0)
         {
-            new BookingPassenger
+            if (request.Passengers.Count != request.SeatCodes.Count)
             {
-                FullName = passengerName,
-                PhoneNumber = normalizedPhone,
-                Email = email,
-                IsPrimaryContact = true
+                return new BookingResultDto
+                {
+                    Success = false,
+                    Message = $"Số lượng thông tin hành khách ({request.Passengers.Count}) phải khớp với số lượng ghế đặt ({request.SeatCodes.Count})."
+                };
             }
-        };
+
+            var assignedSeats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in request.Passengers)
+            {
+                if (!string.IsNullOrWhiteSpace(p.SeatCode))
+                {
+                    var code = p.SeatCode.Trim();
+                    if (!request.SeatCodes.Contains(code, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return new BookingResultDto
+                        {
+                            Success = false,
+                            Message = $"Ghế {code} của hành khách không nằm trong danh sách ghế đặt."
+                        };
+                    }
+
+                    if (!assignedSeats.Add(code))
+                    {
+                        return new BookingResultDto
+                        {
+                            Success = false,
+                            Message = $"Ghế {code} bị gán trùng lặp cho nhiều hành khách."
+                        };
+                    }
+                }
+
+                var pName = p.FullName?.Trim() ?? string.Empty;
+                if (pName.Length < 2)
+                {
+                    return new BookingResultDto
+                    {
+                        Success = false,
+                        Message = "Họ tên của mỗi hành khách phải có ít nhất 2 ký tự."
+                    };
+                }
+
+                var pPhone = NormalizePhone(p.PhoneNumber);
+                if (pPhone.Length < 9 || pPhone.Length > 11 || !pPhone.StartsWith("0"))
+                {
+                    return new BookingResultDto
+                    {
+                        Success = false,
+                        Message = $"Số điện thoại của hành khách {pName} không hợp lệ (10 chữ số bắt đầu bằng 0)."
+                    };
+                }
+
+                var pEmail = p.Email?.Trim();
+                if (!string.IsNullOrWhiteSpace(pEmail) && (!pEmail.Contains('@') || !pEmail.Contains('.')))
+                {
+                    return new BookingResultDto
+                    {
+                        Success = false,
+                        Message = $"Định dạng email của hành khách {pName} không hợp lệ."
+                    };
+                }
+
+                passengers.Add(new BookingPassenger
+                {
+                    FullName = pName,
+                    PhoneNumber = pPhone,
+                    Email = pEmail,
+                    IdentityCard = p.IdentityCard?.Trim(),
+                    IsPrimaryContact = p.IsPrimaryContact
+                });
+            }
+
+            var primaryCount = passengers.Count(p => p.IsPrimaryContact);
+            if (primaryCount == 0)
+            {
+                passengers[0].IsPrimaryContact = true;
+            }
+            else if (primaryCount > 1)
+            {
+                var firstFound = false;
+                foreach (var p in passengers)
+                {
+                    if (p.IsPrimaryContact)
+                    {
+                        if (!firstFound) firstFound = true;
+                        else p.IsPrimaryContact = false;
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < requestedSeats.Count; i++)
+            {
+                passengers.Add(new BookingPassenger
+                {
+                    FullName = passengerName,
+                    PhoneNumber = normalizedPhone,
+                    Email = email,
+                    IsPrimaryContact = i == 0
+                });
+            }
+        }
 
         return await _bookingRepository.CreateBookingAsync(booking, bookingSeats, passengers, request.HoldToken, ownerIdentifier, ct);
     }
@@ -447,7 +554,15 @@ public class BookingService : IBookingService
             PaymentStatus = b.PaymentStatus.ToString(),
             CreatedAt = b.CreatedAt,
             ExpiresAt = b.ExpiresAt,
-            IsDemoBooking = b.IsDemoBooking
+            IsDemoBooking = b.IsDemoBooking,
+            Passengers = b.Passengers?.Select(p => new BookingPassengerDto
+            {
+                FullName = p.FullName,
+                PhoneNumber = p.PhoneNumber,
+                Email = p.Email,
+                IdentityCard = p.IdentityCard,
+                IsPrimaryContact = p.IsPrimaryContact
+            }).ToList() ?? new List<BookingPassengerDto>()
         };
     }
 

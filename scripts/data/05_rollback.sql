@@ -1,19 +1,35 @@
 -- ============================================================================
 -- SCRIPT 05: ROLLBACK PROCEDURE FOR PHASE 2.5 DATA CHANGES
 -- Project: Tripgo (Phase 2.5: Verified Transport Data Preparation)
--- Target Database: localhost\MSSQLSERVER01 / TripgoDb
--- Mode: EMERGENCY ROLLBACK PROCEDURE
+-- Mode: SAFEGUARDED / EMERGENCY ROLLBACK PROCEDURE
 -- ============================================================================
-
-USE [TripgoDb];
-GO
 
 SET NOCOUNT ON;
 SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
 
+-- ============================================================================
+-- EXECUTION SAFEGUARD (DELIBERATE APPROVAL & TARGET VERIFICATION REQUIRED)
+-- ============================================================================
+DECLARE @CONFIRM_EXECUTION BIT = 0; -- SAFETY LOCK: Must be explicitly changed to 1 to run
+DECLARE @EXPECTED_DATABASE SYSNAME = N'TripgoDb_IsolatedTest'; -- Must match DB_NAME() exactly
+
+IF @CONFIRM_EXECUTION <> 1
+BEGIN
+    RAISERROR(N'EXECUTION HALTED: Accidental execution safeguard active. To proceed, review operations, set @CONFIRM_EXECUTION = 1, and set @EXPECTED_DATABASE to the intended DB_NAME().', 16, 1);
+    RETURN;
+END;
+
+IF DB_NAME() <> @EXPECTED_DATABASE
+BEGIN
+    DECLARE @TargetError NVARCHAR(256) = FORMATMESSAGE(N'TARGET VERIFICATION FAILED: Current database context is [%s], but expected target was [%s]. Aborting.', DB_NAME(), @EXPECTED_DATABASE);
+    RAISERROR(@TargetError, 16, 1);
+    RETURN;
+END;
+
 PRINT '====================================================================';
 PRINT 'TRIPGO PHASE 2.5: EMERGENCY DATA ROLLBACK PROCEDURE';
+PRINT 'Target Database Verified: ' + DB_NAME();
 PRINT 'Timestamp: ' + CONVERT(NVARCHAR(30), SYSDATETIMEOFFSET(), 126);
 PRINT '====================================================================';
 
@@ -23,7 +39,7 @@ IF OBJECT_ID(N'dbo.Trips_Backup_Phase25', N'U') IS NULL OR
 BEGIN
     PRINT '!! ABORTING: One or more backup tables (Trips_Backup_Phase25, Routes_Backup_Phase25, Operators_Backup_Phase25) do not exist!';
     RETURN;
-END
+END;
 
 BEGIN TRANSACTION;
 

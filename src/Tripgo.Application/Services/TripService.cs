@@ -345,8 +345,8 @@ public class TripService : ITripService
         var trips = await _repository.GetAllTripsAdminAsync(ct);
         return trips.Select(t =>
         {
-            var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? 0;
-            var bookedCount = _bookingStore.GetBookedSeatCount(t.Id);
+            var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? (t.Seats?.Count ?? 0);
+            var bookedCount = t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0;
 
             return new TripSearchResultDto
             {
@@ -368,12 +368,7 @@ public class TripService : ITripService
 
     public async Task<bool> DeleteTripAsync(long tripId, CancellationToken ct = default)
     {
-        var cancelled = await _repository.CancelTripAsync(tripId, ct);
-        if (!cancelled)
-            return false;
-
-        _bookingStore.RemoveTripBookedSeats(tripId);
-        return true;
+        return await _repository.CancelTripAsync(tripId, ct);
     }
 
     public async Task<bool> BookSeatsAsync(long tripId, List<string> seatCodes, CustomerBookingInfoDto customerInfo, CancellationToken ct = default)
@@ -415,7 +410,8 @@ public class TripService : ITripService
             PassengerName = customerInfo.Name,
             PassengerPhone = customerInfo.Phone,
             PassengerEmail = customerInfo.Email,
-            HasInsurance = customerInfo.HasInsurance
+            HasInsurance = customerInfo.HasInsurance,
+            Passengers = customerInfo.Passengers
         }, ct);
 
         if (bookingResult.Success && !string.IsNullOrEmpty(bookingResult.BookingCode))
@@ -455,15 +451,16 @@ public class TripService : ITripService
                     DepartureTime = persistent.DepartureTime,
                     BookedAt = persistent.CreatedAt,
                     BasePrice = persistent.BaseAmount,
+                    SurchargeAmount = persistent.SurchargeAmount,
                     InsuranceAmount = persistent.InsuranceAmount,
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
-                    PaymentStatus = persistent.PaymentStatus
+                    PaymentStatus = persistent.PaymentStatus,
+                    Passengers = persistent.Passengers
             }).ToList();
         }
 
-        var normalizedPhone = NormalizePhone(phone);
-        return _bookingStore.GetBookingsByPhone(normalizedPhone);
+        return new List<CustomerBookingInfoDto>();
     }
 
     public async Task<CustomerBookingInfoDto?> GetBookingByCodeAsync(string bookingCode, CancellationToken ct = default)
@@ -493,17 +490,17 @@ public class TripService : ITripService
                     DepartureTime = persistent.DepartureTime,
                     BookedAt = persistent.CreatedAt,
                     BasePrice = persistent.BaseAmount,
+                    SurchargeAmount = persistent.SurchargeAmount,
                     InsuranceAmount = persistent.InsuranceAmount,
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
-                    PaymentStatus = persistent.PaymentStatus
+                    PaymentStatus = persistent.PaymentStatus,
+                    Passengers = persistent.Passengers
                 };
             }
-
-            return null;
         }
 
-        return _bookingStore.GetBookingByCode(bookingCode);
+        return null;
     }
 
     public Task<bool> SubmitSupportCallbackAsync(string name, string phone, CancellationToken ct = default)

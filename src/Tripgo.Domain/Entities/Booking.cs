@@ -12,6 +12,8 @@ public class Booking
 
     public string? HoldToken { get; set; }
 
+    public string? OwnerIdentifier { get; set; }
+
     public long TripId { get; set; }
 
     public long? PickupPointId { get; set; }

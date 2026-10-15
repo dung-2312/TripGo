@@ -14,4 +14,5 @@ public class CreateBookingRequestDto
     public string? PassengerEmail { get; set; }
     public string? OwnerIdentifier { get; set; }
     public bool HasInsurance { get; set; }
+    public List<BookingPassengerDto> Passengers { get; set; } = new();
 }

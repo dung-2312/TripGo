@@ -391,6 +391,7 @@ public class BookingRepository : IBookingRepository
                 }
 
                 booking.HoldToken = holdToken;
+                booking.OwnerIdentifier ??= ownerIdentifier;
                 _context.Bookings.Add(booking);
                 await _context.SaveChangesAsync(ct);
 
@@ -476,11 +477,13 @@ public class BookingRepository : IBookingRepository
                     return false;
                 }
 
-                var ownsBooking = booking.HoldToken != null &&
-                    await _context.SeatHolds.AnyAsync(
-                        hold => hold.HoldToken == booking.HoldToken &&
-                                hold.OwnerIdentifier == ownerIdentifier,
-                        ct);
+                var ownsBooking = (booking.OwnerIdentifier != null &&
+                    string.Equals(booking.OwnerIdentifier, ownerIdentifier, StringComparison.Ordinal)) ||
+                    (booking.HoldToken != null &&
+                     await _context.SeatHolds.AnyAsync(
+                         hold => hold.HoldToken == booking.HoldToken &&
+                                 hold.OwnerIdentifier == ownerIdentifier,
+                         ct));
                 if (!ownsBooking)
                 {
                     await transaction.RollbackAsync(ct);
@@ -625,8 +628,9 @@ public class BookingRepository : IBookingRepository
             .Include(b => b.BookingSeats)
             .Include(b => b.Passengers)
             .FirstOrDefaultAsync(b => b.BookingCode == bookingCode &&
-                b.HoldToken != null &&
-                _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken && h.OwnerIdentifier == ownerIdentifier), ct);
+                (b.OwnerIdentifier == ownerIdentifier ||
+                 (b.HoldToken != null &&
+                  _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken && h.OwnerIdentifier == ownerIdentifier))), ct);
     }
 
     public async Task<List<Booking>> GetBookingsByPhoneAsync(string phone, string ownerIdentifier, CancellationToken ct = default)
@@ -651,9 +655,10 @@ public class BookingRepository : IBookingRepository
             .Include(b => b.BookingSeats)
             .Include(b => b.Passengers)
             .Where(b => b.PassengerPhone == phone &&
-                        b.HoldToken != null &&
-                        _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken &&
-                                                   h.OwnerIdentifier == ownerIdentifier))
+                        (b.OwnerIdentifier == ownerIdentifier ||
+                         (b.HoldToken != null &&
+                          _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken &&
+                                                     h.OwnerIdentifier == ownerIdentifier))))
             .OrderByDescending(b => b.CreatedAt)
             .ToListAsync(ct);
     }

@@ -9,6 +9,7 @@ using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Services;
+using Tripgo.Application.Services.Temporary;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
 using Tripgo.Infrastructure.Persistence;
@@ -997,4 +998,781 @@ public class BookingCoreTests : IAsyncLifetime
         Assert.Single(seatHistory, bs => !bs.IsActive); // Expired booking seat preserved
         Assert.Single(seatHistory, bs => bs.IsActive);  // New active booking seat
     }
+
+    // -------------------------------------------------------------
+    // TEST 14: Direct booking ownership survives SeatHold expiration or deletion
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test14_DirectBookingOwnership_AllowsAccessAndCancellation_EvenIfSeatHoldsAreDeleted()
+    {
+        string owner = $"OWNER-{Guid.NewGuid():N}";
+        string intruder = $"INTRUDER-{Guid.NewGuid():N}";
+        string bookingCode;
+        long bookingId;
+        long tripId;
+
+        await using (var setupContext = CreateIsolatedContext())
+        {
+            var trip = await CreateTestTripAsync(setupContext, isDemo: true, codePrefix: "OWNR");
+            tripId = trip.Id;
+            var repo = new BookingRepository(setupContext);
+            var service = CreateService(repo, owner);
+            await service.EnsureDemoTripInventoryAsync(trip.Id);
+            var seat = (await service.GetSeatsForTripAsync(trip.Id)).First();
+
+            var holdToken = $"HOLD-{Guid.NewGuid():N}";
+            var hold = await service.HoldSeatsAsync(new SeatHoldRequestDto
+            {
+                TripId = trip.Id,
+                SeatCodes = new List<string> { seat.SeatCode },
+                ExistingHoldToken = holdToken,
+                OwnerIdentifier = owner,
+                HoldMinutes = 10
+            });
+            Assert.True(hold.Success);
+
+            var bookResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+            {
+                TripId = trip.Id,
+                HoldToken = holdToken,
+                OwnerIdentifier = owner,
+                SeatCodes = new List<string> { seat.SeatCode },
+                PassengerName = "Nguyễn Văn Chủ",
+                PassengerPhone = "0912345678"
+            });
+            Assert.True(bookResult.Success);
+            bookingCode = bookResult.BookingCode!;
+        }
+
+        // Delete all SeatHolds associated with this trip to simulate expiration and cleanup
+        await using (var deleteContext = CreateIsolatedContext())
+        {
+            var tripSeats = await deleteContext.TripSeats.Where(s => s.TripId == tripId).Select(s => s.Id).ToListAsync();
+            await deleteContext.SeatHolds.Where(h => tripSeats.Contains(h.TripSeatId)).ExecuteDeleteAsync();
+
+            var verifyBooking = await deleteContext.Bookings.FirstAsync(b => b.BookingCode == bookingCode);
+            Assert.Equal(owner, verifyBooking.OwnerIdentifier);
+            bookingId = verifyBooking.Id;
+        }
+
+        // Legitimate owner retrieves booking despite absent SeatHold
+        await using (var ownerContext = CreateIsolatedContext())
+        {
+            var repo = new BookingRepository(ownerContext);
+            var service = CreateService(repo, owner);
+
+            var booking = await service.GetBookingByCodeAsync(bookingCode);
+            Assert.NotNull(booking);
+            Assert.Equal(bookingCode, booking.BookingCode);
+            Assert.Equal("Nguyễn Văn Chủ", booking.PassengerName);
+
+            var byPhone = await service.GetBookingsByPhoneAsync("0912345678");
+            Assert.Contains(byPhone, b => b.BookingCode == bookingCode);
+        }
+
+        // Unauthorized session cannot retrieve or cancel
+        await using (var intruderContext = CreateIsolatedContext())
+        {
+            var repo = new BookingRepository(intruderContext);
+            var service = CreateService(repo, intruder);
+
+            var booking = await service.GetBookingByCodeAsync(bookingCode);
+            Assert.Null(booking);
+
+            var cancelAttempt = await service.CancelBookingAsync(bookingId, "Kẻ lạ muốn hủy");
+            Assert.False(cancelAttempt);
+        }
+
+        // Legitimate owner can cancel directly
+        await using (var cancelContext = CreateIsolatedContext())
+        {
+            var repo = new BookingRepository(cancelContext);
+            var service = CreateService(repo, owner);
+
+            var cancelResult = await service.CancelBookingAsync(bookingId, "Chủ vé hủy trực tiếp");
+            Assert.True(cancelResult);
+
+            var cancelledBooking = await cancelContext.Bookings.FirstAsync(b => b.BookingCode == bookingCode);
+            Assert.Equal(BookingStatus.Cancelled, cancelledBooking.Status);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // TEST 15: Multi-passenger booking persists detailed passenger records
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test15_MultiPassengerBooking_PersistsAllPassengerRecords()
+    {
+        string owner = $"OWNER-MULTI-{Guid.NewGuid():N}";
+        string bookingCode;
+
+        await using (var context = CreateIsolatedContext())
+        {
+            var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "PASS");
+            var repo = new BookingRepository(context);
+            var service = CreateService(repo, owner);
+            await service.EnsureDemoTripInventoryAsync(trip.Id);
+            var seats = (await service.GetSeatsForTripAsync(trip.Id)).Take(2).ToList();
+            var seatCodes = seats.Select(s => s.SeatCode).ToList();
+
+            var holdToken = $"HOLD-{Guid.NewGuid():N}";
+            var hold = await service.HoldSeatsAsync(new SeatHoldRequestDto
+            {
+                TripId = trip.Id,
+                SeatCodes = seatCodes,
+                ExistingHoldToken = holdToken,
+                OwnerIdentifier = owner,
+                HoldMinutes = 10
+            });
+            Assert.True(hold.Success);
+
+            var passengers = new List<BookingPassengerDto>
+            {
+                new()
+                {
+                    FullName = "Nguyễn Văn Đại Diện",
+                    PhoneNumber = "0901112233",
+                    Email = "daidien@test.com",
+                    IdentityCard = "001200001111",
+                    IsPrimaryContact = true,
+                    SeatCode = seatCodes[0]
+                },
+                new()
+                {
+                    FullName = "Trần Thị Đi Cùng",
+                    PhoneNumber = "0904445566",
+                    Email = "dicung@test.com",
+                    IdentityCard = "001200002222",
+                    IsPrimaryContact = false,
+                    SeatCode = seatCodes[1]
+                }
+            };
+
+            var bookResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+            {
+                TripId = trip.Id,
+                HoldToken = holdToken,
+                OwnerIdentifier = owner,
+                SeatCodes = seatCodes,
+                PassengerName = "Nguyễn Văn Đại Diện",
+                PassengerPhone = "0901112233",
+                PassengerEmail = "daidien@test.com",
+                Passengers = passengers
+            });
+
+            Assert.True(bookResult.Success);
+            bookingCode = bookResult.BookingCode!;
+        }
+
+        // Verify persistence in DB and retrieval through service
+        await using (var verifyContext = CreateIsolatedContext())
+        {
+            var repo = new BookingRepository(verifyContext);
+            var service = CreateService(repo, owner);
+
+            var bookingDetail = await service.GetBookingByCodeAsync(bookingCode);
+            Assert.NotNull(bookingDetail);
+            Assert.Equal(2, bookingDetail.Passengers.Count);
+
+            var primary = bookingDetail.Passengers.First(p => p.IsPrimaryContact);
+            Assert.Equal("Nguyễn Văn Đại Diện", primary.FullName);
+            Assert.Equal("0901112233", primary.PhoneNumber);
+            Assert.Equal("001200001111", primary.IdentityCard);
+
+            var companion = bookingDetail.Passengers.First(p => !p.IsPrimaryContact);
+            Assert.Equal("Trần Thị Đi Cùng", companion.FullName);
+            Assert.Equal("0904445566", companion.PhoneNumber);
+            Assert.Equal("001200002222", companion.IdentityCard);
+
+            // Directly query BookingPassengers table
+            var dbPassengers = await verifyContext.BookingPassengers
+                .Where(p => p.Booking.BookingCode == bookingCode)
+                .OrderBy(p => p.IsPrimaryContact ? 0 : 1)
+                .ToListAsync();
+            Assert.Equal(2, dbPassengers.Count);
+            Assert.True(dbPassengers[0].IsPrimaryContact);
+            Assert.Equal("Nguyễn Văn Đại Diện", dbPassengers[0].FullName);
+            Assert.False(dbPassengers[1].IsPrimaryContact);
+            Assert.Equal("Trần Thị Đi Cùng", dbPassengers[1].FullName);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // TEST 16: Server-authoritative pricing correctly separates base and surcharge amounts
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test16_ServerAuthoritativePricing_WithVipSeatSurcharge_CorrectlySeparatesBaseAndSurcharge()
+    {
+        string owner = $"OWNER-PRICE-{Guid.NewGuid():N}";
+        string bookingCode;
+        decimal tripBasePrice = 300_000m;
+        decimal vipPrice = 380_000m; // 80,000 surcharge
+
+        await using (var context = CreateIsolatedContext())
+        {
+            var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "VIP");
+            trip.BasePrice = tripBasePrice;
+            await context.SaveChangesAsync();
+
+            var repo = new BookingRepository(context);
+            var service = CreateService(repo, owner);
+            await service.EnsureDemoTripInventoryAsync(trip.Id);
+
+            var seats = await context.TripSeats.Where(s => s.TripId == trip.Id).Take(2).ToListAsync();
+            seats[0].Price = tripBasePrice; // Standard seat
+            seats[1].Price = vipPrice;      // VIP seat with 80,000 surcharge
+            await context.SaveChangesAsync();
+
+            var seatCodes = seats.Select(s => s.SeatCode).ToList();
+            var holdToken = $"HOLD-{Guid.NewGuid():N}";
+            var hold = await service.HoldSeatsAsync(new SeatHoldRequestDto
+            {
+                TripId = trip.Id,
+                SeatCodes = seatCodes,
+                ExistingHoldToken = holdToken,
+                OwnerIdentifier = owner,
+                HoldMinutes = 10
+            });
+            Assert.True(hold.Success);
+
+            var bookResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+            {
+                TripId = trip.Id,
+                HoldToken = holdToken,
+                OwnerIdentifier = owner,
+                SeatCodes = seatCodes,
+                PassengerName = "Nguyễn VIP",
+                PassengerPhone = "0988112233",
+                HasInsurance = false
+            });
+
+            Assert.True(bookResult.Success);
+            bookingCode = bookResult.BookingCode!;
+            Assert.Equal(680_000m, bookResult.TotalAmount); // 300,000 + 380,000
+        }
+
+        await using (var verifyContext = CreateIsolatedContext())
+        {
+            var booking = await verifyContext.Bookings.FirstAsync(b => b.BookingCode == bookingCode);
+            Assert.Equal(600_000m, booking.BaseAmount);      // 2 * 300,000
+            Assert.Equal(80_000m, booking.SurchargeAmount);  // VIP surcharge
+            Assert.Equal(0m, booking.InsuranceAmount);       // No unsupported charges
+            Assert.Equal(680_000m, booking.TotalAmount);     // Server authoritative sum
+        }
+    }
+
+    // -------------------------------------------------------------
+    // TEST 17: Booking DTO validation rejects invalid contact and passenger input
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test17_BookingDtoValidation_RejectsInvalidInput()
+    {
+        string owner = $"OWNER-VAL-{Guid.NewGuid():N}";
+
+        await using var context = CreateIsolatedContext();
+        var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "VAL");
+        var repo = new BookingRepository(context);
+        var service = CreateService(repo, owner);
+        await service.EnsureDemoTripInventoryAsync(trip.Id);
+        var seats = (await service.GetSeatsForTripAsync(trip.Id)).Take(2).ToList();
+        var seatCodes = seats.Select(s => s.SeatCode).ToList();
+
+        var holdToken = $"HOLD-{Guid.NewGuid():N}";
+        var hold = await service.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = seatCodes,
+            ExistingHoldToken = holdToken,
+            OwnerIdentifier = owner,
+            HoldMinutes = 10
+        });
+        Assert.True(hold.Success);
+
+        // Case 1: Empty passenger name
+        var emptyNameResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "",
+            PassengerPhone = "0912345678"
+        });
+        Assert.False(emptyNameResult.Success);
+        Assert.Contains("họ tên", emptyNameResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 2: Invalid phone
+        var invalidPhoneResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "123"
+        });
+        Assert.False(invalidPhoneResult.Success);
+        Assert.Contains("số điện thoại", invalidPhoneResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 3: Mismatched passenger count in multi-passenger DTO
+        var mismatchedPassengerResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes, // 2 seats
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678",
+            Passengers = new List<BookingPassengerDto>
+            {
+                new() { FullName = "Chỉ Một Người", PhoneNumber = "0912345678" } // Only 1 passenger for 2 seats
+            }
+        });
+        Assert.False(mismatchedPassengerResult.Success);
+        Assert.Contains("số lượng", mismatchedPassengerResult.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // -------------------------------------------------------------
+    // TEST 18: Expiration routine safely expires unpaid bookings and preserves confirmed ones
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test18_ExpirationRoutine_SafelyExpiresUnpaidBookings_AndLeavesPaidBookingsUntouched()
+    {
+        string owner = $"OWNER-EXP-{Guid.NewGuid():N}";
+        long tripId;
+        string expiredBookingCode;
+        string confirmedBookingCode;
+
+        await using (var context = CreateIsolatedContext())
+        {
+            var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "EXPR");
+            tripId = trip.Id;
+            var repo = new BookingRepository(context);
+            var service = CreateService(repo, owner);
+            await service.EnsureDemoTripInventoryAsync(tripId);
+            var seats = (await service.GetSeatsForTripAsync(tripId)).Take(2).ToList();
+
+            // Booking 1: Will be set to past ExpiresAt (should expire)
+            var holdToken1 = $"HOLD-{Guid.NewGuid():N}";
+            await service.HoldSeatsAsync(new SeatHoldRequestDto
+            {
+                TripId = tripId,
+                SeatCodes = new List<string> { seats[0].SeatCode },
+                ExistingHoldToken = holdToken1,
+                OwnerIdentifier = owner,
+                HoldMinutes = 10
+            });
+            var b1Result = await service.CreateBookingAsync(new CreateBookingRequestDto
+            {
+                TripId = tripId,
+                HoldToken = holdToken1,
+                OwnerIdentifier = owner,
+                SeatCodes = new List<string> { seats[0].SeatCode },
+                PassengerName = "Khách Hết Hạn",
+                PassengerPhone = "0911223344"
+            });
+            Assert.True(b1Result.Success);
+            expiredBookingCode = b1Result.BookingCode!;
+
+            // Booking 2: Will be marked Confirmed and Paid (should NEVER expire)
+            var holdToken2 = $"HOLD-{Guid.NewGuid():N}";
+            await service.HoldSeatsAsync(new SeatHoldRequestDto
+            {
+                TripId = tripId,
+                SeatCodes = new List<string> { seats[1].SeatCode },
+                ExistingHoldToken = holdToken2,
+                OwnerIdentifier = owner,
+                HoldMinutes = 10
+            });
+            var b2Result = await service.CreateBookingAsync(new CreateBookingRequestDto
+            {
+                TripId = tripId,
+                HoldToken = holdToken2,
+                OwnerIdentifier = owner,
+                SeatCodes = new List<string> { seats[1].SeatCode },
+                PassengerName = "Khách Đã Thanh Toán",
+                PassengerPhone = "0988776655"
+            });
+            Assert.True(b2Result.Success);
+            confirmedBookingCode = b2Result.BookingCode!;
+
+            // Adjust in DB: set Booking 1 to expired in past, set Booking 2 to Confirmed/Paid
+            var dbB1 = await context.Bookings.FirstAsync(b => b.BookingCode == expiredBookingCode);
+            dbB1.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+
+            var dbB2 = await context.Bookings.FirstAsync(b => b.BookingCode == confirmedBookingCode);
+            dbB2.Status = BookingStatus.Confirmed;
+            dbB2.PaymentStatus = PaymentStatus.Paid;
+            dbB2.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+
+            await context.SaveChangesAsync();
+        }
+
+        // Run expiration routine
+        await using (var expireContext = CreateIsolatedContext())
+        {
+            var repo = new BookingRepository(expireContext);
+            await repo.ExpireStaleBookingsAsync();
+        }
+
+        // Verify state
+        await using (var verifyContext = CreateIsolatedContext())
+        {
+            var b1 = await verifyContext.Bookings
+                .Include(b => b.BookingSeats)
+                .FirstAsync(b => b.BookingCode == expiredBookingCode);
+            Assert.Equal(BookingStatus.Expired, b1.Status);
+            Assert.False(b1.BookingSeats.First().IsActive);
+
+            var b2 = await verifyContext.Bookings
+                .Include(b => b.BookingSeats)
+                .FirstAsync(b => b.BookingCode == confirmedBookingCode);
+            Assert.Equal(BookingStatus.Confirmed, b2.Status);
+            Assert.Equal(PaymentStatus.Paid, b2.PaymentStatus);
+            Assert.True(b2.BookingSeats.First().IsActive);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // TEST 19: TripService multi-passenger booking integration
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test19_TripService_MultiPassengerBookingFlow_EndToEndIntegration()
+    {
+        string owner = $"OWNER-SVC-{Guid.NewGuid():N}";
+        long tripId;
+
+        await using var context = CreateIsolatedContext();
+        var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "SVC");
+        tripId = trip.Id;
+        var tripRepo = new TripRepository(context);
+        var bookingRepo = new BookingRepository(context);
+        var bookingService = CreateService(bookingRepo, owner);
+        await bookingService.EnsureDemoTripInventoryAsync(tripId);
+        var store = new InMemoryTemporaryBookingStore();
+        var tripService = new TripService(tripRepo, store, bookingService);
+
+        var seats = (await bookingService.GetSeatsForTripAsync(tripId)).Take(2).ToList();
+        var seatCodes = seats.Select(s => s.SeatCode).ToList();
+
+        var customerInfo = new CustomerBookingInfoDto
+        {
+            Name = "Lê Người Lớn",
+            Phone = "0933557799",
+            Email = "nguoilon@test.com",
+            OwnerIdentifier = owner,
+            HasInsurance = false,
+            Passengers = new List<BookingPassengerDto>
+            {
+                new()
+                {
+                    FullName = "Lê Người Lớn",
+                    PhoneNumber = "0933557799",
+                    Email = "nguoilon@test.com",
+                    IsPrimaryContact = true,
+                    SeatCode = seatCodes[0]
+                },
+                new()
+                {
+                    FullName = "Lê Bé Nhỏ",
+                    PhoneNumber = "0933557788",
+                    IsPrimaryContact = false,
+                    SeatCode = seatCodes[1]
+                }
+            }
+        };
+
+        var bookSuccess = await tripService.BookSeatsAsync(tripId, seatCodes, customerInfo);
+        Assert.True(bookSuccess);
+        Assert.False(string.IsNullOrEmpty(customerInfo.BookingCode));
+
+        // Retrieve through TripService
+        var booking = await tripService.GetBookingByCodeAsync(customerInfo.BookingCode);
+        Assert.NotNull(booking);
+        Assert.Equal(2, booking.Passengers.Count);
+        Assert.Contains(booking.Passengers, p => p.FullName == "Lê Người Lớn" && p.IsPrimaryContact);
+        Assert.Contains(booking.Passengers, p => p.FullName == "Lê Bé Nhỏ" && !p.IsPrimaryContact);
+
+        var byPhone = await tripService.GetBookingsByPhoneAsync("0933557799");
+        Assert.Single(byPhone, b => b.BookingCode == customerInfo.BookingCode);
+    }
+
+    // -------------------------------------------------------------
+    // TEST 20: Passenger Validation Edge Cases
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test20_PassengerValidation_DuplicateSeatAssignmentAndEmailFormat_Rejections()
+    {
+        string owner = $"OWNER-VAL2-{Guid.NewGuid():N}";
+        await using var context = CreateIsolatedContext();
+        var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "VAL2");
+        var repo = new BookingRepository(context);
+        var service = CreateService(repo, owner);
+        await service.EnsureDemoTripInventoryAsync(trip.Id);
+        var seats = (await service.GetSeatsForTripAsync(trip.Id)).Take(2).ToList();
+        var seatCodes = seats.Select(s => s.SeatCode).ToList();
+
+        var holdToken = $"HOLD-{Guid.NewGuid():N}";
+        var hold = await service.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = seatCodes,
+            ExistingHoldToken = holdToken,
+            OwnerIdentifier = owner,
+            HoldMinutes = 10
+        });
+        Assert.True(hold.Success);
+
+        // Case 1: Duplicate seat codes in request
+        var duplicateSeatCodes = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = new List<string> { seatCodes[0], seatCodes[0] },
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678"
+        });
+        Assert.False(duplicateSeatCodes.Success);
+        Assert.Contains("trùng lặp", duplicateSeatCodes.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 2: Passenger assigned a seat code not in request SeatCodes
+        var seatNotInRequest = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678",
+            Passengers = new List<BookingPassengerDto>
+            {
+                new() { FullName = "Khách 1", PhoneNumber = "0912345678", SeatCode = seatCodes[0] },
+                new() { FullName = "Khách 2", PhoneNumber = "0912345679", SeatCode = "NON-EXISTENT" }
+            }
+        });
+        Assert.False(seatNotInRequest.Success);
+        Assert.Contains("không nằm trong danh sách", seatNotInRequest.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 3: Two passengers assigned the same seat code
+        var duplicateAssignment = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678",
+            Passengers = new List<BookingPassengerDto>
+            {
+                new() { FullName = "Khách 1", PhoneNumber = "0912345678", SeatCode = seatCodes[0] },
+                new() { FullName = "Khách 2", PhoneNumber = "0912345679", SeatCode = seatCodes[0] }
+            }
+        });
+        Assert.False(duplicateAssignment.Success);
+        Assert.Contains("trùng lặp", duplicateAssignment.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 4: Companion passenger has short full name (< 2 chars)
+        var shortNameResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678",
+            Passengers = new List<BookingPassengerDto>
+            {
+                new() { FullName = "Khách 1", PhoneNumber = "0912345678", SeatCode = seatCodes[0] },
+                new() { FullName = "A", PhoneNumber = "0912345679", SeatCode = seatCodes[1] }
+            }
+        });
+        Assert.False(shortNameResult.Success);
+        Assert.Contains("2 ký tự", shortNameResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 5: Companion passenger has invalid email format
+        var invalidEmailResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678",
+            Passengers = new List<BookingPassengerDto>
+            {
+                new() { FullName = "Khách 1", PhoneNumber = "0912345678", SeatCode = seatCodes[0] },
+                new() { FullName = "Khách 2", PhoneNumber = "0912345679", Email = "invalid-email", SeatCode = seatCodes[1] }
+            }
+        });
+        Assert.False(invalidEmailResult.Success);
+        Assert.Contains("email", invalidEmailResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Case 6: Primary contact auto-correction when multiple passengers claim primary contact
+        var multiPrimaryResult = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = holdToken,
+            SeatCodes = seatCodes,
+            PassengerName = "Nguyễn Văn Test",
+            PassengerPhone = "0912345678",
+            Passengers = new List<BookingPassengerDto>
+            {
+                new() { FullName = "Khách 1", PhoneNumber = "0912345678", SeatCode = seatCodes[0], IsPrimaryContact = true },
+                new() { FullName = "Khách 2", PhoneNumber = "0912345679", SeatCode = seatCodes[1], IsPrimaryContact = true }
+            }
+        });
+        Assert.True(multiPrimaryResult.Success);
+        var detail = await service.GetBookingByCodeAsync(multiPrimaryResult.BookingCode!);
+        Assert.NotNull(detail);
+        Assert.Single(detail.Passengers, p => p.IsPrimaryContact);
+        Assert.Equal("Khách 1", detail.Passengers.Single(p => p.IsPrimaryContact).FullName);
+    }
+
+    // -------------------------------------------------------------
+    // TEST 21: Idempotent Cancellation and Unauthorized Cancellation Rejection
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test21_Cancellation_IdempotencyAndUnauthorizedRejection()
+    {
+        string ownerA = $"OWNER-A-{Guid.NewGuid():N}";
+        string ownerB = $"OWNER-B-{Guid.NewGuid():N}";
+
+        await using var context = CreateIsolatedContext();
+        var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "IDEM");
+        var repo = new BookingRepository(context);
+        var serviceA = CreateService(repo, ownerA);
+        var serviceB = CreateService(repo, ownerB);
+
+        await serviceA.EnsureDemoTripInventoryAsync(trip.Id);
+        var seat = (await serviceA.GetSeatsForTripAsync(trip.Id)).First();
+
+        var hold = await serviceA.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = new List<string> { seat.SeatCode },
+            HoldMinutes = 10
+        });
+        Assert.True(hold.Success);
+
+        var booking = await serviceA.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = hold.HoldToken!,
+            SeatCodes = new List<string> { seat.SeatCode },
+            PassengerName = "Chủ Đặt Chỗ A",
+            PassengerPhone = "0911223344"
+        });
+        Assert.True(booking.Success);
+
+        var bookingRecord = await context.Bookings.SingleAsync(b => b.BookingCode == booking.BookingCode);
+
+        // User B tries to cancel User A's booking -> must fail
+        var unauthorizedCancel = await serviceB.CancelBookingAsync(bookingRecord.Id, "Hacker B hủy trộm");
+        Assert.False(unauthorizedCancel);
+
+        // Booking status remains PendingPayment
+        await context.Entry(bookingRecord).ReloadAsync();
+        Assert.Equal(BookingStatus.PendingPayment, bookingRecord.Status);
+
+        // User A cancels legitimately -> must succeed
+        var legitimateCancel = await serviceA.CancelBookingAsync(bookingRecord.Id, "Hủy đổi lịch");
+        Assert.True(legitimateCancel);
+
+        // Idempotency: User A cancels again -> must return true without crashing or double-releasing
+        var idempotentCancel = await serviceA.CancelBookingAsync(bookingRecord.Id, "Hủy lần hai");
+        Assert.True(idempotentCancel);
+
+        // Seat is Available
+        var seatStatus = await context.TripSeats.AsNoTracking().SingleAsync(s => s.Id == seat.Id);
+        Assert.Equal(TripSeatStatus.Available, seatStatus.Status);
+    }
+
+    // -------------------------------------------------------------
+    // TEST 22: Booking Lookup Owner Isolation Enforced
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test22_BookingLookup_OwnerIsolation_Enforced()
+    {
+        string ownerA = $"OWNER-PRIV-A-{Guid.NewGuid():N}";
+        string ownerB = $"OWNER-PRIV-B-{Guid.NewGuid():N}";
+
+        await using var context = CreateIsolatedContext();
+        var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "PRIV");
+        var repo = new BookingRepository(context);
+        var serviceA = CreateService(repo, ownerA);
+        var serviceB = CreateService(repo, ownerB);
+
+        await serviceA.EnsureDemoTripInventoryAsync(trip.Id);
+        var seat = (await serviceA.GetSeatsForTripAsync(trip.Id)).First();
+
+        var hold = await serviceA.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = new List<string> { seat.SeatCode },
+            HoldMinutes = 10
+        });
+        Assert.True(hold.Success);
+
+        var booking = await serviceA.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = hold.HoldToken!,
+            SeatCodes = new List<string> { seat.SeatCode },
+            PassengerName = "Bảo Mật A",
+            PassengerPhone = "0988776655"
+        });
+        Assert.True(booking.Success);
+
+        // User A can look up by code and by phone
+        var lookupByCodeA = await serviceA.GetBookingByCodeAsync(booking.BookingCode!);
+        Assert.NotNull(lookupByCodeA);
+        Assert.Equal("Bảo Mật A", lookupByCodeA.PassengerName);
+
+        var lookupByPhoneA = await serviceA.GetBookingsByPhoneAsync("0988776655");
+        Assert.Single(lookupByPhoneA);
+
+        // User B CANNOT look up User A's booking by code
+        var lookupByCodeB = await serviceB.GetBookingByCodeAsync(booking.BookingCode!);
+        Assert.Null(lookupByCodeB);
+
+        // User B CANNOT look up User A's booking by phone
+        var lookupByPhoneB = await serviceB.GetBookingsByPhoneAsync("0988776655");
+        Assert.Empty(lookupByPhoneB);
+    }
+
+    // -------------------------------------------------------------
+    // TEST 23: Expired Hold Token Rejected at Booking Creation
+    // -------------------------------------------------------------
+    [Fact]
+    public async Task Test23_ExpiredHoldToken_RejectedAtBookingCreation()
+    {
+        string owner = $"OWNER-EXP-{Guid.NewGuid():N}";
+        await using var context = CreateIsolatedContext();
+        var trip = await CreateTestTripAsync(context, isDemo: true, codePrefix: "EXPH");
+        var repo = new BookingRepository(context);
+        var service = CreateService(repo, owner);
+
+        await service.EnsureDemoTripInventoryAsync(trip.Id);
+        var seat = (await service.GetSeatsForTripAsync(trip.Id)).First();
+
+        var hold = await service.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = new List<string> { seat.SeatCode },
+            HoldMinutes = 10
+        });
+        Assert.True(hold.Success);
+
+        // Artificially expire the hold in the database
+        var holdRecord = await context.SeatHolds.SingleAsync(h => h.HoldToken == hold.HoldToken);
+        holdRecord.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        await context.SaveChangesAsync();
+
+        // Attempt to create booking with the expired hold -> must fail
+        var result = await service.CreateBookingAsync(new CreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            HoldToken = hold.HoldToken!,
+            SeatCodes = new List<string> { seat.SeatCode },
+            PassengerName = "Khách Trễ Hạn",
+            PassengerPhone = "0944332211"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("hết hạn", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
+

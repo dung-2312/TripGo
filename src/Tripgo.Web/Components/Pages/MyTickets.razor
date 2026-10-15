@@ -49,8 +49,22 @@
                         <div><small>GIƯỜNG</small><b>@string.Join(", ", ticket.SeatCodes)</b></div>
                         <div><small>ĐIỂM ĐÓN</small><b>@ticket.SelectedPickupPoint</b></div>
                         <div><small>ĐIỂM TRẢ</small><b>@ticket.SelectedDropoffPoint</b></div>
-                        <div><small>BẢO HIỂM</small><b>@(ticket.HasInsurance ? $"Có · {ticket.InsuranceAmount:N0} đ" : "Không")</b></div>
+                        <div><small>PHỤ PHÍ GHẾ</small><b>@(ticket.SurchargeAmount > 0 ? $"{ticket.SurchargeAmount:N0} đ" : "0 đ")</b></div>
                     </div>
+                    @if (ticket.Passengers != null && ticket.Passengers.Count > 1)
+                    {
+                        <div class="mt-2 p-2 rounded" style="background: #f1f5f9; font-size: 12px;">
+                            <span class="text-secondary fw-bold d-block mb-1">DANH SÁCH TẤT CẢ HÀNH KHÁCH:</span>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var p in ticket.Passengers)
+                                {
+                                    <span class="badge bg-white text-dark border">
+                                        <i class="bi bi-person me-1"></i>@p.FullName (@p.PhoneNumber)@(p.IsPrimaryContact ? " [Đại diện]" : "")
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
                     <div class="boarding-note"><i class="bi bi-info-circle-fill"></i><span>Đây là thông tin đặt chỗ, không phải vé điện tử đã xác minh. TripGo chưa hỗ trợ thanh toán hoặc xác thực vé/QR.</span></div>
                 </div>
                 <aside class="ticket-qr-panel">

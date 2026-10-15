@@ -26,6 +26,12 @@ public class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .IsUnique()
             .HasFilter("[HoldToken] IS NOT NULL");
 
+        builder.Property(x => x.OwnerIdentifier)
+            .HasMaxLength(150);
+
+        builder.HasIndex(x => new { x.OwnerIdentifier, x.CreatedAt });
+        builder.HasIndex(x => new { x.PassengerPhone, x.OwnerIdentifier });
+
         builder.Property(x => x.PassengerName)
             .HasMaxLength(200)
             .IsRequired();

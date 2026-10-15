@@ -1,19 +1,28 @@
 -- ============================================================================
 -- SCRIPT 04: POST-UPDATE VERIFICATION AUDIT
 -- Project: Tripgo (Phase 2.5: Verified Transport Data Preparation)
--- Target Database: localhost\MSSQLSERVER01 / TripgoDb
--- Mode: READ-ONLY / AUDIT VERIFICATION
+-- Mode: SAFEGUARDED / READ-ONLY AUDIT VERIFICATION
 -- ============================================================================
-
-USE [TripgoDb];
-GO
 
 SET NOCOUNT ON;
 SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
 
+-- ============================================================================
+-- TARGET VERIFICATION
+-- ============================================================================
+DECLARE @EXPECTED_DATABASE SYSNAME = N'TripgoDb_IsolatedTest'; -- Default check target
+
+IF DB_NAME() NOT IN (N'TripgoDb', N'TripgoDb_IsolatedTest')
+BEGIN
+    DECLARE @TargetError NVARCHAR(256) = FORMATMESSAGE(N'TARGET VERIFICATION FAILED: Current database context is [%s]. Script must run against TripgoDb or TripgoDb_IsolatedTest.', DB_NAME());
+    RAISERROR(@TargetError, 16, 1);
+    RETURN;
+END;
+
 PRINT '====================================================================';
 PRINT 'TRIPGO PHASE 2.5: POST-UPDATE VERIFICATION AUDIT';
+PRINT 'Target Database Verified: ' + DB_NAME();
 PRINT 'Timestamp: ' + CONVERT(NVARCHAR(30), SYSDATETIMEOFFSET(), 126);
 PRINT '====================================================================';
 
