@@ -50,7 +50,8 @@ public sealed class BookingExpirationWorker : BackgroundService
             {
                 "20261008183111_Phase3A_PersistentBookingCore",
                 "20261008191552_Phase3A_BookingSafetyHardening",
-                "20261008192859_Phase3A_HoldOwnershipReleaseGate"
+                "20261008192859_Phase3A_HoldOwnershipReleaseGate",
+                "20261014142606_Phase3A_DirectBookingOwnership"
             };
             var missingMigrations = requiredMigrations
                 .Where(migration => !appliedMigrations.Contains(migration))
@@ -85,8 +86,8 @@ public sealed class BookingExpirationWorker : BackgroundService
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogCritical(exception, "Booking expiration stopped after an unexpected error; restart the application after resolving the issue.");
-            return false;
+            _logger.LogError(exception, "Booking expiration encountered an unhandled error during cleanup; will retry on the next interval.");
+            return true;
         }
     }
 }

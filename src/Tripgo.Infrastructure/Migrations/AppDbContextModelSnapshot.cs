@@ -77,6 +77,10 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Property<bool>("IsDemoBooking")
                         .HasColumnType("bit");
 
+                    b.Property<string>("OwnerIdentifier")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
                     b.Property<string>("PassengerEmail")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -134,7 +138,11 @@ namespace Tripgo.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
+                    b.HasIndex("OwnerIdentifier", "CreatedAt");
+
                     b.HasIndex("PassengerPhone", "CreatedAt");
+
+                    b.HasIndex("PassengerPhone", "OwnerIdentifier");
 
                     b.HasIndex("TripId", "Status");
 

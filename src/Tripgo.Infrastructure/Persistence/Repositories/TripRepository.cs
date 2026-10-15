@@ -190,6 +190,7 @@ public class TripRepository : ITripRepository
                 .ThenInclude(b => b.BusType)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.SeatLayout)
+            .Include(t => t.Seats)
             .OrderByDescending(t => t.DepartureTime)
             .ToListAsync(ct);
     }

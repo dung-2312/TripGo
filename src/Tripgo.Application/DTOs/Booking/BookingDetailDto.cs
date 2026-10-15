@@ -30,4 +30,5 @@ public class BookingDetailDto
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public bool IsDemoBooking { get; set; } = true;
+    public List<BookingPassengerDto> Passengers { get; set; } = new();
 }
