@@ -1,12 +1,16 @@
 @page "/search-trips"
 @page "/search"
+@page "/tim-chuyen-xe"
 @page "/"
 @layout Tripgo.Web.Components.Layout.CustomerLayout
 @using Tripgo.Application.DTOs
 @using Tripgo.Application.Interfaces
 @inject ITripService TripService
+@inject IBookingService BookingService
+@inject IPaymentService PaymentService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>TripGo - Đặt vé xe khách trực tuyến toàn quốc</PageTitle>
@@ -583,9 +587,32 @@
                                                 }
                                             </div>
 
+                                        @if (bookingStep >= 1 && bookingStep <= 3 && !string.IsNullOrEmpty(countdownText))
+                                        {
+                                            <div class="alert alert-primary py-2 px-3 rounded-3 d-flex justify-content-between align-items-center mb-3 shadow-sm border-primary">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <i class="bi bi-clock-history fs-5 text-danger"></i>
+                                                    <div>
+                                                        <strong class="text-dark small">Thời gian giữ chỗ còn lại:</strong>
+                                                        <span class="badge bg-danger fs-6 ms-2 font-monospace px-2 py-1">@countdownText</span>
+                                                    </div>
+                                                </div>
+                                                <span class="small text-muted d-none d-md-inline">
+                                                    <i class="bi bi-shield-check text-success me-1"></i> Ghế của bạn đang được khóa 10 phút trên hệ thống máy chủ
+                                                </span>
+                                            </div>
+                                        }
+
                                         <!-- STEP 0: SƠ ĐỒ CHỌN GHẾ 2 TẦNG THỰC TẾ -->
                                         @if (bookingStep == 0)
                                         {
+                                            @if (!string.IsNullOrWhiteSpace(bookingError))
+                                            {
+                                                <div class="alert alert-warning py-2 small mb-3">
+                                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> @bookingError
+                                                </div>
+                                            }
+
                                             <!-- Chú thích ghế (Legend) -->
                                             <div class="d-flex flex-wrap gap-3 mb-3 small text-muted">
                                                 <div class="d-flex align-items-center gap-1">
@@ -655,8 +682,16 @@
                                                         <span class="small text-muted d-block">Tổng tiền vé:</span>
                                                         <strong class="fs-5 text-danger">@SeatTotal.ToString("N0") đ</strong>
                                                     </div>
-                                                    <button type="button" class="btn btn-primary fw-bold px-4" disabled="@(selectedSeats.Count == 0)" @onclick="() => bookingStep = 1">
-                                                        Tiếp tục: Điểm đón/trả <i class="bi bi-arrow-right ms-1"></i>
+                                                    <button type="button" class="btn btn-primary fw-bold px-4" disabled="@(selectedSeats.Count == 0 || isHoldingSeats)" @onclick="ProceedToPickupDropoff">
+                                                        @if (isHoldingSeats)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                                            <span>Đang giữ chỗ...</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>Tiếp tục: Điểm đón/trả</span> <i class="bi bi-arrow-right ms-1"></i>
+                                                        }
                                                     </button>
                                                 </div>
                                             </div>
@@ -702,7 +737,15 @@
                                                                             {
                                                                                 <span class="badge bg-secondary text-white me-1"><i class="bi bi-clock me-1"></i>@pt.Time</span>
                                                                             }
-                                                                            @pt.Name
+                                                                            @if (pt.Name.Contains("[SANDBOX]"))
+                                                                            {
+                                                                                <span class="badge bg-warning text-dark me-1" style="font-size: 0.68rem;"><i class="bi bi-cpu me-1"></i>SANDBOX</span>
+                                                                                @pt.Name.Replace("[SANDBOX]", "").Trim()
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                @pt.Name
+                                                                            }
                                                                         </div>
                                                                         <small class="text-muted d-block">@pt.Address</small>
                                                                     </div>
@@ -738,7 +781,15 @@
                                                                             {
                                                                                 <span class="badge bg-secondary text-white me-1"><i class="bi bi-clock me-1"></i>@pt.Time</span>
                                                                             }
-                                                                            @pt.Name
+                                                                            @if (pt.Name.Contains("[SANDBOX]"))
+                                                                            {
+                                                                                <span class="badge bg-warning text-dark me-1" style="font-size: 0.68rem;"><i class="bi bi-cpu me-1"></i>SANDBOX</span>
+                                                                                @pt.Name.Replace("[SANDBOX]", "").Trim()
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                @pt.Name
+                                                                            }
                                                                         </div>
                                                                         <small class="text-muted d-block">@pt.Address</small>
                                                                     </div>
@@ -909,15 +960,51 @@
                                                         </ul>
                                                     </div>
 
-                                                    <!-- Trạng thái cổng thanh toán thực tế (Honest development state) -->
-                                                    <div class="p-3 border rounded-3 bg-light">
-                                                        <div class="d-flex align-items-center gap-2 mb-2">
-                                                            <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i> Đang tích hợp cổng</span>
-                                                            <strong class="small text-secondary">Cổng thanh toán điện tử (VNPAY / MoMo / PayOS)</strong>
+                                                    <!-- CỔNG THANH TOÁN MÔ PHỎNG (SANDBOX ENVIRONMENT) -->
+                                                    <div class="p-3 border rounded-3 bg-light mb-3">
+                                                        <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <span class="badge bg-primary text-white"><i class="bi bi-wallet2 me-1"></i> Cổng Sandbox</span>
+                                                                <strong class="small text-dark">Phương thức thanh toán thử nghiệm</strong>
+                                                            </div>
+                                                            <span class="badge bg-warning text-dark"><i class="bi bi-cpu me-1"></i> Môi trường Sandbox</span>
                                                         </div>
-                                                        <p class="small text-muted mb-0">
-                                                            Để đảm bảo an toàn giao dịch, phương thức hiện tại là <strong>Giữ chỗ trước - Thanh toán trực tiếp tại nhà xe hoặc qua hướng dẫn của nhân viên tổng đài</strong>. Quý khách bấm <em>Xác nhận đặt giữ chỗ</em> để lưu thông tin chuyến xe.
+                                                        <p class="small text-muted mb-3">
+                                                            Hệ thống đang hoạt động trong chế độ thử nghiệm (Sandbox). Bạn có thể lựa chọn phương thức thanh toán và kịch bản thử nghiệm bên dưới để kiểm tra toàn trình:
                                                         </p>
+
+                                                        <!-- Chọn phương thức thanh toán -->
+                                                        <div class="d-flex flex-column gap-2 mb-3">
+                                                            <label class="p-2 border rounded-3 cursor-pointer bg-white d-flex align-items-center gap-2 @(selectedPaymentMethod == "SANDBOX_ATM" ? "border-primary bg-primary-subtle" : "")">
+                                                                <input type="radio" name="paymethod" checked="@(selectedPaymentMethod == "SANDBOX_ATM")" @onchange='() => selectedPaymentMethod = "SANDBOX_ATM"' />
+                                                                <div>
+                                                                    <strong class="small text-dark"><i class="bi bi-credit-card-2-front text-primary me-1"></i> Thẻ ATM / Tài khoản ngân hàng (Mô phỏng Sandbox)</strong>
+                                                                    <small class="text-muted d-block">Mô phỏng cổng thanh toán NAPAS / VNPAY</small>
+                                                                </div>
+                                                            </label>
+                                                            <label class="p-2 border rounded-3 cursor-pointer bg-white d-flex align-items-center gap-2 @(selectedPaymentMethod == "SANDBOX_EWALLET" ? "border-primary bg-primary-subtle" : "")">
+                                                                <input type="radio" name="paymethod" checked="@(selectedPaymentMethod == "SANDBOX_EWALLET")" @onchange='() => selectedPaymentMethod = "SANDBOX_EWALLET"' />
+                                                                <div>
+                                                                    <strong class="small text-dark"><i class="bi bi-phone text-success me-1"></i> Ví điện tử MoMo / ZaloPay / PayOS (Mô phỏng Sandbox)</strong>
+                                                                    <small class="text-muted d-block">Mô phỏng quét mã QR thanh toán ví điện tử</small>
+                                                                </div>
+                                                            </label>
+                                                        </div>
+
+                                                        <!-- Kịch bản thử nghiệm kết quả -->
+                                                        <div class="p-2 rounded-3 border bg-white">
+                                                            <span class="small fw-bold text-secondary d-block mb-1"><i class="bi bi-sliders me-1"></i> Kịch bản kiểm thử:</span>
+                                                            <div class="d-flex gap-3 flex-wrap">
+                                                                <label class="cursor-pointer small d-flex align-items-center gap-1 text-success fw-bold">
+                                                                    <input type="radio" name="paysim" checked="@(simulatePaymentSuccess)" @onchange="() => simulatePaymentSuccess = true" />
+                                                                    <span>Thanh toán thành công (Mô phỏng)</span>
+                                                                </label>
+                                                                <label class="cursor-pointer small d-flex align-items-center gap-1 text-danger fw-bold">
+                                                                    <input type="radio" name="paysim" checked="@(!simulatePaymentSuccess)" @onchange="() => simulatePaymentSuccess = false" />
+                                                                    <span>Thanh toán thất bại (Mô phỏng lỗi từ chối)</span>
+                                                                </label>
+                                                            </div>
+                                                        </div>
                                                     </div>
 
                                                     @if (!string.IsNullOrWhiteSpace(bookingError))
@@ -960,7 +1047,7 @@
                                                             <span>@BookingTotal.ToString("N0") đ</span>
                                                         </div>
                                                         <div class="p-2 bg-white rounded border small text-muted">
-                                                            <i class="bi bi-check2-circle text-success me-1"></i> Giữ chỗ trực tuyến miễn phí trong phiên làm việc.
+                                                            <i class="bi bi-check2-circle text-success me-1"></i> Thanh toán mô phỏng an toàn, không phát sinh chi phí thực tế.
                                                         </div>
                                                     </div>
                                                 </div>
@@ -968,50 +1055,61 @@
 
                                             <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top flex-wrap gap-2">
                                                 <BackButton Label="Quay lại thông tin khách" OnClick="() => bookingStep = 2" />
-                                                <button type="button" class="btn btn-success fw-bold px-4" disabled="@isBooking" @onclick="ConfirmBooking">
+                                                <button type="button" class="btn btn-success fw-bold px-4" disabled="@isBooking" @onclick="ExecutePaymentAndConfirm">
                                                     @if (isBooking)
                                                     {
                                                         <span class="spinner-border spinner-border-sm me-1"></span>
-                                                        <span>Đang xử lý đặt chỗ...</span>
+                                                        <span>Đang xử lý thanh toán sandbox...</span>
                                                     }
                                                     else
                                                     {
-                                                        <i class="bi bi-check-circle-fill me-1"></i>
-                                                        <span>Xác nhận đặt giữ chỗ</span>
+                                                        <i class="bi bi-credit-card-fill me-1"></i>
+                                                        <span>Thanh toán @BookingTotal.ToString("N0") đ & Xác nhận vé</span>
                                                     }
                                                 </button>
                                             </div>
                                         }
 
-                                        <!-- STEP 4: MÀN HÌNH XÁC NHẬN ĐẶT VÉ THÀNH CÔNG (NO JAVASCRIPT ALERT) -->
+                                        <!-- STEP 4: MÀN HÌNH XÁC NHẬN ĐẶT VÉ & THANH TOÁN THÀNH CÔNG (SANDBOX) -->
                                         @if (bookingStep == 4)
                                         {
                                             <div class="p-4 bg-white border border-success-subtle rounded-3 text-center my-2">
                                                 <div class="mb-3">
                                                     <i class="bi bi-check-circle-fill text-success" style="font-size: 3.5rem;"></i>
                                                 </div>
-                                                <h4 class="fw-bold text-success mb-1">Thông tin đặt chỗ đã được ghi nhận</h4>
+                                                <h4 class="fw-bold text-success mb-1">Xác nhận đặt vé & thanh toán thành công</h4>
                                                 <p class="text-muted small mb-3">
-                                                    Đây là đặt chỗ đang chờ thanh toán, chưa phải vé hợp lệ. TripGo chưa hỗ trợ thanh toán hoặc xác thực vé điện tử.
+                                                    Đơn đặt chỗ của bạn đã được thanh toán và xác nhận hoàn tất trong môi trường mô phỏng (Sandbox).
                                                 </p>
 
-                                                <div class="d-inline-block p-3 bg-light rounded-3 border mb-3 text-start" style="min-width: 320px; max-width: 500px;">
-                                                    <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                                <div class="d-inline-block p-3 bg-light rounded-3 border mb-3 text-start" style="min-width: 320px; max-width: 520px; width: 100%;">
+                                                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                                                         <span class="text-muted small">Mã đặt chỗ:</span>
                                                         <strong class="fs-5 text-primary">@confirmedBookingCode</strong>
                                                     </div>
-                                                    <div class="small mb-1"><span class="text-muted">Hành khách:</span> <strong>@booker.Name</strong> (@booker.Phone)</div>
+                                                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                                                        <span class="text-muted small">Mã giao dịch:</span>
+                                                        <span class="badge bg-secondary font-monospace text-wrap">@confirmedTransactionCode</span>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                                                        <span class="text-muted small">Trạng thái thanh toán:</span>
+                                                        <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i> Đã thanh toán (Sandbox)</span>
+                                                    </div>
+                                                    <div class="small mb-1"><span class="text-muted">Phương thức:</span> <strong>@confirmedPaymentMethod</strong></div>
+                                                    <div class="small mb-1"><span class="text-muted">Hành khách đại diện:</span> <strong>@booker.Name</strong> (@booker.Phone)</div>
                                                     <div class="small mb-1"><span class="text-muted">Tuyến xe:</span> <strong>@confirmedTripName</strong></div>
-                                                    <div class="small mb-1"><span class="text-muted">Ghế đã chọn:</span> <strong class="badge bg-primary text-white">@confirmedSeatList</strong></div>
-                                                    <div class="small mb-2"><span class="text-muted">Tổng tiền:</span> <strong class="text-danger fw-bold">@confirmedTotalAmount.ToString("N0") đ</strong></div>
+                                                    <div class="small mb-1"><span class="text-muted">Điểm đón:</span> <strong>@(selectedPickupPoint?.Time) - @(selectedPickupPoint?.Name)</strong></div>
+                                                    <div class="small mb-1"><span class="text-muted">Điểm trả:</span> <strong>@(selectedDropoffPoint?.Time) - @(selectedDropoffPoint?.Name)</strong></div>
+                                                    <div class="small mb-1"><span class="text-muted">Ghế đã đặt:</span> <strong class="badge bg-primary text-white">@confirmedSeatList</strong></div>
+                                                    <div class="small mb-2"><span class="text-muted">Tổng tiền đã thanh toán:</span> <strong class="text-danger fw-bold">@confirmedTotalAmount.ToString("N0") đ</strong></div>
                                                     <div class="alert alert-warning py-2 px-3 small rounded-3 mb-0">
-                                                        <i class="bi bi-cpu me-1"></i> <strong>CHUYẾN XE MÔ PHỎNG — DEMO:</strong> Phiếu đặt chỗ này được tạo cho mục đích thử nghiệm hệ thống, không có giá trị thanh toán thực tế và không thay thế vé đi xe thật.
+                                                        <i class="bi bi-cpu me-1"></i> <strong>CHUYẾN XE MÔ PHỎNG — SANDBOX:</strong> Giao dịch được thực hiện trong môi trường thử nghiệm Sandbox, không phát sinh chi phí thực tế và không thay thế vé đi xe thật.
                                                     </div>
                                                 </div>
 
                                                 <div class="d-flex justify-content-center gap-2 flex-wrap">
                                                     <a href="@($"/my-tickets?code={confirmedBookingCode}")" class="btn btn-primary fw-bold px-4">
-                                                        <i class="bi bi-card-text me-1"></i> Xem thông tin đặt chỗ
+                                                        <i class="bi bi-ticket-perforated-fill me-1"></i> Xem trong Vé của tôi
                                                     </a>
                                                     <button type="button" class="btn btn-outline-secondary px-4" @onclick="CloseTripDetail">
                                                         <i class="bi bi-plus-circle me-1"></i> Đặt thêm chuyến khác
@@ -1209,6 +1307,9 @@
     [SupplyParameterFromQuery(Name = "date")]
     public string? QueryDate { get; set; }
 
+    [SupplyParameterFromQuery(Name = "tripId")]
+    public long? QueryTripId { get; set; }
+
     private List<LocationDto> locations = new();
     private List<RouteDto> popularRoutes = new();
     private List<TripSearchResultDto> searchResults = new();
@@ -1242,6 +1343,16 @@
     private string? confirmedSeatList;
     private string? confirmedTripName;
     private decimal confirmedTotalAmount;
+    private string? activeHoldToken;
+    private DateTimeOffset? holdExpiresAt;
+    private CancellationTokenSource? countdownCts;
+    private string countdownText = "10:00";
+    private bool isHoldingSeats;
+    private string selectedPaymentMethod = "SANDBOX_ATM";
+    private bool simulatePaymentSuccess = true;
+    private string? confirmedTransactionCode;
+    private string? confirmedPaymentMethod;
+    private string? confirmedPaymentStatus;
 
     private string sortOrder = "departure_asc";
     private CustomerBookingInfoDto booker = new();
@@ -1339,6 +1450,30 @@
                     searchModel.DepartureDate = parsedDate;
                 }
                 await HandleSearch();
+            }
+        }
+
+        if (QueryTripId.HasValue && QueryTripId.Value > 0)
+        {
+            var tripDetails = await TripService.GetTripDetailsAsync(QueryTripId.Value);
+            if (tripDetails != null)
+            {
+                var parts = tripDetails.RouteName.Split('-', StringSplitOptions.TrimEntries);
+                if (parts.Length >= 2)
+                {
+                    var qOrigin = locations.FirstOrDefault(l => l.Name.Contains(parts[0], StringComparison.OrdinalIgnoreCase));
+                    var qDest = locations.FirstOrDefault(l => l.Name.Contains(parts[1], StringComparison.OrdinalIgnoreCase));
+                    if (qOrigin != null && qDest != null)
+                    {
+                        originLocation = qOrigin;
+                        destLocation = qDest;
+                        searchModel.OriginLocationId = qOrigin.Id;
+                        searchModel.DestinationLocationId = qDest.Id;
+                        searchModel.DepartureDate = DateOnly.FromDateTime(tripDetails.DepartureTime.ToLocalTime().Date);
+                        await HandleSearch();
+                    }
+                }
+                await ToggleSelectTrip(QueryTripId.Value);
             }
         }
     }
@@ -1543,6 +1678,18 @@
 
     private void CloseTripDetail()
     {
+        if (!string.IsNullOrEmpty(activeHoldToken) && bookingStep < 4)
+        {
+            var tokenToRelease = activeHoldToken;
+            _ = Task.Run(async () =>
+            {
+                try { await BookingService.ReleaseHoldAsync(tokenToRelease); } catch { }
+            });
+        }
+
+        StopHoldCountdown();
+        activeHoldToken = null;
+        holdExpiresAt = null;
         selectedTripId = null;
         previewStopsTripId = null;
         selectedTripDetail = null;
@@ -1552,6 +1699,9 @@
         selectedDropoffPoint = null;
         bookingStep = 0;
         bookingError = null;
+        confirmedBookingCode = null;
+        confirmedTransactionCode = null;
+        confirmedPaymentMethod = null;
     }
 
     private void ToggleStopsPreview(long tripId)
@@ -1583,6 +1733,114 @@
             companionMap[seatCode] = p;
         }
         return p;
+    }
+
+    private async Task ProceedToPickupDropoff()
+    {
+        if (selectedTripDetail == null || !selectedTripDetail.IsBookable || selectedSeats.Count == 0 || isHoldingSeats) return;
+
+        isHoldingSeats = true;
+        bookingError = null;
+
+        try
+        {
+            var holdResult = await BookingService.HoldSeatsAsync(new SeatHoldRequestDto
+            {
+                TripId = selectedTripDetail.Id,
+                SeatCodes = selectedSeats.ToList(),
+                ExistingHoldToken = activeHoldToken,
+                HoldMinutes = 10
+            });
+
+            if (holdResult.Success && !string.IsNullOrEmpty(holdResult.HoldToken))
+            {
+                activeHoldToken = holdResult.HoldToken;
+                holdExpiresAt = holdResult.ExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(10);
+                StartHoldCountdown();
+                if (selectedPickupPoint == null && selectedTripDetail.PickupPoints.Count == 1)
+                {
+                    selectedPickupPoint = selectedTripDetail.PickupPoints[0];
+                }
+                if (selectedDropoffPoint == null && selectedTripDetail.DropoffPoints.Count == 1)
+                {
+                    selectedDropoffPoint = selectedTripDetail.DropoffPoints[0];
+                }
+                bookingStep = 1;
+            }
+            else
+            {
+                bookingError = holdResult.Message ?? "Một số ghế vừa được giữ chỗ bởi hành khách khác. Vui lòng chọn lại.";
+                selectedTripDetail = await TripService.GetTripDetailsAsync(selectedTripDetail.Id);
+                selectedSeats.Clear();
+                companionMap.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            bookingError = "Có lỗi xảy ra khi giữ chỗ: " + ex.Message;
+        }
+        finally
+        {
+            isHoldingSeats = false;
+        }
+    }
+
+    private void StartHoldCountdown()
+    {
+        StopHoldCountdown();
+        countdownCts = new CancellationTokenSource();
+        var token = countdownCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (!token.IsCancellationRequested && await timer.WaitForNextTickAsync(token))
+            {
+                if (holdExpiresAt == null) break;
+                var remaining = holdExpiresAt.Value - DateTimeOffset.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    countdownText = "00:00";
+                    await InvokeAsync(HandleHoldExpired);
+                    break;
+                }
+                else
+                {
+                    countdownText = $"{remaining.Minutes:D2}:{remaining.Seconds:D2}";
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }, token);
+    }
+
+    private void StopHoldCountdown()
+    {
+        try
+        {
+            countdownCts?.Cancel();
+            countdownCts?.Dispose();
+        }
+        catch { }
+        finally
+        {
+            countdownCts = null;
+        }
+    }
+
+    private async Task HandleHoldExpired()
+    {
+        StopHoldCountdown();
+        activeHoldToken = null;
+        holdExpiresAt = null;
+        bookingStep = 0;
+        bookingError = "Thời gian giữ chỗ 10 phút của bạn đã hết hạn. Hệ thống đã tự động giải phóng ghế, vui lòng chọn lại ghế.";
+        if (selectedTripDetail != null)
+        {
+            selectedTripDetail = await TripService.GetTripDetailsAsync(selectedTripDetail.Id);
+        }
+        selectedSeats.Clear();
+        companionMap.Clear();
+        StateHasChanged();
     }
 
     private void PrepareStep3()
@@ -1629,7 +1887,7 @@
         bookingStep = 3;
     }
 
-    private async Task ConfirmBooking()
+    private async Task ExecutePaymentAndConfirm()
     {
         if (selectedTripDetail == null || !selectedTripDetail.IsBookable || selectedSeats.Count == 0 || isBooking) return;
 
@@ -1637,6 +1895,13 @@
         {
             bookingError = "Vui lòng nhập đầy đủ họ tên và số điện thoại liên hệ.";
             bookingStep = 2;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(activeHoldToken))
+        {
+            bookingError = "Phiên giữ chỗ của bạn đã hết hạn. Vui lòng chọn lại ghế.";
+            bookingStep = 0;
             return;
         }
 
@@ -1652,35 +1917,98 @@
         booker.PickupPoint = booker.SelectedPickupPoint;
         booker.PickupPointId = selectedPickupPoint?.Id;
         booker.DropoffPointId = selectedDropoffPoint?.Id;
+
         try
         {
             var tripId = selectedTripDetail.Id;
             var seatsToBook = selectedSeats.ToList();
-            var success = await TripService.BookSeatsAsync(tripId, seatsToBook, booker);
-            if (success)
+
+            // 1. Ensure booking record exists in PendingPayment
+            if (string.IsNullOrWhiteSpace(confirmedBookingCode))
             {
-                confirmedBookingCode = booker.BookingCode;
+                var bookingReq = new CreateBookingRequestDto
+                {
+                    TripId = tripId,
+                    HoldToken = activeHoldToken,
+                    OwnerIdentifier = booker.OwnerIdentifier,
+                    SeatCodes = seatsToBook,
+                    PickupPointId = booker.PickupPointId,
+                    DropoffPointId = booker.DropoffPointId,
+                    PassengerName = booker.Name,
+                    PassengerPhone = booker.Phone,
+                    PassengerEmail = booker.Email,
+                    HasInsurance = false,
+                    Passengers = booker.Passengers
+                };
+
+                var createResult = await BookingService.CreateBookingAsync(bookingReq);
+                if (!createResult.Success || string.IsNullOrEmpty(createResult.BookingCode))
+                {
+                    bookingError = createResult.Message ?? "Không thể khởi tạo đơn đặt chỗ. Vui lòng thử lại.";
+                    if (createResult.Message?.Contains("hết hạn", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        await HandleHoldExpired();
+                    }
+                    return;
+                }
+
+                confirmedBookingCode = createResult.BookingCode;
+                confirmedTotalAmount = createResult.TotalAmount;
+            }
+
+            // 2. Process Sandbox Payment
+            var payReq = new ProcessPaymentRequestDto
+            {
+                BookingCode = confirmedBookingCode,
+                PaymentMethod = selectedPaymentMethod,
+                Amount = confirmedTotalAmount,
+                SimulateSuccess = simulatePaymentSuccess,
+                FailureReason = simulatePaymentSuccess ? null : "Giao dịch mô phỏng bị từ chối (Mã lỗi Sandbox E05: Số dư không đủ)."
+            };
+
+            var payResult = await PaymentService.ProcessPaymentAsync(payReq);
+            if (payResult.Success)
+            {
+                StopHoldCountdown();
+                confirmedTransactionCode = payResult.TransactionCode;
+                confirmedPaymentMethod = selectedPaymentMethod switch
+                {
+                    "SANDBOX_ATM" => "Thẻ ATM nội địa (Sandbox)",
+                    "SANDBOX_EWALLET" => "Ví điện tử MoMo/PayOS (Sandbox)",
+                    _ => "Mô phỏng Sandbox"
+                };
+                confirmedPaymentStatus = "ĐÃ THANH TOÁN (SANDBOX)";
                 confirmedSeatList = string.Join(", ", seatsToBook.OrderBy(s => s));
                 confirmedTripName = selectedTripDetail.RouteName;
-                confirmedTotalAmount = booker.TotalAmount;
-                bookingStep = 4; // Display confirmation card (NO ALERT)
+                bookingStep = 4; // Advance to confirmation card
 
-                searchResults = await TripService.SearchTripsAsync(searchModel);
-                ApplySort();
+                // Refresh search results
+                try
+                {
+                    searchResults = await TripService.SearchTripsAsync(searchModel);
+                    ApplySort();
+                }
+                catch { }
             }
             else
             {
-                bookingError = "Một số ghế vừa được giữ chỗ bởi hành khách khác. Vui lòng chọn lại ghế.";
-                selectedTripDetail = await TripService.GetTripDetailsAsync(tripId);
-                selectedSeats.Clear();
-                companionMap.Clear();
-                bookingStep = 0;
+                bookingError = "Thanh toán mô phỏng không thành công: " + payResult.Message +
+                               $" (Đơn đặt chỗ {confirmedBookingCode} vẫn được giữ. Bạn có thể chọn lại kịch bản thành công và thử lại trước khi hết thời gian giữ chỗ).";
             }
+        }
+        catch (Exception ex)
+        {
+            bookingError = "Có lỗi xảy ra trong quá trình xử lý: " + ex.Message;
         }
         finally
         {
             isBooking = false;
         }
+    }
+
+    public void Dispose()
+    {
+        StopHoldCountdown();
     }
 
     private static string GetRouteImage(RouteDto route)

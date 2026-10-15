@@ -1,5 +1,6 @@
 using System;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using System.Security.Cryptography.X509Certificates;
@@ -37,18 +38,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.ExpireTimeSpan = TimeSpan.FromDays(180);
         options.SlidingExpiration = true;
-        options.Events.OnRedirectToLogin = context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return Task.CompletedTask;
-        };
-        options.Events.OnRedirectToAccessDenied = context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return Task.CompletedTask;
-        };
+        options.LoginPath = "/login";
+        options.LogoutPath = "/auth/logout";
+        options.AccessDeniedPath = "/login";
     });
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<ISignInExchangeStore, SignInExchangeStore>();
 builder.Services.AddScoped<IBookingSessionContext, BookingSessionContext>();
 builder.Services.AddHostedService<BookingExpirationWorker>();
 
@@ -86,6 +81,45 @@ if (!string.IsNullOrWhiteSpace(keyRingPath))
 
 var app = builder.Build();
 
+// =========================================================================================
+// RUNTIME DATABASE SAFETY GUARD — FAIL-FAST ENFORCEMENT
+// =========================================================================================
+var rawConnectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+var connectionStringBuilder = new SqlConnectionStringBuilder(rawConnectionString);
+
+if (app.Environment.IsDevelopment())
+{
+    // In Development, the application must connect strictly to TripgoDb_IsolatedTest.
+    // If it targets TripgoDb or any other database, fail-fast and terminate immediately.
+    if (!string.Equals(connectionStringBuilder.InitialCatalog, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+    {
+        app.Logger.LogCritical(
+            "FAIL-FAST RUNTIME DATABASE SAFETY GUARD: Development runtime operations must connect EXCLUSIVELY to 'TripgoDb_IsolatedTest'. Target database '{Database}' is strictly prohibited. Process terminating immediately.",
+            connectionStringBuilder.InitialCatalog);
+        throw new InvalidOperationException(
+            $"FAIL-FAST SAFETY GUARD: Development runtime operations must connect EXCLUSIVELY to 'TripgoDb_IsolatedTest'. Target database '{connectionStringBuilder.InitialCatalog}' is strictly prohibited.");
+    }
+
+    // Verify actual DbContext connection target
+    using (var verifyScope = app.Services.CreateScope())
+    {
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var actualDbName = db.Database.GetDbConnection().Database;
+        if (!string.Equals(actualDbName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+        {
+            app.Logger.LogCritical(
+                "FAIL-FAST RUNTIME DATABASE SAFETY GUARD: DbContext connected to '{ActualDatabase}' instead of 'TripgoDb_IsolatedTest'. Process terminating.",
+                actualDbName);
+            throw new InvalidOperationException(
+                $"FAIL-FAST SAFETY GUARD: DbContext connected to prohibited database '{actualDbName}'. Expected 'TripgoDb_IsolatedTest'.");
+        }
+    }
+
+    app.Logger.LogInformation(
+        "FAIL-FAST SAFETY GUARD: Verified runtime database is strictly 'TripgoDb_IsolatedTest' (Server: {Server}).",
+        connectionStringBuilder.DataSource);
+}
+
 // Startup migration and seeding are restricted to an explicit local isolated-test target.
 if (builder.Configuration.GetValue<bool>("ApplyMigrationsOnStartup", false))
 {
@@ -119,6 +153,24 @@ if (builder.Configuration.GetValue<bool>("ApplyMigrationsOnStartup", false))
     }
 }
 
+// Ensure repeatable sandbox trips exist for development in isolated test database
+if (app.Environment.IsDevelopment())
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var sandboxService = scope.ServiceProvider.GetService<ISandboxFixtureService>();
+        if (sandboxService != null)
+        {
+            await sandboxService.EnsureSandboxTripsAsync();
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not run sandbox fixture check on startup.");
+    }
+}
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
@@ -133,6 +185,82 @@ app.UseAuthentication();
 app.UseMiddleware<BookingSessionMiddleware>();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.MapGet("/auth/exchange", async (
+    string? token,
+    ISignInExchangeStore store,
+    IAuthService authService,
+    HttpContext httpContext) =>
+{
+    if (string.IsNullOrWhiteSpace(token) || !store.TryRetrieve(token, out var data))
+    {
+        return Results.Redirect("/login?error=invalid_token");
+    }
+
+    if (!string.IsNullOrWhiteSpace(data.GuestOwnerIdentifier))
+    {
+        await authService.ClaimGuestBookingsAsync(data.UserId, data.GuestOwnerIdentifier);
+    }
+
+    var ownerIdentifier = data.GuestOwnerIdentifier;
+    if (string.IsNullOrWhiteSpace(ownerIdentifier) || !Guid.TryParseExact(ownerIdentifier, "N", out _))
+    {
+        ownerIdentifier = Guid.NewGuid().ToString("N");
+    }
+
+    var claims = new List<System.Security.Claims.Claim>
+    {
+        new(System.Security.Claims.ClaimTypes.NameIdentifier, data.UserId.ToString()),
+        new(System.Security.Claims.ClaimTypes.Name, data.FullName),
+        new(System.Security.Claims.ClaimTypes.Email, data.Email),
+        new(System.Security.Claims.ClaimTypes.MobilePhone, data.PhoneNumber ?? string.Empty),
+        new(System.Security.Claims.ClaimTypes.Role, data.Role),
+        new(BookingSessionContext.OwnerClaimType, ownerIdentifier)
+    };
+
+    var identity = new System.Security.Claims.ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    var principal = new System.Security.Claims.ClaimsPrincipal(identity);
+
+    var authProperties = new Microsoft.AspNetCore.Authentication.AuthenticationProperties
+    {
+        IsPersistent = data.RememberMe,
+        ExpiresUtc = data.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : null,
+        AllowRefresh = true
+    };
+
+    await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, authProperties);
+
+    var targetUrl = "/";
+    if (!string.IsNullOrWhiteSpace(data.ReturnUrl) &&
+        data.ReturnUrl.StartsWith('/') && !data.ReturnUrl.StartsWith("//") && !data.ReturnUrl.StartsWith("/\\"))
+    {
+        targetUrl = data.ReturnUrl;
+    }
+
+    return Results.Redirect(targetUrl);
+});
+
+app.MapGet("/auth/logout", async (HttpContext httpContext) =>
+{
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+    var newOwner = Guid.NewGuid().ToString("N");
+    var guestIdentity = new System.Security.Claims.ClaimsIdentity(
+        new[] { new System.Security.Claims.Claim(BookingSessionContext.OwnerClaimType, newOwner) },
+        CookieAuthenticationDefaults.AuthenticationScheme);
+
+    await httpContext.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        new System.Security.Claims.ClaimsPrincipal(guestIdentity),
+        new Microsoft.AspNetCore.Authentication.AuthenticationProperties
+        {
+            IsPersistent = true,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddDays(180),
+            AllowRefresh = true
+        });
+
+    return Results.Redirect("/login?loggedOut=1");
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

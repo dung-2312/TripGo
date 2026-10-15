@@ -12,6 +12,9 @@ public static class DependencyInjection
         services.AddSingleton<ITemporaryBookingStore, InMemoryTemporaryBookingStore>();
         services.AddScoped<ITripService, TripService>();
         services.AddScoped<IBookingService, BookingService>();
+        services.AddScoped<IPaymentService, PaymentService>();
+        services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
+        services.AddScoped<IAuthService, AuthService>();
 
         return services;
     }

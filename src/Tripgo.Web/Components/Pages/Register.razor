@@ -1,0 +1,329 @@
+@page "/register"
+@using Tripgo.Application.DTOs
+@using Tripgo.Application.Interfaces
+@using Tripgo.Web.Services
+@using System.Security.Claims
+@inject IAuthService AuthService
+@inject ISignInExchangeStore SignInExchangeStore
+@inject IBookingSessionContext BookingSessionContext
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Đăng ký tài khoản | TripGo</PageTitle>
+
+<div class="tg-auth-container py-4 py-md-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-xl-10">
+                <div class="tg-auth-card shadow-lg rounded-4 overflow-hidden border-0">
+                    <div class="row g-0">
+                        <!-- Left Hero Banner -->
+                        <div class="col-lg-5 tg-auth-hero d-none d-lg-flex flex-column justify-content-between p-5 text-white">
+                            <div>
+                                <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none text-white mb-4">
+                                    <div class="tg-hero-logo-box">
+                                        <svg viewBox="0 0 36 36" fill="none" class="tg-hero-logo" xmlns="http://www.w3.org/2000/svg">
+                                            <rect width="36" height="36" rx="9" fill="#ffd333" />
+                                            <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#0d5cb6" />
+                                            <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
+                                            <circle cx="13.5" cy="21.5" r="2" fill="#ffd333" />
+                                            <circle cx="22.5" cy="21.5" r="2" fill="#ffd333" />
+                                        </svg>
+                                    </div>
+                                    <span class="fs-3 fw-bold">Trip<span class="text-warning">Go</span></span>
+                                </a>
+
+                                <h2 class="fw-bold mb-3">Tạo tài khoản TripGo</h2>
+                                <p class="text-white-50 mb-4">
+                                    Gia nhập cộng đồng hơn 500.000 hành khách đặt vé thông minh trên toàn quốc.
+                                </p>
+
+                                <div class="tg-hero-features d-flex flex-column gap-3 mt-4">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="tg-feature-icon">
+                                            <i class="bi bi-clock-history text-warning"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">Tra cứu vé không cần mã</div>
+                                            <small class="text-white-50">Lịch sử đặt vé được lưu trữ vĩnh viễn</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="tg-feature-icon">
+                                            <i class="bi bi-gift-fill text-warning"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">Ưu đãi độc quyền</div>
+                                            <small class="text-white-50">Giảm giá chuyến xe và quà tặng dịp lễ</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="tg-feature-icon">
+                                            <i class="bi bi-phone-fill text-warning"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">Thông báo xuất bến tức thì</div>
+                                            <small class="text-white-50">Cập nhật biển số xe, vị trí đón theo thời gian thực</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 border-top border-white-25 small text-white-50">
+                                Bằng việc đăng ký, bạn đồng ý với <span class="text-white">Điều khoản sử dụng</span> của TripGo.
+                            </div>
+                        </div>
+
+                        <!-- Right Form Panel -->
+                        <div class="col-lg-7 p-4 p-md-5 bg-white d-flex flex-column justify-content-center">
+                            <div class="mb-4">
+                                <div class="d-lg-none d-flex align-items-center gap-2 mb-3">
+                                    <span class="fs-4 fw-bold text-primary">Trip<span class="text-warning">Go</span></span>
+                                </div>
+                                <h3 class="fw-bold text-dark mb-1">Đăng ký tài khoản mới</h3>
+                                <p class="text-muted small">Điền các thông tin dưới đây để tạo tài khoản thành viên</p>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(errorMessage))
+                            {
+                                <div class="alert alert-danger alert-dismissible fade show mb-4 rounded-3" role="alert">
+                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>@errorMessage
+                                    <button type="button" class="btn-close" @onclick="() => errorMessage = null" aria-label="Close"></button>
+                                </div>
+                            }
+
+                            <EditForm Model="@model" OnValidSubmit="HandleRegisterAsync">
+                                <DataAnnotationsValidator />
+
+                                <!-- Full Name -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small text-dark" for="regFullName">Họ và tên</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-person"></i>
+                                        </span>
+                                        <InputText id="regFullName" class="form-control border-start-0 ps-0"
+                                                   placeholder="Ví dụ: Nguyễn Văn A"
+                                                   @bind-Value="model.FullName" disabled="@isSubmitting" />
+                                    </div>
+                                    <ValidationMessage For="@(() => model.FullName)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Email Address -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small text-dark" for="regEmail">Địa chỉ Email</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-envelope"></i>
+                                        </span>
+                                        <InputText id="regEmail" class="form-control border-start-0 ps-0"
+                                                   placeholder="email@example.com"
+                                                   @bind-Value="model.Email" disabled="@isSubmitting" />
+                                    </div>
+                                    <ValidationMessage For="@(() => model.Email)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Phone Number -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small text-dark" for="regPhone">Số điện thoại</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-telephone"></i>
+                                        </span>
+                                        <InputText id="regPhone" class="form-control border-start-0 ps-0"
+                                                   placeholder="0912345678"
+                                                   @bind-Value="model.PhoneNumber" disabled="@isSubmitting" />
+                                    </div>
+                                    <ValidationMessage For="@(() => model.PhoneNumber)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Password -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small text-dark" for="regPassword">Mật khẩu</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-lock"></i>
+                                        </span>
+                                        <input id="regPassword" type="@(showPassword ? "text" : "password")"
+                                               class="form-control border-start-0 border-end-0 ps-0"
+                                               placeholder="Tối thiểu 6 ký tự..."
+                                               @bind="model.Password"
+                                               disabled="@isSubmitting" />
+                                        <button type="button" class="input-group-text bg-light border-start-0 text-muted"
+                                                @onclick="() => showPassword = !showPassword"
+                                                tabindex="-1"
+                                                title="@(showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")">
+                                            <i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i>
+                                        </button>
+                                    </div>
+                                    <ValidationMessage For="@(() => model.Password)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Confirm Password -->
+                                <div class="mb-4">
+                                    <label class="form-label fw-semibold small text-dark" for="regConfirmPassword">Xác nhận mật khẩu</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-lock-fill"></i>
+                                        </span>
+                                        <input id="regConfirmPassword" type="@(showConfirmPassword ? "text" : "password")"
+                                               class="form-control border-start-0 border-end-0 ps-0"
+                                               placeholder="Nhập lại mật khẩu..."
+                                               @bind="model.ConfirmPassword"
+                                               disabled="@isSubmitting" />
+                                        <button type="button" class="input-group-text bg-light border-start-0 text-muted"
+                                                @onclick="() => showConfirmPassword = !showConfirmPassword"
+                                                tabindex="-1"
+                                                title="@(showConfirmPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")">
+                                            <i class="bi @(showConfirmPassword ? "bi-eye-slash" : "bi-eye")"></i>
+                                        </button>
+                                    </div>
+                                    <ValidationMessage For="@(() => model.ConfirmPassword)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Submit Button -->
+                                <button type="submit" class="btn btn-warning w-100 py-2 fw-bold text-dark rounded-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                        disabled="@isSubmitting">
+                                    @if (isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                        <span>Đang tạo tài khoản...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-person-check-fill"></i>
+                                        <span>Đăng ký tài khoản</span>
+                                    }
+                                </button>
+                            </EditForm>
+
+                            <!-- Login CTA -->
+                            <div class="text-center mt-4 pt-3 border-top">
+                                <span class="text-muted small">Đã có tài khoản?</span>
+                                <a href="@LoginUrl" class="text-primary fw-bold text-decoration-none ms-1 small">
+                                    Đăng nhập tại đây <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tg-auth-container {
+        min-height: calc(100vh - 160px);
+        background: #f1f5f9;
+        display: flex;
+        align-items: center;
+    }
+
+    .tg-auth-card {
+        background: #ffffff;
+        border-radius: 1.25rem !important;
+        overflow: hidden;
+    }
+
+    .tg-auth-hero {
+        background: linear-gradient(135deg, #0d5cb6 0%, #083e7d 100%);
+        position: relative;
+    }
+
+    .tg-hero-logo {
+        width: 40px;
+        height: 40px;
+    }
+
+    .tg-hero-features .tg-feature-icon {
+        width: 36px;
+        height: 36px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .border-white-25 {
+        border-color: rgba(255, 255, 255, 0.18) !important;
+    }
+
+    .form-control:focus {
+        border-color: #0d5cb6;
+        box-shadow: 0 0 0 0.25rem rgba(13, 92, 182, 0.15);
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private RegisterViewModel model = new();
+    private bool isSubmitting = false;
+    private bool showPassword = false;
+    private bool showConfirmPassword = false;
+    private string? errorMessage;
+
+    private string LoginUrl => string.IsNullOrWhiteSpace(ReturnUrl) ? "/login" : $"/login?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true &&
+            authState.User.FindFirst(ClaimTypes.NameIdentifier) != null)
+        {
+            var target = !string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/') ? ReturnUrl : "/";
+            NavigationManager.NavigateTo(target);
+        }
+    }
+
+    private async Task HandleRegisterAsync()
+    {
+        errorMessage = null;
+        isSubmitting = true;
+
+        try
+        {
+            model.ReturnUrl = ReturnUrl;
+            var result = await AuthService.RegisterCustomerAsync(model);
+
+            if (!result.Success || !result.UserId.HasValue)
+            {
+                errorMessage = result.Message;
+                return;
+            }
+
+            // Successfully registered! Directly sign in via exchange token to claim any guest bookings immediately.
+            var guestOwner = await BookingSessionContext.GetOwnerIdentifierAsync();
+
+            var token = SignInExchangeStore.Store(new SignInExchangeModel
+            {
+                UserId = result.UserId.Value,
+                FullName = result.FullName ?? model.FullName,
+                Email = result.Email ?? model.Email,
+                PhoneNumber = result.PhoneNumber ?? model.PhoneNumber,
+                Role = "Customer", // Strictly Customer
+                RememberMe = true,
+                ReturnUrl = ReturnUrl,
+                GuestOwnerIdentifier = guestOwner
+            });
+
+            NavigationManager.NavigateTo($"/auth/exchange?token={token}", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Đã xảy ra lỗi hệ thống trong quá trình đăng ký. Vui lòng thử lại sau.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

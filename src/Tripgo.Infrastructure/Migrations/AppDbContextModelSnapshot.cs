@@ -485,6 +485,61 @@ namespace Tripgo.Infrastructure.Migrations
                     b.ToTable("Operators", (string)null);
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<long>("BookingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsSandbox")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransactionCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionCode")
+                        .IsUnique();
+
+                    b.HasIndex("BookingId", "Status");
+
+                    b.ToTable("PaymentTransactions", (string)null);
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.PickupDropoffPoint", b =>
                 {
                     b.Property<long>("Id")
@@ -1143,6 +1198,17 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("Operator");
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.Booking", "Booking")
+                        .WithMany("PaymentTransactions")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.PickupDropoffPoint", b =>
                 {
                     b.HasOne("Tripgo.Domain.Entities.Location", "Location")
@@ -1321,6 +1387,8 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("BookingSeats");
 
                     b.Navigation("Passengers");
+
+                    b.Navigation("PaymentTransactions");
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Driver", b =>

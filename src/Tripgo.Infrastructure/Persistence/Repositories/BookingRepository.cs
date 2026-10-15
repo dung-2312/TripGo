@@ -37,6 +37,8 @@ public class BookingRepository : IBookingRepository
             .Include(t => t.Route)
                 .ThenInclude(r => r.Stops)
                     .ThenInclude(s => s.Point)
+            .Include(t => t.Stops)
+                .ThenInclude(s => s.Point)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.BusType)
             .Include(t => t.Bus)
@@ -204,7 +206,27 @@ public class BookingRepository : IBookingRepository
                     }
                 }
 
-                // 4. Create or extend holds
+                // 4. Release any previous active holds under this token that are no longer in the targetSeats list
+                var targetSeatIds = targetSeats.Select(ts => ts.Id).ToList();
+                var supersededHolds = await _context.SeatHolds
+                    .Include(h => h.TripSeat)
+                    .Where(h => h.HoldToken == holdToken &&
+                                h.OwnerIdentifier == resolvedOwner &&
+                                h.Status == SeatHoldStatus.Active &&
+                                !targetSeatIds.Contains(h.TripSeatId))
+                    .ToListAsync(ct);
+
+                foreach (var superseded in supersededHolds)
+                {
+                    superseded.Status = SeatHoldStatus.Released;
+                    if (superseded.TripSeat != null && superseded.TripSeat.Status == TripSeatStatus.Held)
+                    {
+                        superseded.TripSeat.Status = TripSeatStatus.Available;
+                        superseded.TripSeat.UpdatedAt = now;
+                    }
+                }
+
+                // 5. Create or extend holds
                 var newlyHeldCodes = new List<string>();
                 decimal totalPrice = 0m;
 
@@ -324,6 +346,13 @@ public class BookingRepository : IBookingRepository
             try
             {
                 var now = DateTimeOffset.UtcNow;
+                var dbName = _context.Database.GetDbConnection().Database;
+                if (booking.IsDemoBooking && string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
+                {
+                    await transaction.RollbackAsync(ct);
+                    throw new InvalidOperationException("Sandbox demo bookings are strictly forbidden from being written to production database 'TripgoDb'.");
+                }
+
                 var seatIds = seats.Select(s => s.TripSeatId).Distinct().OrderBy(id => id).ToList();
 
                 // 0. Prevent replay attacks using identical HoldToken
@@ -456,9 +485,9 @@ public class BookingRepository : IBookingRepository
         });
     }
 
-    public async Task<bool> CancelBookingAsync(long bookingId, string ownerIdentifier, string reason, CancellationToken ct = default)
+    public async Task<bool> CancelBookingAsync(long bookingId, string? ownerIdentifier, long? userId, string reason, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(ownerIdentifier)) return false;
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return false;
         var strategy = _context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
@@ -477,13 +506,14 @@ public class BookingRepository : IBookingRepository
                     return false;
                 }
 
-                var ownsBooking = (booking.OwnerIdentifier != null &&
-                    string.Equals(booking.OwnerIdentifier, ownerIdentifier, StringComparison.Ordinal)) ||
-                    (booking.HoldToken != null &&
-                     await _context.SeatHolds.AnyAsync(
-                         hold => hold.HoldToken == booking.HoldToken &&
-                                 hold.OwnerIdentifier == ownerIdentifier,
-                         ct));
+                var ownsBooking = (userId.HasValue && booking.UserId == userId.Value) ||
+                    (!string.IsNullOrWhiteSpace(ownerIdentifier) &&
+                     ((booking.OwnerIdentifier != null && string.Equals(booking.OwnerIdentifier, ownerIdentifier, StringComparison.Ordinal)) ||
+                      (booking.HoldToken != null &&
+                       await _context.SeatHolds.AnyAsync(
+                           hold => hold.HoldToken == booking.HoldToken &&
+                                   hold.OwnerIdentifier == ownerIdentifier,
+                           ct))));
                 if (!ownsBooking)
                 {
                     await transaction.RollbackAsync(ct);
@@ -606,9 +636,9 @@ public class BookingRepository : IBookingRepository
         });
     }
 
-    public async Task<Booking?> GetBookingByCodeAsync(string bookingCode, string ownerIdentifier, CancellationToken ct = default)
+    public async Task<Booking?> GetBookingByCodeAsync(string bookingCode, string? ownerIdentifier, long? userId = null, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(ownerIdentifier)) return null;
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return null;
         return await _context.Bookings
             .AsNoTracking()
             .Include(b => b.Trip)
@@ -627,13 +657,76 @@ public class BookingRepository : IBookingRepository
             .Include(b => b.DropoffPoint)
             .Include(b => b.BookingSeats)
             .Include(b => b.Passengers)
+            .Include(b => b.PaymentTransactions)
             .FirstOrDefaultAsync(b => b.BookingCode == bookingCode &&
-                (b.OwnerIdentifier == ownerIdentifier ||
-                 (b.HoldToken != null &&
-                  _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken && h.OwnerIdentifier == ownerIdentifier))), ct);
+                ((userId.HasValue && b.UserId == userId.Value) ||
+                 (!string.IsNullOrWhiteSpace(ownerIdentifier) &&
+                  (b.OwnerIdentifier == ownerIdentifier ||
+                   (b.HoldToken != null &&
+                    _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken && h.OwnerIdentifier == ownerIdentifier))))), ct);
     }
 
-    public async Task<List<Booking>> GetBookingsByPhoneAsync(string phone, string ownerIdentifier, CancellationToken ct = default)
+    public async Task<List<Booking>> GetBookingsByPhoneAsync(string phone, string? ownerIdentifier, long? userId = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return new List<Booking>();
+        return await _context.Bookings
+            .AsNoTracking()
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Route)
+                    .ThenInclude(r => r.Operator)
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Route)
+                    .ThenInclude(r => r.OriginLocation)
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Route)
+                    .ThenInclude(r => r.DestinationLocation)
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Bus)
+                    .ThenInclude(bus => bus.BusType)
+            .Include(b => b.PickupPoint)
+            .Include(b => b.DropoffPoint)
+            .Include(b => b.BookingSeats)
+            .Include(b => b.Passengers)
+            .Include(b => b.PaymentTransactions)
+            .Where(b => b.PassengerPhone == phone &&
+                        ((userId.HasValue && b.UserId == userId.Value) ||
+                         (!string.IsNullOrWhiteSpace(ownerIdentifier) &&
+                          (b.OwnerIdentifier == ownerIdentifier ||
+                           (b.HoldToken != null &&
+                            _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken &&
+                                                       h.OwnerIdentifier == ownerIdentifier))))))
+            .OrderByDescending(b => b.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<Booking>> GetBookingsByUserIdAsync(long userId, CancellationToken ct = default)
+    {
+        if (userId <= 0) return new List<Booking>();
+        return await _context.Bookings
+            .AsNoTracking()
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Route)
+                    .ThenInclude(r => r.Operator)
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Route)
+                    .ThenInclude(r => r.OriginLocation)
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Route)
+                    .ThenInclude(r => r.DestinationLocation)
+            .Include(b => b.Trip)
+                .ThenInclude(t => t.Bus)
+                    .ThenInclude(bus => bus.BusType)
+            .Include(b => b.PickupPoint)
+            .Include(b => b.DropoffPoint)
+            .Include(b => b.BookingSeats)
+            .Include(b => b.Passengers)
+            .Include(b => b.PaymentTransactions)
+            .Where(b => b.UserId == userId)
+            .OrderByDescending(b => b.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<Booking>> GetBookingsByOwnerIdentifierAsync(string ownerIdentifier, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ownerIdentifier)) return new List<Booking>();
         return await _context.Bookings
@@ -654,13 +747,31 @@ public class BookingRepository : IBookingRepository
             .Include(b => b.DropoffPoint)
             .Include(b => b.BookingSeats)
             .Include(b => b.Passengers)
-            .Where(b => b.PassengerPhone == phone &&
-                        (b.OwnerIdentifier == ownerIdentifier ||
-                         (b.HoldToken != null &&
-                          _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken &&
-                                                     h.OwnerIdentifier == ownerIdentifier))))
+            .Include(b => b.PaymentTransactions)
+            .Where(b => b.OwnerIdentifier == ownerIdentifier ||
+                        (b.HoldToken != null && _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken && h.OwnerIdentifier == ownerIdentifier)))
             .OrderByDescending(b => b.CreatedAt)
             .ToListAsync(ct);
+    }
+
+    public async Task<int> ClaimGuestBookingsAsync(long userId, string guestOwnerIdentifier, CancellationToken ct = default)
+    {
+        if (userId <= 0 || string.IsNullOrWhiteSpace(guestOwnerIdentifier)) return 0;
+
+        var unownedBookings = await _context.Bookings
+            .Where(b => b.UserId == null &&
+                        (b.OwnerIdentifier == guestOwnerIdentifier ||
+                         (b.HoldToken != null && _context.SeatHolds.Any(h => h.HoldToken == b.HoldToken && h.OwnerIdentifier == guestOwnerIdentifier))))
+            .ToListAsync(ct);
+
+        if (unownedBookings.Count == 0) return 0;
+
+        foreach (var b in unownedBookings)
+        {
+            b.UserId = userId;
+        }
+
+        return await _context.SaveChangesAsync(ct);
     }
 
     public async Task ExpireStaleHoldsAsync(CancellationToken ct = default)
@@ -689,6 +800,251 @@ public class BookingRepository : IBookingRepository
                 await _context.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         });
+    }
+
+    public async Task<PaymentProcessResultDto> ConfirmPaymentAndBookingAsync(
+        string bookingCode,
+        string transactionCode,
+        string paymentMethod,
+        decimal amount,
+        bool isSuccess,
+        string? failureReason,
+        string? ownerIdentifier,
+        long? userId = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue)
+        {
+            return new PaymentProcessResultDto
+            {
+                Success = false,
+                Message = "Phiên giao dịch không hợp lệ."
+            };
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            try
+            {
+                var now = DateTimeOffset.UtcNow;
+                var dbName = _context.Database.GetDbConnection().Database;
+                if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
+                {
+                    await transaction.RollbackAsync(ct);
+                    throw new InvalidOperationException("Sandbox payment simulation is strictly forbidden against production database 'TripgoDb'.");
+                }
+
+                var booking = await _context.Bookings
+                    .Include(b => b.BookingSeats)
+                        .ThenInclude(bs => bs.TripSeat)
+                    .Include(b => b.PaymentTransactions)
+                    .FirstOrDefaultAsync(b => b.BookingCode == bookingCode, ct);
+
+                if (booking == null)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy thông tin đơn đặt chỗ."
+                    };
+                }
+
+                var ownsBooking = (userId.HasValue && booking.UserId == userId.Value) ||
+                    (!string.IsNullOrWhiteSpace(ownerIdentifier) &&
+                     ((booking.OwnerIdentifier != null && string.Equals(booking.OwnerIdentifier, ownerIdentifier, StringComparison.Ordinal)) ||
+                      (booking.HoldToken != null &&
+                       await _context.SeatHolds.AnyAsync(
+                           hold => hold.HoldToken == booking.HoldToken &&
+                                   hold.OwnerIdentifier == ownerIdentifier,
+                           ct))));
+
+                if (!ownsBooking)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = "Bạn không có quyền thao tác trên đơn đặt chỗ này."
+                    };
+                }
+
+                // Idempotency check: Already confirmed & paid
+                if (booking.Status == BookingStatus.Confirmed && booking.PaymentStatus == PaymentStatus.Paid)
+                {
+                    var existingTx = booking.PaymentTransactions.FirstOrDefault(t => t.Status == PaymentStatus.Paid);
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = true,
+                        Message = "Đơn đặt chỗ đã được thanh toán và xác nhận thành công trước đó.",
+                        TransactionCode = existingTx?.TransactionCode ?? transactionCode,
+                        BookingCode = booking.BookingCode,
+                        Status = PaymentStatus.Paid,
+                        ProcessedAt = existingTx?.CompletedAt ?? now,
+                        IsSandbox = existingTx?.IsSandbox ?? true
+                    };
+                }
+
+                if (booking.Status == BookingStatus.Cancelled)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = "Đơn đặt chỗ đã bị hủy và không thể thanh toán."
+                    };
+                }
+
+                if (booking.Status == BookingStatus.Expired || booking.ExpiresAt <= now)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = "Đơn đặt chỗ đã hết thời hạn thanh toán."
+                    };
+                }
+
+                if (booking.Status != BookingStatus.PendingPayment)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = "Trạng thái đơn đặt chỗ không hợp lệ để xử lý thanh toán."
+                    };
+                }
+
+                if (amount != booking.TotalAmount)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = $"Số tiền thanh toán ({amount:N0} đ) không khớp với tổng tiền đơn đặt chỗ ({booking.TotalAmount:N0} đ)."
+                    };
+                }
+
+                // If simulated failure
+                if (!isSuccess)
+                {
+                    var failedTx = new PaymentTransaction
+                    {
+                        BookingId = booking.Id,
+                        TransactionCode = transactionCode,
+                        PaymentMethod = paymentMethod,
+                        Amount = amount,
+                        Status = PaymentStatus.Failed,
+                        ProviderReference = $"SANDBOX-FAIL-{Guid.NewGuid():N}"[..25],
+                        Note = failureReason ?? "Giao dịch mô phỏng bị từ chối hoặc số dư không đủ (Sandbox).",
+                        IsSandbox = true,
+                        CreatedAt = now,
+                        CompletedAt = now
+                    };
+
+                    _context.PaymentTransactions.Add(failedTx);
+                    booking.PaymentStatus = PaymentStatus.Failed;
+                    await _context.SaveChangesAsync(ct);
+                    await transaction.CommitAsync(ct);
+
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = failedTx.Note,
+                        TransactionCode = transactionCode,
+                        BookingCode = booking.BookingCode,
+                        Status = PaymentStatus.Failed,
+                        ProcessedAt = now,
+                        IsSandbox = true
+                    };
+                }
+
+                // Successful Payment
+                var successTx = new PaymentTransaction
+                {
+                    BookingId = booking.Id,
+                    TransactionCode = transactionCode,
+                    PaymentMethod = paymentMethod,
+                    Amount = amount,
+                    Status = PaymentStatus.Paid,
+                    ProviderReference = $"SANDBOX-AUTH-{Guid.NewGuid():N}"[..25],
+                    Note = "Thanh toán mô phỏng thành công trên môi trường Sandbox.",
+                    IsSandbox = true,
+                    CreatedAt = now,
+                    CompletedAt = now
+                };
+
+                _context.PaymentTransactions.Add(successTx);
+
+                booking.PaymentStatus = PaymentStatus.Paid;
+                booking.Status = BookingStatus.Confirmed;
+                booking.ConfirmedAt = now;
+
+                // Finalize seats
+                foreach (var seat in booking.BookingSeats)
+                {
+                    seat.IsActive = true;
+                    if (seat.TripSeat != null)
+                    {
+                        seat.TripSeat.Status = TripSeatStatus.Booked;
+                        seat.TripSeat.UpdatedAt = now;
+                    }
+                }
+
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+
+                return new PaymentProcessResultDto
+                {
+                    Success = true,
+                    Message = "Thanh toán mô phỏng thành công và đơn đặt chỗ đã được xác nhận.",
+                    TransactionCode = transactionCode,
+                    BookingCode = booking.BookingCode,
+                    Status = PaymentStatus.Paid,
+                    ProcessedAt = now,
+                    IsSandbox = true
+                };
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await transaction.RollbackAsync(ct);
+                return new PaymentProcessResultDto
+                {
+                    Success = false,
+                    Message = "Đơn đặt chỗ vừa được cập nhật bởi một phiên khác. Vui lòng tải lại và thử lại."
+                };
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        });
+    }
+
+    public async Task<List<PaymentTransaction>> GetPaymentTransactionsByBookingCodeAsync(
+        string bookingCode,
+        string? ownerIdentifier,
+        long? userId = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return new List<PaymentTransaction>();
+
+        return await _context.PaymentTransactions
+            .AsNoTracking()
+            .Include(t => t.Booking)
+            .Where(t => t.Booking.BookingCode == bookingCode &&
+                        ((userId.HasValue && t.Booking.UserId == userId.Value) ||
+                         (!string.IsNullOrWhiteSpace(ownerIdentifier) &&
+                          (t.Booking.OwnerIdentifier == ownerIdentifier ||
+                           (t.Booking.HoldToken != null &&
+                            _context.SeatHolds.Any(h => h.HoldToken == t.Booking.HoldToken && h.OwnerIdentifier == ownerIdentifier))))))
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync(ct);
     }
 
     private static bool IsDuplicateKey(DbUpdateException exception)

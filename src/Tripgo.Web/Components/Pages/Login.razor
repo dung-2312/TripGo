@@ -1,0 +1,328 @@
+@page "/login"
+@using Tripgo.Application.DTOs
+@using Tripgo.Application.Interfaces
+@using Tripgo.Web.Services
+@using System.Security.Claims
+@inject IAuthService AuthService
+@inject ISignInExchangeStore SignInExchangeStore
+@inject IBookingSessionContext BookingSessionContext
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Đăng nhập | TripGo</PageTitle>
+
+<div class="tg-auth-container py-4 py-md-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-xl-10">
+                <div class="tg-auth-card shadow-lg rounded-4 overflow-hidden border-0">
+                    <div class="row g-0">
+                        <!-- Left Hero Banner -->
+                        <div class="col-lg-5 tg-auth-hero d-none d-lg-flex flex-column justify-content-between p-5 text-white">
+                            <div>
+                                <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none text-white mb-4">
+                                    <div class="tg-hero-logo-box">
+                                        <svg viewBox="0 0 36 36" fill="none" class="tg-hero-logo" xmlns="http://www.w3.org/2000/svg">
+                                            <rect width="36" height="36" rx="9" fill="#ffd333" />
+                                            <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#0d5cb6" />
+                                            <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
+                                            <circle cx="13.5" cy="21.5" r="2" fill="#ffd333" />
+                                            <circle cx="22.5" cy="21.5" r="2" fill="#ffd333" />
+                                        </svg>
+                                    </div>
+                                    <span class="fs-3 fw-bold">Trip<span class="text-warning">Go</span></span>
+                                </a>
+
+                                <h2 class="fw-bold mb-3">Chào mừng bạn trở lại!</h2>
+                                <p class="text-white-50 mb-4">
+                                    Đăng nhập để quản lý vé xe, kiểm tra lịch trình, nhận thông báo xuất bến và hưởng các ưu đãi dành riêng cho thành viên.
+                                </p>
+
+                                <div class="tg-hero-features d-flex flex-column gap-3 mt-4">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="tg-feature-icon">
+                                            <i class="bi bi-shield-check text-warning"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">Bảo mật thông tin 100%</div>
+                                            <small class="text-white-50">Mã hóa chuẩn ngân hàng SSL</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="tg-feature-icon">
+                                            <i class="bi bi-ticket-perforated-fill text-warning"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">Tự động đồng bộ vé</div>
+                                            <small class="text-white-50">Xem vé mọi lúc, không cần nhớ mã</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="tg-feature-icon">
+                                            <i class="bi bi-lightning-charge-fill text-warning"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">Giữ chỗ tức thì</div>
+                                            <small class="text-white-50">Chọn giường & thanh toán nhanh gọn</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 border-top border-white-25 small text-white-50">
+                                Hotline hỗ trợ 24/7: <strong class="text-white">1900 6868</strong>
+                            </div>
+                        </div>
+
+                        <!-- Right Form Panel -->
+                        <div class="col-lg-7 p-4 p-md-5 bg-white d-flex flex-column justify-content-center">
+                            <div class="mb-4">
+                                <div class="d-lg-none d-flex align-items-center gap-2 mb-3">
+                                    <span class="fs-4 fw-bold text-primary">Trip<span class="text-warning">Go</span></span>
+                                </div>
+                                <h3 class="fw-bold text-dark mb-1">Đăng nhập tài khoản</h3>
+                                <p class="text-muted small">Nhập Email hoặc Số điện thoại để tiếp tục trải nghiệm</p>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(notificationMessage))
+                            {
+                                <div class="alert @notificationAlertClass alert-dismissible fade show mb-4 rounded-3" role="alert">
+                                    <i class="bi @notificationIcon me-2"></i>@notificationMessage
+                                    <button type="button" class="btn-close" @onclick="() => notificationMessage = null" aria-label="Close"></button>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(errorMessage))
+                            {
+                                <div class="alert alert-danger alert-dismissible fade show mb-4 rounded-3" role="alert">
+                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>@errorMessage
+                                    <button type="button" class="btn-close" @onclick="() => errorMessage = null" aria-label="Close"></button>
+                                </div>
+                            }
+
+                            <EditForm Model="@model" OnValidSubmit="HandleLoginAsync">
+                                <DataAnnotationsValidator />
+
+                                <!-- Email or Phone -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small text-dark" for="loginIdentifier">Email hoặc Số điện thoại</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-person"></i>
+                                        </span>
+                                        <InputText id="loginIdentifier" class="form-control border-start-0 ps-0"
+                                                   placeholder="Nhập email hoặc số điện thoại..."
+                                                   @bind-Value="model.AccountIdentifier" disabled="@isSubmitting" />
+                                    </div>
+                                    <ValidationMessage For="@(() => model.AccountIdentifier)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Password -->
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <label class="form-label fw-semibold small text-dark mb-0" for="loginPassword">Mật khẩu</label>
+                                        <a href="/forgot-password" class="text-decoration-none small text-primary fw-semibold">Quên mật khẩu?</a>
+                                    </div>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                            <i class="bi bi-lock"></i>
+                                        </span>
+                                        <input id="loginPassword" type="@(showPassword ? "text" : "password")"
+                                               class="form-control border-start-0 border-end-0 ps-0"
+                                               placeholder="Nhập mật khẩu..."
+                                               @bind="model.Password"
+                                               disabled="@isSubmitting" />
+                                        <button type="button" class="input-group-text bg-light border-start-0 text-muted"
+                                                @onclick="() => showPassword = !showPassword"
+                                                tabindex="-1"
+                                                title="@(showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")">
+                                            <i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i>
+                                        </button>
+                                    </div>
+                                    <ValidationMessage For="@(() => model.Password)" class="text-danger small mt-1" />
+                                </div>
+
+                                <!-- Remember Me -->
+                                <div class="mb-4 form-check">
+                                    <InputCheckbox id="rememberMe" class="form-check-input" @bind-Value="model.RememberMe" disabled="@isSubmitting" />
+                                    <label class="form-check-label small text-secondary" for="rememberMe">
+                                        Ghi nhớ đăng nhập trên thiết bị này
+                                    </label>
+                                </div>
+
+                                <!-- Submit Button -->
+                                <button type="submit" class="btn btn-primary w-100 py-2 fw-bold rounded-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                        disabled="@isSubmitting">
+                                    @if (isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                        <span>Đang xử lý đăng nhập...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-box-arrow-in-right"></i>
+                                        <span>Đăng nhập</span>
+                                    }
+                                </button>
+                            </EditForm>
+
+                            <!-- Register CTA -->
+                            <div class="text-center mt-4 pt-3 border-top">
+                                <span class="text-muted small">Chưa có tài khoản TripGo?</span>
+                                <a href="@RegisterUrl" class="text-primary fw-bold text-decoration-none ms-1 small">
+                                    Đăng ký ngay <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tg-auth-container {
+        min-height: calc(100vh - 160px);
+        background: #f1f5f9;
+        display: flex;
+        align-items: center;
+    }
+
+    .tg-auth-card {
+        background: #ffffff;
+        border-radius: 1.25rem !important;
+        overflow: hidden;
+    }
+
+    .tg-auth-hero {
+        background: linear-gradient(135deg, #0d5cb6 0%, #083e7d 100%);
+        position: relative;
+    }
+
+    .tg-hero-logo {
+        width: 40px;
+        height: 40px;
+    }
+
+    .tg-hero-features .tg-feature-icon {
+        width: 36px;
+        height: 36px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .border-white-25 {
+        border-color: rgba(255, 255, 255, 0.18) !important;
+    }
+
+    .form-control:focus {
+        border-color: #0d5cb6;
+        box-shadow: 0 0 0 0.25rem rgba(13, 92, 182, 0.15);
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? error { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? loggedOut { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? registered { get; set; }
+
+    private LoginViewModel model = new();
+    private bool isSubmitting = false;
+    private bool showPassword = false;
+    private string? errorMessage;
+    private string? notificationMessage;
+    private string notificationAlertClass = "alert-info";
+    private string notificationIcon = "bi-info-circle-fill";
+
+    private string RegisterUrl => string.IsNullOrWhiteSpace(ReturnUrl) ? "/register" : $"/register?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true &&
+            authState.User.FindFirst(ClaimTypes.NameIdentifier) != null)
+        {
+            var target = !string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/') ? ReturnUrl : "/";
+            NavigationManager.NavigateTo(target);
+            return;
+        }
+
+        if (loggedOut == "1")
+        {
+            notificationMessage = "Bạn đã đăng xuất thành công khỏi hệ thống TripGo.";
+            notificationAlertClass = "alert-success";
+            notificationIcon = "bi-check-circle-fill";
+        }
+        else if (registered == "1")
+        {
+            notificationMessage = "Đăng ký tài khoản thành công! Vui lòng đăng nhập để tiếp tục.";
+            notificationAlertClass = "alert-success";
+            notificationIcon = "bi-check-circle-fill";
+        }
+        else if (error == "invalid_token")
+        {
+            errorMessage = "Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.";
+        }
+    }
+
+    private async Task HandleLoginAsync()
+    {
+        errorMessage = null;
+        notificationMessage = null;
+        isSubmitting = true;
+
+        try
+        {
+            model.ReturnUrl = ReturnUrl;
+            var result = await AuthService.AuthenticateAsync(model);
+
+            if (!result.Success || !result.UserId.HasValue)
+            {
+                errorMessage = result.Message;
+                return;
+            }
+
+            var guestOwner = await BookingSessionContext.GetOwnerIdentifierAsync();
+
+            var token = SignInExchangeStore.Store(new SignInExchangeModel
+            {
+                UserId = result.UserId.Value,
+                FullName = result.FullName ?? "Khách hàng",
+                Email = result.Email ?? string.Empty,
+                PhoneNumber = result.PhoneNumber ?? string.Empty,
+                Role = result.Role ?? "Customer",
+                RememberMe = model.RememberMe,
+                ReturnUrl = ReturnUrl,
+                GuestOwnerIdentifier = guestOwner
+            });
+
+            // Force browser full page load to exchange token and issue secure HTTP cookie
+            NavigationManager.NavigateTo($"/auth/exchange?token={token}", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Đã xảy ra lỗi hệ thống trong quá trình đăng nhập. Vui lòng thử lại sau.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

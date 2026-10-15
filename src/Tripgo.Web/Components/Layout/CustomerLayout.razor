@@ -35,12 +35,77 @@
                 </NavLink>
             </nav>
 
-            <!-- Hotline & Quick Actions -->
+            <!-- Auth & Quick Actions -->
             <div class="d-flex align-items-center gap-2">
-                <button type="button" class="tg-hotline-btn" @onclick="() => isSupportOpen = true">
+                <button type="button" class="tg-hotline-btn d-none d-lg-flex" @onclick="() => isSupportOpen = true">
                     <i class="bi bi-telephone-fill text-primary me-1"></i>
                     <span>Hotline 24/7</span>
                 </button>
+
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="position-relative">
+                            <button class="btn btn-warning d-flex align-items-center gap-2 text-dark fw-bold rounded-pill px-3 py-1 shadow-sm"
+                                    type="button" @onclick="ToggleUserMenu">
+                                <span class="tg-avatar-circle">
+                                    <i class="bi bi-person-fill"></i>
+                                </span>
+                                <span class="d-none d-sm-inline">@(context.User.Identity?.Name ?? "Tài khoản")</span>
+                                <i class="bi bi-chevron-down small"></i>
+                            </button>
+                            @if (isUserMenuOpen)
+                            {
+                                <div class="dropdown-menu dropdown-menu-end show shadow-lg border-0 py-2 mt-2 position-absolute end-0" style="min-width: 230px; z-index: 1050;">
+                                    <div class="px-3 py-2 border-bottom mb-1 bg-light rounded-top">
+                                        <div class="fw-bold text-dark text-truncate">@(context.User.Identity?.Name ?? "Khách hàng")</div>
+                                        <div class="small text-muted text-truncate">
+                                            @(context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "")
+                                        </div>
+                                        @if (context.User.IsInRole("Admin"))
+                                        {
+                                            <span class="badge bg-danger mt-1">Quản trị viên</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary mt-1">Khách hàng</span>
+                                        }
+                                    </div>
+                                    <a class="dropdown-item py-2 d-flex align-items-center gap-2" href="/account/profile" @onclick="CloseUserMenu">
+                                        <i class="bi bi-person-gear text-primary fs-5"></i>
+                                        <span>Tài khoản của tôi</span>
+                                    </a>
+                                    <a class="dropdown-item py-2 d-flex align-items-center gap-2" href="/my-tickets" @onclick="CloseUserMenu">
+                                        <i class="bi bi-ticket-detailed text-success fs-5"></i>
+                                        <span>Vé của tôi</span>
+                                    </a>
+                                    @if (context.User.IsInRole("Admin"))
+                                    {
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item py-2 d-flex align-items-center gap-2 text-primary" href="/admin/trips" @onclick="CloseUserMenu">
+                                            <i class="bi bi-speedometer2 text-danger fs-5"></i>
+                                            <span>Trang Quản trị</span>
+                                        </a>
+                                    }
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item py-2 d-flex align-items-center gap-2 text-danger fw-semibold" href="/auth/logout">
+                                        <i class="bi bi-box-arrow-right fs-5"></i>
+                                        <span>Đăng xuất</span>
+                                    </a>
+                                </div>
+                            }
+                        </div>
+                    </Authorized>
+                    <NotAuthorized>
+                        <div class="d-flex align-items-center gap-2">
+                            <a href="/login" class="btn btn-outline-light btn-sm fw-bold rounded-pill px-3 py-1 text-decoration-none">
+                                <i class="bi bi-box-arrow-in-right me-1"></i> Đăng nhập
+                            </a>
+                            <a href="/register" class="btn btn-warning btn-sm fw-bold rounded-pill px-3 py-1 text-dark text-decoration-none shadow-sm">
+                                <i class="bi bi-person-plus me-1"></i> Đăng ký
+                            </a>
+                        </div>
+                    </NotAuthorized>
+                </AuthorizeView>
             </div>
         </div>
     </header>
@@ -190,8 +255,30 @@
         color: var(--tripgo-primary, #0d5cb6) !important;
         text-decoration: underline !important;
     }
+
+    .tg-avatar-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        font-size: 0.9rem;
+    }
 </style>
 
 @code {
     private bool isSupportOpen = false;
+    private bool isUserMenuOpen = false;
+
+    private void ToggleUserMenu()
+    {
+        isUserMenuOpen = !isUserMenuOpen;
+    }
+
+    private void CloseUserMenu()
+    {
+        isUserMenuOpen = false;
+    }
 }

@@ -44,6 +44,13 @@ public sealed class BookingExpirationWorker : BackgroundService
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var dbName = dbContext.Database.GetDbConnection().Database;
+            if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogCritical("BookingExpirationWorker detected target database is 'TripgoDb'. Aborting cleanup to protect production.");
+                return false;
+            }
+
             var appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken))
                 .ToHashSet(StringComparer.Ordinal);
             var requiredMigrations = new[]
@@ -51,7 +58,8 @@ public sealed class BookingExpirationWorker : BackgroundService
                 "20261008183111_Phase3A_PersistentBookingCore",
                 "20261008191552_Phase3A_BookingSafetyHardening",
                 "20261008192859_Phase3A_HoldOwnershipReleaseGate",
-                "20261014142606_Phase3A_DirectBookingOwnership"
+                "20261014142606_Phase3A_DirectBookingOwnership",
+                "20261015092939_Phase3B_PaymentTransactions"
             };
             var missingMigrations = requiredMigrations
                 .Where(migration => !appliedMigrations.Contains(migration))

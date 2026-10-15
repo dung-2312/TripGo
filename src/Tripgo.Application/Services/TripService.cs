@@ -434,6 +434,7 @@ public class TripService : ITripService
             var persistentList = await _bookingService.GetBookingsByPhoneAsync(phone, ct);
             return persistentList.Select(persistent => new CustomerBookingInfoDto
             {
+                    BookingId = persistent.Id,
                     TripId = persistent.TripId,
                     BookingCode = persistent.BookingCode,
                     Name = persistent.PassengerName,
@@ -456,7 +457,11 @@ public class TripService : ITripService
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
-                    Passengers = persistent.Passengers
+                    ConfirmedAt = persistent.ConfirmedAt,
+                    TransactionCode = persistent.TransactionCode,
+                    PaymentMethod = persistent.PaymentMethod,
+                    Passengers = persistent.Passengers,
+                    PaymentTransactions = persistent.PaymentTransactions
             }).ToList();
         }
 
@@ -473,6 +478,7 @@ public class TripService : ITripService
             {
                 return new CustomerBookingInfoDto
                 {
+                    BookingId = persistent.Id,
                     TripId = persistent.TripId,
                     BookingCode = persistent.BookingCode,
                     Name = persistent.PassengerName,
@@ -495,12 +501,58 @@ public class TripService : ITripService
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
-                    Passengers = persistent.Passengers
+                    ConfirmedAt = persistent.ConfirmedAt,
+                    TransactionCode = persistent.TransactionCode,
+                    PaymentMethod = persistent.PaymentMethod,
+                    Passengers = persistent.Passengers,
+                    PaymentTransactions = persistent.PaymentTransactions
                 };
             }
         }
 
         return null;
+    }
+
+    public async Task<List<CustomerBookingInfoDto>> GetBookingsForCurrentUserAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_bookingService != null)
+        {
+            var persistentList = await _bookingService.GetBookingsForCurrentUserAsync(ct);
+            return persistentList.Select(persistent => new CustomerBookingInfoDto
+            {
+                BookingId = persistent.Id,
+                TripId = persistent.TripId,
+                BookingCode = persistent.BookingCode,
+                Name = persistent.PassengerName,
+                Phone = persistent.PassengerPhone,
+                Email = persistent.PassengerEmail,
+                SelectedPickupPoint = persistent.PickupPointName,
+                SelectedDropoffPoint = persistent.DropoffPointName,
+                PickupPoint = persistent.PickupPointName,
+                HasInsurance = persistent.InsuranceAmount > 0,
+                SeatCodes = persistent.SeatCodes,
+                RouteName = persistent.RouteName,
+                OperatorName = persistent.OperatorName,
+                BusTypeName = persistent.BusTypeName,
+                BusLicensePlate = persistent.BusLicensePlate,
+                DepartureTime = persistent.DepartureTime,
+                BookedAt = persistent.CreatedAt,
+                BasePrice = persistent.BaseAmount,
+                SurchargeAmount = persistent.SurchargeAmount,
+                InsuranceAmount = persistent.InsuranceAmount,
+                TotalAmount = persistent.TotalAmount,
+                BookingStatus = persistent.Status,
+                PaymentStatus = persistent.PaymentStatus,
+                ConfirmedAt = persistent.ConfirmedAt,
+                TransactionCode = persistent.TransactionCode,
+                PaymentMethod = persistent.PaymentMethod,
+                Passengers = persistent.Passengers,
+                PaymentTransactions = persistent.PaymentTransactions
+            }).ToList();
+        }
+
+        return new List<CustomerBookingInfoDto>();
     }
 
     public Task<bool> SubmitSupportCallbackAsync(string name, string phone, CancellationToken ct = default)

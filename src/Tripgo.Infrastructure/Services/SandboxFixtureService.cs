@@ -1,0 +1,608 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Tripgo.Application.Interfaces;
+using Tripgo.Domain.Entities;
+using Tripgo.Domain.Enums;
+using Tripgo.Infrastructure.Persistence;
+
+using Tripgo.Application.Services;
+
+namespace Tripgo.Infrastructure.Services;
+
+public class SandboxFixtureService : ISandboxFixtureService
+{
+    private readonly AppDbContext _context;
+    private readonly ILogger<SandboxFixtureService> _logger;
+    private readonly IPasswordHasherService _passwordHasher;
+
+    public SandboxFixtureService(
+        AppDbContext context,
+        ILogger<SandboxFixtureService> logger,
+        IPasswordHasherService? passwordHasher = null)
+    {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _passwordHasher = passwordHasher ?? new PasswordHasherService();
+    }
+
+    public async Task EnsureSandboxTripsAsync(CancellationToken ct = default)
+    {
+        var dbConnection = _context.Database.GetDbConnection();
+        var dbName = dbConnection.Database;
+
+        // STRICT DATABASE SAFETY: Strictly forbid any write to production database TripgoDb
+        if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(dbName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Sandbox fixture creation is strictly forbidden against non-test database {Database}.", dbName);
+            throw new InvalidOperationException($"Sandbox fixture creation is permitted ONLY against TripgoDb_IsolatedTest. Target database '{dbName}' was rejected.");
+        }
+
+        try
+        {
+            _logger.LogInformation("Beginning dynamic sandbox trip and route stop preparation in {Database}...", dbName);
+
+            // 0. Ensure default roles and users exist, and repair pickup/dropoff Unicode text
+            await EnsureRolesAndDefaultUsersAsync(ct);
+            await RepairPickupDropoffUnicodeAsync(ct);
+
+            // 1. Ensure nationwide corridor routes (e.g. HAN <-> DAD) are active for complete test coverage
+            var routesToActivate = await _context.Routes
+                .Where(r => (r.Code == "FUTA-HAN-DAD" || r.Code == "FUTA-DAD-HAN") && !r.IsActive)
+                .ToListAsync(ct);
+
+            if (routesToActivate.Count > 0)
+            {
+                foreach (var r in routesToActivate)
+                {
+                    r.IsActive = true;
+                }
+                await _context.SaveChangesAsync(ct);
+                _logger.LogInformation("Activated {Count} nationwide corridor routes in {Database}.", routesToActivate.Count, dbName);
+            }
+
+            // 2. Discover all imported active routes dynamically
+            var activeRoutes = await _context.Routes
+                .Include(r => r.Operator)
+                .Include(r => r.OriginLocation)
+                .Include(r => r.DestinationLocation)
+                .Include(r => r.Stops)
+                    .ThenInclude(s => s.Point)
+                .Where(r => r.IsActive)
+                .OrderBy(r => r.Id)
+                .ToListAsync(ct);
+
+            _logger.LogInformation("Discovered {Count} active imported routes to audit for sandbox booking coverage.", activeRoutes.Count);
+
+            foreach (var route in activeRoutes)
+            {
+                await EnsureRouteCoverageAsync(route, ct);
+            }
+
+            _logger.LogInformation("Sandbox fixture synchronization completed successfully for all {Count} imported routes in {Database}.", activeRoutes.Count, dbName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to ensure sandbox trip fixtures across imported routes in {Database}.", dbName);
+            throw;
+        }
+    }
+
+    private async Task EnsureRouteCoverageAsync(Route route, CancellationToken ct)
+    {
+        // 1. Ensure valid pickup and dropoff points exist in RouteStops
+        await EnsureRouteStopsAsync(route, ct);
+
+        // Reload route stops after potential additions
+        var routeStops = await _context.RouteStops
+            .Include(rs => rs.Point)
+            .Where(rs => rs.RouteId == route.Id)
+            .OrderBy(rs => rs.StopOrder)
+            .ToListAsync(ct);
+
+        // 2. Resolve an active bus belonging to the route's operator (or fallback active bus)
+        var bus = await _context.Buses
+            .Include(b => b.SeatLayout)
+                .ThenInclude(sl => sl.Items)
+            .FirstOrDefaultAsync(b => b.OperatorId == route.OperatorId && b.IsActive && b.SeatLayout != null && b.SeatLayout.Items.Any(), ct);
+
+        if (bus == null)
+        {
+            bus = await _context.Buses
+                .Include(b => b.SeatLayout)
+                    .ThenInclude(sl => sl.Items)
+                .FirstOrDefaultAsync(b => b.IsActive && b.SeatLayout != null && b.SeatLayout.Items.Any(), ct);
+        }
+
+        if (bus == null)
+        {
+            _logger.LogWarning("No active bus with seat layout found for route {RouteCode}. Skipping trip creation.", route.Code);
+            return;
+        }
+
+        var durationMinutes = route.EstimatedDurationMinutes ?? 360;
+        var basePrice = CalculateSandboxBasePrice(route);
+
+        // 3. Define standard upcoming test departures
+        var now = DateTimeOffset.Now;
+        var todayDeparture = now.TimeOfDay < new TimeSpan(21, 0, 0)
+            ? new DateTimeOffset(DateTime.Today.AddHours(22).AddMinutes(30), TimeSpan.FromHours(7))
+            : now.AddHours(2);
+
+        var tomorrowMorningDeparture = new DateTimeOffset(DateTime.Today.AddDays(1).AddHours(8), TimeSpan.FromHours(7));
+        var tomorrowEveningDeparture = new DateTimeOffset(DateTime.Today.AddDays(1).AddHours(20), TimeSpan.FromHours(7));
+
+        var testShifts = new (string Suffix, DateTimeOffset DepartureTime)[]
+        {
+            ("TODAY", todayDeparture),
+            ("TOMORROW-0800", tomorrowMorningDeparture),
+            ("TOMORROW-2000", tomorrowEveningDeparture)
+        };
+
+        foreach (var shift in testShifts)
+        {
+            var tripCode = $"DEMO-SANDBOX-{route.Code}-{shift.Suffix}";
+            await EnsureSandboxTripAsync(route, bus, tripCode, shift.DepartureTime, durationMinutes, basePrice, routeStops, ct);
+        }
+
+        // 4. Synchronize any existing legacy demo trips on this route (e.g. Route 1 demo trips)
+        var legacyDemoTrips = await _context.Trips
+            .Include(t => t.Stops)
+            .Include(t => t.Seats)
+            .Where(t => t.RouteId == route.Id && (t.IsDemoTrip || t.TripCode.StartsWith("DEMO-")))
+            .ToListAsync(ct);
+
+        foreach (var demoTrip in legacyDemoTrips)
+        {
+            // If departure is in the past, roll forward
+            if (demoTrip.DepartureTime < DateTimeOffset.Now)
+            {
+                demoTrip.DepartureTime = tomorrowMorningDeparture;
+                demoTrip.ExpectedArrivalTime = tomorrowMorningDeparture.AddMinutes(durationMinutes);
+                demoTrip.Status = TripStatus.Scheduled;
+                demoTrip.IsDemoTrip = true;
+            }
+
+            // Ensure TripStops exist
+            if (demoTrip.Stops == null || demoTrip.Stops.Count == 0)
+            {
+                await CreateTripStopsAsync(demoTrip, routeStops, durationMinutes, ct);
+            }
+
+            // Ensure TripSeats exist
+            if (demoTrip.Seats == null || demoTrip.Seats.Count == 0)
+            {
+                await CreateTripSeatsAsync(demoTrip, bus, ct);
+            }
+        }
+
+        await _context.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsureRouteStopsAsync(Route route, CancellationToken ct)
+    {
+        var existingStops = await _context.RouteStops
+            .Include(rs => rs.Point)
+            .Where(rs => rs.RouteId == route.Id)
+            .OrderBy(rs => rs.StopOrder)
+            .ToListAsync(ct);
+
+        var hasPickups = existingStops.Any(s => s.AllowPickup && s.Point != null);
+        var hasDropoffs = existingStops.Any(s => s.AllowDropoff && s.Point != null);
+
+        if (hasPickups && hasDropoffs)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Route {RouteCode} lacks complete pickup/dropoff stops. Initializing stops...", route.Code);
+
+        // 1. Resolve Origin Pickup Points
+        var pickupPoints = await _context.PickupDropoffPoints
+            .Where(p => p.LocationId == route.OriginLocationId && p.OperatorId == route.OperatorId && p.IsActive)
+            .ToListAsync(ct);
+
+        if (pickupPoints.Count == 0)
+        {
+            pickupPoints = await _context.PickupDropoffPoints
+                .Where(p => p.LocationId == route.OriginLocationId && p.IsActive)
+                .ToListAsync(ct);
+        }
+
+        if (pickupPoints.Count == 0)
+        {
+            var simPoint = new PickupDropoffPoint
+            {
+                OperatorId = route.OperatorId,
+                LocationId = route.OriginLocationId,
+                Name = $"[SANDBOX] Điểm đón mô phỏng - {route.OriginLocation.Name}",
+                Address = $"{route.OriginLocation.Name} (Vị trí đón mô phỏng thử nghiệm)",
+                PointType = PointType.Both,
+                IsActive = true
+            };
+            _context.PickupDropoffPoints.Add(simPoint);
+            await _context.SaveChangesAsync(ct);
+            pickupPoints.Add(simPoint);
+        }
+
+        // 2. Resolve Destination Dropoff Points
+        var dropoffPoints = await _context.PickupDropoffPoints
+            .Where(p => p.LocationId == route.DestinationLocationId && p.OperatorId == route.OperatorId && p.IsActive)
+            .ToListAsync(ct);
+
+        if (dropoffPoints.Count == 0)
+        {
+            dropoffPoints = await _context.PickupDropoffPoints
+                .Where(p => p.LocationId == route.DestinationLocationId && p.IsActive)
+                .ToListAsync(ct);
+        }
+
+        if (dropoffPoints.Count == 0)
+        {
+            var simPoint = new PickupDropoffPoint
+            {
+                OperatorId = route.OperatorId,
+                LocationId = route.DestinationLocationId,
+                Name = $"[SANDBOX] Điểm trả mô phỏng - {route.DestinationLocation.Name}",
+                Address = $"{route.DestinationLocation.Name} (Vị trí trả mô phỏng thử nghiệm)",
+                PointType = PointType.Both,
+                IsActive = true
+            };
+            _context.PickupDropoffPoints.Add(simPoint);
+            await _context.SaveChangesAsync(ct);
+            dropoffPoints.Add(simPoint);
+        }
+
+        // Clear incomplete existing route stops to maintain strict ordering
+        if (existingStops.Count > 0)
+        {
+            _context.RouteStops.RemoveRange(existingStops);
+            await _context.SaveChangesAsync(ct);
+        }
+
+        var order = 1;
+        var duration = route.EstimatedDurationMinutes ?? 360;
+        var newStops = new List<RouteStop>();
+
+        // Add Pickups first
+        foreach (var pt in pickupPoints.Take(3))
+        {
+            newStops.Add(new RouteStop
+            {
+                RouteId = route.Id,
+                PointId = pt.Id,
+                StopOrder = order++,
+                AllowPickup = true,
+                AllowDropoff = false,
+                DepartureOffsetMinutes = (order == 2) ? 0 : null,
+                ArrivalOffsetMinutes = null
+            });
+        }
+
+        // Add Dropoffs second
+        var dropoffList = dropoffPoints.Take(3).ToList();
+        for (int i = 0; i < dropoffList.Count; i++)
+        {
+            var pt = dropoffList[i];
+            var isLast = (i == dropoffList.Count - 1);
+            newStops.Add(new RouteStop
+            {
+                RouteId = route.Id,
+                PointId = pt.Id,
+                StopOrder = order++,
+                AllowPickup = false,
+                AllowDropoff = true,
+                DepartureOffsetMinutes = null,
+                ArrivalOffsetMinutes = isLast ? duration : null
+            });
+        }
+
+        await _context.RouteStops.AddRangeAsync(newStops, ct);
+        await _context.SaveChangesAsync(ct);
+        _logger.LogInformation("Seeded {Count} ordered RouteStops for route {RouteCode}.", newStops.Count, route.Code);
+    }
+
+    private async Task EnsureSandboxTripAsync(
+        Route route,
+        Bus bus,
+        string tripCode,
+        DateTimeOffset departureTime,
+        int durationMinutes,
+        decimal basePrice,
+        List<RouteStop> routeStops,
+        CancellationToken ct)
+    {
+        var trip = await _context.Trips
+            .Include(t => t.Stops)
+            .Include(t => t.Seats)
+            .FirstOrDefaultAsync(t => t.TripCode == tripCode, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        if (trip == null)
+        {
+            trip = new Trip
+            {
+                RouteId = route.Id,
+                BusId = bus.Id,
+                TripCode = tripCode,
+                DepartureTime = departureTime,
+                ExpectedArrivalTime = departureTime.AddMinutes(durationMinutes),
+                BasePrice = basePrice,
+                Status = TripStatus.Scheduled,
+                IsDemoTrip = true,
+                CreatedAt = now
+            };
+            _context.Trips.Add(trip);
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Created sandbox trip {TripCode} on route {RouteCode}.", tripCode, route.Code);
+        }
+        else
+        {
+            // If departure is in the past, update to upcoming
+            if (trip.DepartureTime < DateTimeOffset.Now)
+            {
+                trip.DepartureTime = departureTime;
+                trip.ExpectedArrivalTime = departureTime.AddMinutes(durationMinutes);
+                trip.Status = TripStatus.Scheduled;
+                trip.IsDemoTrip = true;
+                trip.UpdatedAt = now;
+                await _context.SaveChangesAsync(ct);
+            }
+        }
+
+        // Ensure TripStops are populated
+        if (trip.Stops == null || trip.Stops.Count == 0)
+        {
+            await CreateTripStopsAsync(trip, routeStops, durationMinutes, ct);
+        }
+
+        // Ensure TripSeats inventory is populated
+        if (trip.Seats == null || trip.Seats.Count == 0)
+        {
+            await CreateTripSeatsAsync(trip, bus, ct);
+        }
+    }
+
+    private async Task CreateTripStopsAsync(Trip trip, List<RouteStop> routeStops, int durationMinutes, CancellationToken ct)
+    {
+        if (routeStops.Count == 0) return;
+
+        var existingPointIds = await _context.TripStops
+            .Where(ts => ts.TripId == trip.Id)
+            .Select(ts => ts.PointId)
+            .ToListAsync(ct);
+
+        var tripStops = new List<TripStop>();
+        foreach (var rs in routeStops.OrderBy(s => s.StopOrder))
+        {
+            if (existingPointIds.Contains(rs.PointId))
+                continue;
+
+            tripStops.Add(new TripStop
+            {
+                TripId = trip.Id,
+                PointId = rs.PointId,
+                StopOrder = rs.StopOrder,
+                AllowPickup = rs.AllowPickup,
+                AllowDropoff = rs.AllowDropoff,
+                ScheduledDepartureTime = rs.AllowPickup
+                    ? trip.DepartureTime.AddMinutes(rs.DepartureOffsetMinutes ?? 0)
+                    : null,
+                ScheduledArrivalTime = rs.AllowDropoff
+                    ? trip.DepartureTime.AddMinutes(rs.ArrivalOffsetMinutes ?? durationMinutes)
+                    : null
+            });
+        }
+
+        if (tripStops.Count > 0)
+        {
+            await _context.TripStops.AddRangeAsync(tripStops, ct);
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Synchronized {Count} TripStops for trip {TripCode}.", tripStops.Count, trip.TripCode);
+        }
+    }
+
+    private async Task CreateTripSeatsAsync(Trip trip, Bus bus, CancellationToken ct)
+    {
+        var existingSeatCodes = await _context.TripSeats
+            .Where(s => s.TripId == trip.Id)
+            .Select(s => s.SeatCode)
+            .ToListAsync(ct);
+
+        var layoutItems = bus.SeatLayout?.Items?.Where(i => i.IsActive).ToList() ?? new List<SeatLayoutItem>();
+        if (layoutItems.Count == 0) return;
+
+        var newSeats = new List<TripSeat>();
+        var now = DateTimeOffset.UtcNow;
+        foreach (var item in layoutItems)
+        {
+            if (existingSeatCodes.Contains(item.SeatCode, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            var isCouple = string.Equals(item.SeatType, "DoubleBed", StringComparison.OrdinalIgnoreCase);
+            var seatPrice = trip.BasePrice + (isCouple ? 100_000m : 0m);
+
+            newSeats.Add(new TripSeat
+            {
+                TripId = trip.Id,
+                SeatLayoutItemId = item.Id,
+                SeatCode = item.SeatCode,
+                SeatType = item.SeatType,
+                Floor = item.Floor,
+                Row = item.Row,
+                Column = item.Column,
+                Price = seatPrice,
+                Status = TripSeatStatus.Available,
+                CreatedAt = now
+            });
+        }
+
+        if (newSeats.Count > 0)
+        {
+            await _context.TripSeats.AddRangeAsync(newSeats, ct);
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Seeded {Count} available seats for trip {TripCode}.", newSeats.Count, trip.TripCode);
+        }
+    }
+
+    private static decimal CalculateSandboxBasePrice(Route route)
+    {
+        if (!route.DistanceKm.HasValue || route.DistanceKm.Value <= 0)
+        {
+            return 350_000m;
+        }
+
+        var km = route.DistanceKm.Value;
+        if (km <= 350m) return 320_000m;
+        if (km <= 500m) return 420_000m;
+        if (km <= 700m) return 480_000m;
+        return 750_000m;
+    }
+
+    public async Task EnsureRolesAndDefaultUsersAsync(CancellationToken ct = default)
+    {
+        var dbName = _context.Database.GetDbConnection().Database;
+        if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Seeding is strictly forbidden against production database 'TripgoDb'.");
+        }
+
+        // 1. Roles: Admin, Customer, Operator
+        var existingRoles = await _context.Roles.ToListAsync(ct);
+
+        var adminRole = existingRoles.FirstOrDefault(r => string.Equals(r.Name, "Admin", StringComparison.OrdinalIgnoreCase));
+        if (adminRole == null)
+        {
+            adminRole = new Role { Name = "Admin", Description = "Quản trị viên hệ thống" };
+            _context.Roles.Add(adminRole);
+        }
+
+        var customerRole = existingRoles.FirstOrDefault(r => string.Equals(r.Name, "Customer", StringComparison.OrdinalIgnoreCase));
+        if (customerRole == null)
+        {
+            customerRole = new Role { Name = "Customer", Description = "Khách hàng mua vé" };
+            _context.Roles.Add(customerRole);
+        }
+
+        var operatorRole = existingRoles.FirstOrDefault(r => string.Equals(r.Name, "Operator", StringComparison.OrdinalIgnoreCase));
+        if (operatorRole == null)
+        {
+            operatorRole = new Role { Name = "Operator", Description = "Đối tác nhà xe" };
+            _context.Roles.Add(operatorRole);
+        }
+
+        await _context.SaveChangesAsync(ct);
+
+        // 2. Default Admin User: admin@tripgo.vn / Admin@123
+        var adminEmail = "admin@tripgo.vn";
+        var existingAdmin = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == adminEmail, ct);
+        if (existingAdmin == null)
+        {
+            var adminUser = new User
+            {
+                FullName = "Quản Trị Viên TripGo",
+                Email = adminEmail,
+                PhoneNumber = "0900000001",
+                PasswordHash = _passwordHasher.HashPassword("Admin@123"),
+                RoleId = adminRole.Id,
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _context.Users.Add(adminUser);
+            _logger.LogInformation("Seeded default admin user: {Email} (Role: Admin)", adminEmail);
+        }
+
+        // 3. Default Customer User: customer@tripgo.vn / Customer@123
+        var customerEmail = "customer@tripgo.vn";
+        var existingCustomer = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == customerEmail, ct);
+        if (existingCustomer == null)
+        {
+            var customerUser = new User
+            {
+                FullName = "Khách Hàng Mẫu",
+                Email = customerEmail,
+                PhoneNumber = "0912345678",
+                PasswordHash = _passwordHasher.HashPassword("Customer@123"),
+                RoleId = customerRole.Id,
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _context.Users.Add(customerUser);
+            _logger.LogInformation("Seeded default customer user: {Email} (Role: Customer)", customerEmail);
+        }
+
+        await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task RepairPickupDropoffUnicodeAsync(CancellationToken ct = default)
+    {
+        var dbName = _context.Database.GetDbConnection().Database;
+        if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Database write is strictly forbidden against production database 'TripgoDb'.");
+        }
+
+        var points = await _context.PickupDropoffPoints.Where(p => p.Id <= 30).ToListAsync(ct);
+        int repairedCount = 0;
+
+        foreach (var p in points)
+        {
+            if (VerifiedPointsMap.TryGetValue(p.Id, out var verified))
+            {
+                if (p.Name != verified.Name || p.Address != verified.Address)
+                {
+                    _logger.LogInformation("Repairing Unicode for Point ID {Id}: '{OldName}' -> '{NewName}'", p.Id, p.Name, verified.Name);
+                    p.Name = verified.Name;
+                    p.Address = verified.Address;
+                    repairedCount++;
+                }
+            }
+        }
+
+        if (repairedCount > 0)
+        {
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Successfully repaired Unicode encoding for {Count} PickupDropoffPoints in {Database}.", repairedCount, dbName);
+        }
+    }
+
+    private static readonly Dictionary<long, (string Name, string Address)> VerifiedPointsMap = new()
+    {
+        [1] = ("Bến xe Miền Tây", "395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM"),
+        [2] = ("Văn phòng Quận 5", "147 Lê Hồng Phong, Phường 3, Quận 5, TP.HCM"),
+        [3] = ("Trạm Hàng Xanh", "486E Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM"),
+        [4] = ("Trạm Đức Trọng (Phi Nôm)", "Thôn Quảng Hiệp, Xã Hiệp Thạnh, Huyện Đức Trọng, Lâm Đồng"),
+        [5] = ("Bưu điện TP. Đà Lạt", "02 Trần Phú, Phường 3, TP. Đà Lạt, Lâm Đồng"),
+        [6] = ("Bến xe Đa Thiện", "01 Mai Anh Đào, Phường 8, TP. Đà Lạt, Lâm Đồng"),
+        [7] = ("Bến xe Miền Tây (FUTA)", "395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM"),
+        [8] = ("Văn phòng Lê Hồng Phong (FUTA)", "231-233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM"),
+        [9] = ("Bến xe Miền Đông Mới (FUTA)", "501 Hoàng Hữu Nam, Phường Long Bình, TP. Thủ Đức, TP.HCM"),
+        [10] = ("Bến xe Liên tỉnh Đà Lạt (FUTA)", "01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Lâm Đồng"),
+        [11] = ("Văn phòng Trần Hưng Đạo (FUTA)", "22 Trần Hưng Đạo, Phường 10, TP. Đà Lạt, Lâm Đồng"),
+        [12] = ("Bến xe Phía Nam Nha Trang (FUTA)", "Đường 23/10, Xã Vĩnh Trung, TP. Nha Trang, Khánh Hòa"),
+        [13] = ("Văn phòng Cam Ranh", "08 Tố Hữu, Phường Cam Thuần, TP. Cam Ranh, Khánh Hòa"),
+        [14] = ("Văn phòng CT3 VCN Phước Hải", "Chung cư CT3 Tố Hữu, KĐT VCN Phước Hải, TP. Nha Trang, Khánh Hòa"),
+        [15] = ("Văn phòng Hoàng Hoa Thám", "12D Hoàng Hoa Thám, Phường Lộc Thọ, TP. Nha Trang, Khánh Hòa"),
+        [16] = ("Văn phòng Phạm Ngũ Lão", "313 Phạm Ngũ Lão, Phường Phạm Ngũ Lão, Quận 1, TP.HCM"),
+        [17] = ("Văn phòng Trần Phú", "295 Trần Phú, Phường 8, Quận 5, TP.HCM"),
+        [18] = ("Trạm Đón Hàng Xanh", "Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM"),
+        [19] = ("Văn phòng Giải Phóng", "789 Giải Phóng, Phường Giáp Bát, Quận Hoàng Mai, Hà Nội"),
+        [20] = ("Văn phòng Trần Nhật Duật", "114 Trần Nhật Duật, Phường Hàng Buồm, Quận Hoàn Kiếm, Hà Nội"),
+        [21] = ("Văn phòng Cầu Giấy", "07 Phạm Văn Đồng, Phường Mai Dịch, Quận Cầu Giấy, Hà Nội"),
+        [22] = ("Trạm Ngã tư Sân bay Nội Bài", "Trạm thu phí Võ Nguyên Giáp, Sóc Sơn, Hà Nội"),
+        [23] = ("Bến xe Trung tâm Lào Cai", "Tổ 19, Phường Bình Minh, TP. Lào Cai, Lào Cai"),
+        [24] = ("Bến xe Sa Pa", "Đường Điện Biên Phủ, Thị xã Sa Pa, Lào Cai"),
+        [25] = ("Văn phòng 571 Điện Biên Phủ", "571 Điện Biên Phủ, Thị xã Sa Pa, Lào Cai"),
+        [26] = ("Văn phòng Celadon City Tân Phú", "E1.30 Celadon City, 36 Bờ Bao Tân Thắng, Tân Phú, TP.HCM"),
+        [27] = ("Bến xe Miền Đông Cũ", "292 Đinh Bộ Lĩnh, Phường 26, Quận Bình Thạnh, TP.HCM"),
+        [28] = ("Trạm Ngã 4 Bình Phước", "Quốc lộ 13, Phường Hiệp Bình Phước, TP. Thủ Đức, TP.HCM"),
+        [29] = ("Bến xe Phú Tài", "Ngã 3 Phú Tài, Phường Trần Quang Diệu, TP. Quy Nhơn, Bình Định"),
+        [30] = ("Bến xe Trung tâm Quy Nhơn", "71 Tây Sơn, Phường Ghềnh Ráng, TP. Quy Nhơn, Bình Định")
+    };
+}
+

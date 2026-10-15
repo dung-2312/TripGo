@@ -69,4 +69,7 @@ public class Booking
     public ICollection<BookingSeat> BookingSeats { get; set; } = new List<BookingSeat>();
 
     public ICollection<BookingPassenger> Passengers { get; set; } = new List<BookingPassenger>();
+
+    public ICollection<PaymentTransaction> PaymentTransactions { get; set; } = new List<PaymentTransaction>();
 }
+
