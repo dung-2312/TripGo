@@ -4,7 +4,7 @@ using TripGo.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Đăng ký DbContext kết nối SQL Server
+// 1. Đăng ký DbContext kết nối SQL Server.
 builder.Services.AddDbContext<TripGoDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
