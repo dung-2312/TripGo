@@ -6,7 +6,7 @@ public enum SeatStatus
 {
     Available,    // Ghế trống, có thể chọn
     Unavailable,  // Đã có người mua, bị khóa
-    Selected      // Đang được người dùng chọn
+    Selected      // Đang được người dùng chọn.
 }
 
 public class CustomerTripDto
