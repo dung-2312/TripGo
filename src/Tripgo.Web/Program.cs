@@ -19,7 +19,7 @@ using Tripgo.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Clean Architecture Modules
+// 1. Clean Architecture Modules.
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
