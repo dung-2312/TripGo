@@ -7,6 +7,7 @@ public class OperatorDto
     public string Name { get; set; } = string.Empty;
     public string? Hotline { get; set; }
     public string? Address { get; set; }
+    public bool IsVerified { get; set; }
 
     public OperatorDto() { }
     public OperatorDto(long id, string name)

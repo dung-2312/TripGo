@@ -15,4 +15,5 @@ public interface IBookingService
     Task<List<BookingDetailDto>> GetBookingsByPhoneAsync(string phone, CancellationToken ct = default);
     Task EnsureDemoTripInventoryAsync(long tripId, CancellationToken ct = default);
     Task<bool> CancelBookingAsync(long bookingId, string reason, CancellationToken ct = default);
+    Task<List<BookingDetailDto>> GetBookingsForCurrentUserAsync(CancellationToken ct = default);
 }

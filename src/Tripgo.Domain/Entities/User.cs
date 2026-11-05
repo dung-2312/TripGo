@@ -1,4 +1,4 @@
-﻿namespace Tripgo.Domain.Entities;
+namespace Tripgo.Domain.Entities;
 
 public class User
 {
@@ -12,4 +12,6 @@ public class User
 
     public int RoleId { get; set; }
     public Role? Role { get; set; }
+
+    public ICollection<Booking> Bookings { get; set; } = new List<Booking>();
 }

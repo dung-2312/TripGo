@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&amp;family=Inter:wght@400;500;600;700;800&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="Tripgo.Web.styles.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!--!--><!--!--><!--!--><title><!--!-->TripGo - Đặt vé xe khách trực tuyến toàn quốc</title><!--!--><!--!--></head>
+
+<body><!--!--><!--!--><!--!--><!--!--><!--!--><!--!--><div class="tg-app-shell d-flex flex-column min-vh-100"><header class="tg-header sticky-top"><div class="container d-flex align-items-center justify-content-between py-2"><!--!--><a href="/" class="tg-brand d-flex align-items-center gap-2 text-decoration-none"><div class="tg-brand-badge"><svg class="tg-brand-bus" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 36px; height: 36px;"><rect width="36" height="36" rx="10" fill="#FFCA28"></rect>
+                        <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#071F49"></path>
+                        <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white"></rect>
+                        <circle cx="13.5" cy="21.5" r="2" fill="#FFCA28"></circle>
+                        <circle cx="22.5" cy="21.5" r="2" fill="#FFCA28"></circle></svg></div>
+                <span class="tg-brand-title">Trip<span class="tg-brand-accent">Go</span></span></a>
+
+            
+            <nav class="d-none d-md-flex align-items-center gap-3"><!--!--><a href="search-trips" class="tg-nav-link active" aria-current="page"><!--!--><i class="bi bi-bus-front"></i>
+                    <!--!--><span>Vé xe khách</span></a><!--!-->
+                <!--!--><a href="schedules" class="tg-nav-link"><!--!--><i class="bi bi-calendar3"></i>
+                    <!--!--><span>Lịch trình</span></a><!--!-->
+                <!--!--><a href="my-tickets" class="tg-nav-link"><!--!--><i class="bi bi-ticket-perforated"></i>
+                    <!--!--><span>Vé của tôi</span></a><!--!-->
+                <!--!--><a href="support" class="tg-nav-link"><!--!--><i class="bi bi-headset"></i>
+                    <!--!--><span>Hỗ trợ 24/7</span></a></nav><!--!-->
+
+            
+            <div class="d-flex align-items-center gap-2"><button type="button" class="tg-hotline-btn d-none d-lg-flex" title="Tổng đài chăm sóc khách hàng"><!--!--><i class="bi bi-telephone-fill text-primary"></i>
+                    <!--!--><span>Hotline 24/7</span></button><!--!-->
+
+                <!--!--><div class="position-relative"><button class="btn btn-warning d-flex align-items-center gap-2 rounded-pill px-3 py-1 shadow-sm" type="button"><!--!--><span class="tg-avatar-circle"><i class="bi bi-person-fill"></i></span>
+                                <span class="d-none d-sm-inline fw-bold text-dark">Tài khoản</span><!--!-->
+                                <i class="bi bi-chevron-down small text-dark"></i></button></div></div></div></header><!--!-->
+
+    
+    <main class="flex-grow-1"><!--!--><!--!--><!--!--><!--!-->
+
+<div class="tg-portal"><section class="tg-hero"><div class="container position-relative z-2"><!--!--><div class="text-center mb-4 text-white"><span class="tg-hero-badge mb-3"><i class="bi bi-shield-check text-warning"></i> Nền tảng đặt vé xe khách liên tỉnh thế hệ mới
+                </span>
+                <h1 class="tg-hero-title mb-3" tabindex="-1">HÀNH TRÌNH VẠN DẶM — KHỞI ĐẦU DỄ DÀNG</h1>
+                <p class="tg-hero-subtitle">
+                    Tra cứu tuyến đường, so sánh giá vé chính hãng và chọn đúng vị trí giường nằm yêu thích trên toàn quốc.
+                </p></div>
+
+            
+            <div class="tg-search-box p-3 p-md-4 mx-auto"><div class="row g-2 align-items-center"><div class="col-lg-3 col-md-6 position-relative"><div class="tg-input-wrapper"><!--!--><label class="tg-label small text-muted d-block fw-semibold mb-1"><i class="bi bi-geo-alt-fill text-primary me-1"></i> Nơi xuất phát
+                            </label>
+                            <div class="tg-val fw-bold text-dark text-truncate fs-6">Hà Nội (Hà Nội)</div></div></div><!--!-->
+
+                    
+                    <div class="col-auto d-none d-lg-flex justify-content-center px-0"><button type="button" class="tg-swap-btn" title="Đổi nơi đi và nơi đến"><!--!--><i class="bi bi-arrow-left-right fs-6"></i></button></div><!--!-->
+
+                    
+                    <div class="col-lg-3 col-md-6 position-relative"><div class="tg-input-wrapper"><!--!--><label class="tg-label small text-muted d-block fw-semibold mb-1"><i class="bi bi-geo-alt-fill text-danger me-1"></i> Nơi đến
+                            </label>
+                            <div class="tg-val fw-bold text-dark text-truncate fs-6">Sa Pa (Lào Cai)</div></div></div><!--!-->
+
+                    
+                    <div class="col-lg-3 col-md-6"><div class="tg-input-wrapper bg-white"><div class="d-flex justify-content-between align-items-center mb-1"><!--!--><label class="small text-muted fw-semibold mb-0"><i class="bi bi-calendar3 text-primary me-1"></i> Ngày đi
+                                </label>
+                                <div class="d-flex gap-1"><button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip active"><!--!-->Hôm nay</button><!--!-->
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip "><!--!-->Ngày mai</button><!--!-->
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip d-none d-xl-inline "><!--!-->+2 ngày</button></div></div><!--!-->
+                            <!--!--><input type="date" name="searchModel.DepartureDate" class="form-control form-control-sm border-0 p-0 fw-bold fs-6 text-dark" _bl_e6bd3bda-7483-4fdc-b15c-3fc647b36c4d=""></div></div><!--!-->
+
+                    
+                    <div class="col-lg col-md-6"><button type="button" class="btn btn-warning w-100 py-3 fw-bold rounded-3 fs-5 shadow-sm"><!--!--><i class="bi bi-search me-2"></i>
+                                <!--!--><span>Tìm vé</span></button></div></div></div><!--!-->
+
+            
+            <!--!--><div class="tg-trust-strip mt-4"><div class="tg-trust-item"><i class="bi bi-patch-check-fill text-warning"></i> 100% Giữ chỗ thời gian thực</div>
+                <div class="tg-trust-item"><i class="bi bi-tag-fill text-warning"></i> Giá vé niêm yết chính hãng</div>
+                <div class="tg-trust-item"><i class="bi bi-shield-lock-fill text-warning"></i> Thanh toán bảo mật SSL</div>
+                <div class="tg-trust-item"><i class="bi bi-headset text-warning"></i> Tổng đài hỗ trợ 24/7</div></div></div></section><!--!-->
+
+    
+    <main class="container my-4" id="trip-results"><div class="card border-0 shadow-sm rounded-4 p-3 bg-white mb-4"><div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3"><div><div class="d-flex align-items-center gap-2 mb-1"><!--!--><span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 small fw-bold">KẾT QUẢ TÌM KIẾM</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small fw-bold"><!--!--><i class="bi bi-check2-circle me-1"></i>Tìm thấy 8<!--!--> chuyến
+                            </span></div><!--!-->
+                        <h4 class="fw-bold mb-1 text-navy">Hà Nội<!--!--> <i class="bi bi-arrow-right text-primary mx-1"></i> Sa Pa</h4><!--!-->
+                        <div class="small text-secondary"><!--!--><i class="bi bi-calendar3 text-primary me-1"></i> Ngày đi: <strong class="text-dark">Thứ Bảy, 17/10/2026</strong></div></div><!--!-->
+
+                    <div class="d-flex align-items-center gap-2 flex-wrap"><div class="btn-group btn-group-sm" role="group" aria-label="Đổi ngày"><button type="button" class="btn btn-outline-primary px-3 py-2 fw-semibold" disabled="" title="Ngày trước"><!--!--><i class="bi bi-chevron-left me-1"></i> Ngày trước
+                            </button><!--!-->
+                            <button type="button" class="btn btn-outline-primary px-3 py-2 fw-semibold" title="Ngày sau"><!--!-->
+                                Ngày sau <i class="bi bi-chevron-right ms-1"></i></button></div><!--!-->
+                        <!--!--><button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2 " aria-label="Đổi tuyến"><!--!--><i class="bi bi-arrow-left"></i>
+    <span>Đổi tuyến</span></button></div></div></div><div class="row g-4"><aside class="col-lg-3 mb-4"><div class="card border-0 shadow-sm rounded-4 p-3 bg-white sticky-top" style="top: 80px;"><div class="d-flex justify-content-between align-items-center mb-3"><!--!--><span class="fw-bold fs-6"><i class="bi bi-funnel-fill text-primary me-1"></i> Bộ lọc chuyến xe</span>
+                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-muted"><!--!-->
+                                Đặt lại
+                            </button></div><!--!-->
+
+                        
+                        <div class="mb-3"><!--!--><label class="fw-bold small text-secondary text-uppercase mb-2 d-block">Sắp xếp theo</label>
+                            <div class="d-flex flex-column gap-2 small"><label class="cursor-pointer"><input type="radio" name="sort" value="departure_asc" class="me-2"><!--!--> Giờ đi sớm nhất</label><!--!-->
+                                <label class="cursor-pointer"><input type="radio" name="sort" value="departure_desc" class="me-2"><!--!--> Giờ đi muộn nhất</label><!--!-->
+                                <label class="cursor-pointer"><input type="radio" name="sort" value="price_asc" class="me-2"><!--!--> Giá vé tăng dần</label><!--!-->
+                                <label class="cursor-pointer"><input type="radio" name="sort" value="price_desc" class="me-2"><!--!--> Giá vé giảm dần</label></div></div><!--!-->
+
+                        <hr>
+
+                        
+                        <div class="mb-3"><!--!--><label class="fw-bold small text-secondary text-uppercase mb-2 d-block">Giờ khởi hành</label>
+                            <div class="d-flex flex-column gap-2 small"><label class="cursor-pointer"><input type="checkbox" class="me-2"><!--!--> Buổi sáng (00:00 – 11:59)</label><!--!-->
+                                <label class="cursor-pointer"><input type="checkbox" class="me-2"><!--!--> Buổi chiều (12:00 – 17:59)</label><!--!-->
+                                <label class="cursor-pointer"><input type="checkbox" class="me-2"><!--!--> Buổi tối (18:00 – 23:59)</label></div></div><!--!-->
+
+                        <hr><div class="mb-3"><!--!--><label class="fw-bold small text-secondary text-uppercase mb-2 d-block">Nhà xe</label>
+                                <div class="d-flex flex-column gap-2 small" style="max-height: 160px; overflow-y: auto;"><label class="cursor-pointer"><input type="checkbox" class="me-2"><!--!-->
+                                            Sao Việt</label></div></div><!--!-->
+                            <hr><div class="mb-3"><!--!--><label class="fw-bold small text-secondary text-uppercase mb-2 d-block">Loại xe</label>
+                                <div class="d-flex flex-column gap-2 small" style="max-height: 160px; overflow-y: auto;"><label class="cursor-pointer"><input type="checkbox" class="me-2"><!--!-->
+                                            Limousine Giường Phòng VIP 24</label></div></div><!--!-->
+                            <hr><div class="mb-2"><div class="d-flex justify-content-between align-items-center mb-1"><!--!--><label class="fw-bold small text-secondary text-uppercase mb-0">Giá tối đa</label>
+                                <span class="fw-bold text-primary small">2,000,000<!--!--> đ</span></div><!--!-->
+                            <input class="form-range" type="range" min="100000" max="2000000" step="20000"></div></div></aside><!--!-->
+
+                
+                <section class="col-lg-9"><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-secondary-subtle text-secondary border fw-semibold" style="font-size: 0.72rem;"><i class="bi bi-info-circle me-1"></i>LỊCH TRÌNH THAM KHẢO
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">SAOVIET-HAN-SAP-261017-0700</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">07:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">13:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOHANSAPLUX0700</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">450,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><span class="badge bg-secondary-subtle text-secondary border"><!--!--><i class="bi bi-clock-history me-1"></i> Lịch trình tham khảo</span></div><!--!-->
+                                            <button class="btn btn-outline-primary fw-bold px-4 py-2 w-100 rounded-3">Xem lộ trình &amp; Điểm đón</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-warning text-dark border border-warning-subtle fw-bold" style="font-size: 0.72rem;"><i class="bi bi-cpu me-1"></i>CHUYẾN MÔ PHỎNG — SANDBOX
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">DEMO-SANDBOX-SAOVIET-HAN-SAP-TODAY</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">08:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">14:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOSGNDLILUX0700</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">320,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><!--!-->
+                                                Còn <strong class="text-success fw-bold fs-6">24</strong> / 24<!--!--> chỗ trống
+                                            </div><!--!-->
+                                            <button class="btn btn-warning fw-bold px-4 py-2 w-100 rounded-3 text-dark shadow-sm">Chọn chuyến này</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-warning text-dark border border-warning-subtle fw-bold" style="font-size: 0.72rem;"><i class="bi bi-cpu me-1"></i>CHUYẾN MÔ PHỎNG — SANDBOX
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">[SANDBOX]-SAOVIET-HAN-SAP-261017-0800</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">08:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">14:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOSGNDLILUX0700</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">320,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><!--!-->
+                                                Còn <strong class="text-success fw-bold fs-6">24</strong> / 24<!--!--> chỗ trống
+                                            </div><!--!-->
+                                            <button class="btn btn-warning fw-bold px-4 py-2 w-100 rounded-3 text-dark shadow-sm">Chọn chuyến này</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-secondary-subtle text-secondary border fw-semibold" style="font-size: 0.72rem;"><i class="bi bi-info-circle me-1"></i>LỊCH TRÌNH THAM KHẢO
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">SAOVIET-HAN-SAP-261017-1230</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">12:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">19:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOHANSAPLUX1230</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">470,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><span class="badge bg-secondary-subtle text-secondary border"><!--!--><i class="bi bi-clock-history me-1"></i> Lịch trình tham khảo</span></div><!--!-->
+                                            <button class="btn btn-outline-primary fw-bold px-4 py-2 w-100 rounded-3">Xem lộ trình &amp; Điểm đón</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-warning text-dark border border-warning-subtle fw-bold" style="font-size: 0.72rem;"><i class="bi bi-cpu me-1"></i>CHUYẾN MÔ PHỎNG — SANDBOX
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">[SANDBOX]-SAOVIET-HAN-SAP-261017-1400</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">14:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">20:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOSGNDLILUX0700</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">320,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><!--!-->
+                                                Còn <strong class="text-success fw-bold fs-6">24</strong> / 24<!--!--> chỗ trống
+                                            </div><!--!-->
+                                            <button class="btn btn-warning fw-bold px-4 py-2 w-100 rounded-3 text-dark shadow-sm">Chọn chuyến này</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-secondary-subtle text-secondary border fw-semibold" style="font-size: 0.72rem;"><i class="bi bi-info-circle me-1"></i>LỊCH TRÌNH THAM KHẢO
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">SAOVIET-HAN-SAP-261017-1700</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">17:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">23:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOHANSAPLUX1700</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">490,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><span class="badge bg-secondary-subtle text-secondary border"><!--!--><i class="bi bi-clock-history me-1"></i> Lịch trình tham khảo</span></div><!--!-->
+                                            <button class="btn btn-outline-primary fw-bold px-4 py-2 w-100 rounded-3">Xem lộ trình &amp; Điểm đón</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-warning text-dark border border-warning-subtle fw-bold" style="font-size: 0.72rem;"><i class="bi bi-cpu me-1"></i>CHUYẾN MÔ PHỎNG — SANDBOX
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">[SANDBOX]-SAOVIET-HAN-SAP-261017-2030</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">20:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">03:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOSGNDLILUX0700</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">320,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><!--!-->
+                                                Còn <strong class="text-success fw-bold fs-6">24</strong> / 24<!--!--> chỗ trống
+                                            </div><!--!-->
+                                            <button class="btn btn-warning fw-bold px-4 py-2 w-100 rounded-3 text-dark shadow-sm">Chọn chuyến này</button></div></div></div><div class="card border-0 shadow-sm rounded-4 mb-3 trip-card bg-white p-3 "><div class="row align-items-center g-3"><div class="col-md-8"><div class="d-flex align-items-center gap-3 mb-2"><div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">S</div><!--!-->
+                                            <div><div class="d-flex align-items-center gap-2 flex-wrap"><h5 class="fw-bold mb-0 text-navy">Sao Việt</h5><!--!--><span class="badge bg-secondary-subtle text-secondary border fw-semibold" style="font-size: 0.72rem;"><i class="bi bi-info-circle me-1"></i>LỊCH TRÌNH THAM KHẢO
+                                                        </span></div><!--!-->
+                                                <div class="small text-muted mt-1"><!--!--><i class="bi bi-truck-front me-1"></i>Limousine Giường Phòng VIP 24<!--!--> · Mã chuyến: <strong class="text-dark">SAOVIET-HAN-SAP-261017-2230</strong></div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 my-3"><div><span class="fs-4 fw-bold text-primary">22:30</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Hà Nội</div></div><!--!-->
+                                            <div class="text-center px-2 flex-grow-1"><small class="badge bg-light text-secondary border px-2 py-1 mb-1"><!--!--><i class="bi bi-clock me-1"></i>6h30m</small><!--!-->
+                                                <!--!--><div class="position-relative d-flex align-items-center justify-content-center my-1"><hr class="w-100 my-0 border-primary opacity-50">
+                                                    <i class="bi bi-arrow-right text-primary position-absolute bg-white px-1"></i></div>
+                                                <!--!--><small class="text-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Chạy thẳng</small></div><!--!-->
+                                            <div><span class="fs-4 fw-bold text-navy">05:00</span><!--!-->
+                                                <div class="small text-dark fw-semibold">Sa Pa</div></div></div><!--!-->
+
+                                        <div class="d-flex align-items-center gap-3 mt-2 flex-wrap"><div class="small text-muted"><!--!--><i class="bi bi-card-text me-1"></i> Biển số xe: <strong>SAOHANSAPLUX2230</strong></div><!--!-->
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-primary fw-semibold"><!--!--><i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả &amp; Chi tiết lộ trình
+                                                <i class="bi bi-chevron-down ms-1 small"></i></button></div></div><!--!-->
+
+                                    
+                                    <div class="col-md-4 text-md-end border-start-md ps-md-4"><div class="text-danger fs-3 fw-bold mb-1">510,000 <!--!--><span class="fs-6 fw-normal text-muted">đ / vé</span></div><div class="small text-muted mb-3"><span class="badge bg-secondary-subtle text-secondary border"><!--!--><i class="bi bi-clock-history me-1"></i> Lịch trình tham khảo</span></div><!--!-->
+                                            <button class="btn btn-outline-primary fw-bold px-4 py-2 w-100 rounded-3">Xem lộ trình &amp; Điểm đón</button></div></div></div></section></div></main></div><!--!-->
+
+<!--!--><style>
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .tg-route-card {
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tg-route-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--tg-shadow-hover) !important;
+    }
+
+    @media (min-width: 768px) {
+        .border-start-md {
+            border-left: 1px solid var(--tg-border, #e2e8f0);
+        }
+    }
+</style></main><!--!-->
+
+    
+    <!--!--><footer class="tg-footer mt-auto"><div class="container py-5"><div class="row g-4 mb-4"><div class="col-lg-4 col-md-6"><div class="d-flex align-items-center gap-2 mb-3"><div class="tg-brand-badge"><svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 34px; height: 34px;"><rect width="36" height="36" rx="9" fill="#FFCA28"></rect>
+                                <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#071F49"></path>
+                                <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white"></rect>
+                                <circle cx="13.5" cy="21.5" r="2" fill="#FFCA28"></circle>
+                                <circle cx="22.5" cy="21.5" r="2" fill="#FFCA28"></circle></svg></div>
+                        <span class="fs-4 fw-bold text-white">Trip<span class="text-warning">Go</span></span></div>
+                    <p class="text-white-50 small mb-3 lh-base">
+                        TripGo là nền tảng đặt vé xe khách liên tỉnh trực tuyến hàng đầu Việt Nam. Kết nối hành khách trực tiếp với các nhà xe uy tín, mang đến trải nghiệm chọn chỗ minh bạch và thanh toán an toàn.
+                    </p>
+                    <div class="text-white-50 small d-flex flex-column gap-1"><div><i class="bi bi-geo-alt-fill text-danger me-2"></i> Hà Nội &amp; TP. Hồ Chí Minh, Việt Nam</div>
+                        <div><i class="bi bi-envelope-fill text-warning me-2"></i> hotro@tripgo.vn</div>
+                        <div><i class="bi bi-shield-check text-success me-2"></i> Hệ thống mã hóa giao dịch SSL 256-bit</div></div></div>
+
+                
+                <div class="col-lg-2 col-md-6 col-6"><h6 class="tg-footer-title">Dịch vụ</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small mb-0"><li><a href="/search-trips" class="tg-footer-link">Tìm vé xe khách</a></li>
+                        <li><a href="/schedules" class="tg-footer-link">Lịch trình xuất bến</a></li>
+                        <li><a href="/my-tickets" class="tg-footer-link">Tra cứu vé điện tử</a></li>
+                        <li><a href="/support" class="tg-footer-link">Trung tâm hỗ trợ</a></li></ul></div>
+
+                
+                <div class="col-lg-3 col-md-6 col-6"><h6 class="tg-footer-title">Tuyến trọng điểm</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small mb-0"><li><a href="/search-trips?origin=HAN&amp;dest=SAP" class="tg-footer-link">Hà Nội → Sa Pa (Lào Cai)</a></li>
+                        <li><a href="/search-trips?origin=SGN&amp;dest=DLA" class="tg-footer-link">TP. Hồ Chí Minh → Đà Lạt</a></li>
+                        <li><a href="/search-trips?origin=HAN&amp;dest=DAN" class="tg-footer-link">Hà Nội → Đà Nẵng</a></li>
+                        <li><a href="/search-trips?origin=SGN&amp;dest=NHA" class="tg-footer-link">TP. Hồ Chí Minh → Nha Trang</a></li></ul></div>
+
+                
+                <div class="col-lg-3 col-md-6"><h6 class="tg-footer-title">Thanh toán &amp; Bảo mật</h6>
+                    <p class="text-white-50 small mb-2">Hỗ trợ các phương thức thanh toán an toàn tiện lợi:</p>
+                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="tg-badge-pill"><i class="bi bi-qr-code-scan me-1 text-warning"></i> Chuyển khoản QR</span>
+                        <span class="tg-badge-pill"><i class="bi bi-credit-card me-1 text-info"></i> ATM Nội địa</span>
+                        <span class="tg-badge-pill"><i class="bi bi-credit-card-2-front me-1 text-success"></i> Visa / Master</span>
+                        <span class="tg-badge-pill"><i class="bi bi-wallet2 me-1 text-warning"></i> Ví điện tử</span></div>
+                    <small class="text-white-50 d-block"><i class="bi bi-shield-lock-fill text-success me-1"></i> Bảo mật dữ liệu &amp; giao dịch 100%
+                    </small></div></div>
+
+            <hr class="border-secondary border-opacity-25 my-4">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center small text-white-50 gap-2"><div>© 2026 TripGo. Nền tảng đặt vé xe trực tuyến. Clean Architecture .NET 8.</div>
+                <div class="d-flex align-items-center gap-3"><a href="/support" class="text-white-50 text-decoration-none hover-primary">Điều khoản sử dụng</a>
+                    <span>•</span>
+                    <a href="/support" class="text-white-50 text-decoration-none hover-primary">Chính sách bảo mật</a>
+                    <span>•</span>
+                    <a href="/admin/trips" class="text-white-50 text-decoration-none" title="Khu vực quản trị"><i class="bi bi-gear-fill me-1"></i> Quản trị</a></div></div></div></footer>
+
+    
+    <nav class="tg-mobile-nav d-md-none position-fixed bottom-0 start-0 end-0 py-1 px-2 d-flex justify-content-around align-items-center" style="z-index: 1040;"><!--!--><a href="search-trips" class="tg-mobile-nav-item d-flex flex-column align-items-center text-decoration-none py-1 px-2 active" aria-current="page"><!--!--><i class="bi bi-bus-front fs-5"></i>
+            <!--!--><span style="font-size: 0.72rem; font-weight: 600;">Vé xe</span></a><!--!-->
+        <!--!--><a href="schedules" class="tg-mobile-nav-item d-flex flex-column align-items-center text-decoration-none py-1 px-2"><!--!--><i class="bi bi-calendar3 fs-5"></i>
+            <!--!--><span style="font-size: 0.72rem; font-weight: 600;">Lịch trình</span></a><!--!-->
+        <!--!--><a href="my-tickets" class="tg-mobile-nav-item d-flex flex-column align-items-center text-decoration-none py-1 px-2"><!--!--><i class="bi bi-ticket-perforated fs-5"></i>
+            <!--!--><span style="font-size: 0.72rem; font-weight: 600;">Vé của tôi</span></a><!--!-->
+        <!--!--><!--!--><a href="account/profile" class="tg-mobile-nav-item d-flex flex-column align-items-center text-decoration-none py-1 px-2"><!--!--><i class="bi bi-person-circle fs-5"></i>
+                    <!--!--><span style="font-size: 0.72rem; font-weight: 600;">Tài khoản</span></a></nav><!--!-->
+
+    
+    <!--!--><!--!--><style>
+    .support-drawer-scrim { position: fixed; inset: 0; z-index: 2200; display: flex; justify-content: flex-end; background: rgba(13, 31, 44, .42); }
+    .support-drawer { display: flex; flex-direction: column; width: min(430px, 100%); height: 100%; padding: 25px; overflow-y: auto; background: #f7fafb; color: #183042; box-shadow: -16px 0 45px rgba(13, 31, 44, .2); animation: drawer-in .2s ease-out; }
+    .drawer-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 19px; border-bottom: 1px solid #dce5e9; }
+    .drawer-header span { color: #0d5cb6; font-size: 10px; font-weight: 850; letter-spacing: .08em; }
+    .drawer-header h2 { margin: 6px 0 0; font-size: 22px; font-weight: 800; }
+    .drawer-close { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #dce5e9; border-radius: 5px; background: white; color: #536a78; }
+    .drawer-hotline { display: flex; align-items: center; gap: 12px; margin: 20px 0; padding: 15px; border-radius: 6px; background: #0d5cb6; color: white; text-decoration: none; }
+    .drawer-hotline > i:first-child { font-size: 21px; }
+    .drawer-hotline > i:last-child { margin-left: auto; color: #ffd333; }
+    .drawer-hotline span { display: grid; gap: 3px; }
+    .drawer-hotline small { color: #d7e8fa; font-size: 9px; font-weight: 800; }
+    .drawer-hotline strong { font-size: 21px; }
+    .drawer-faq-title { margin-bottom: 8px; font-size: 13px; font-weight: 800; }
+    .drawer-faq { margin-bottom: 7px; border: 1px solid #dce5e9; border-radius: 5px; background: white; }
+    .drawer-faq summary { padding: 12px; cursor: pointer; font-size: 12px; font-weight: 750; }
+    .drawer-faq p { margin: 0; padding: 0 12px 12px; color: #647784; font-size: 12px; line-height: 1.55; }
+    .drawer-callback { display: grid; gap: 9px; margin-top: 19px; padding-top: 17px; border-top: 1px solid #dce5e9; }
+    .drawer-callback h3 { margin: 0 0 3px; font-size: 15px; font-weight: 800; }
+    .drawer-callback h3 i { margin-right: 6px; color: #0d5cb6; }
+    .drawer-callback input { height: 42px; padding: 0 10px; border: 1px solid #d6e0e4; border-radius: 5px; background: white; }
+    .drawer-callback > button { display: flex; align-items: center; justify-content: center; gap: 7px; height: 42px; border: 0; border-radius: 5px; background: #ffd333; color: #203443; font-weight: 800; }
+    .drawer-callback > button:disabled { opacity: .65; }
+    .drawer-callback-success { display: flex; gap: 8px; padding: 11px; border-radius: 5px; background: #e5f4e9; color: #17683d; font-size: 12px; }
+    .drawer-error { color: #b42318; }
+    @keyframes drawer-in { from { transform: translateX(18px); opacity: .7; } to { transform: translateX(0); opacity: 1; } }
+</style></div><!--!-->
+
+<!--!--><style>
+    .tg-app-shell {
+        background-color: var(--tg-bg);
+        color: var(--tg-text);
+        padding-bottom: 60px;
+    }
+
+    @media (min-width: 768px) {
+        .tg-app-shell {
+            padding-bottom: 0;
+        }
+    }
+
+    .tg-avatar-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        background: rgba(0, 0, 0, 0.12);
+        border-radius: 50%;
+        font-size: 0.9rem;
+    }
+</style><!--!-->
+        <!--!-->
+    <script src="js/tripgo.js"></script>
+    <script src="_framework/blazor.web.js"></script></body></html>

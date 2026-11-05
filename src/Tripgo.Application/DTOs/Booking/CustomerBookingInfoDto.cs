@@ -5,6 +5,7 @@ namespace Tripgo.Application.DTOs;
 
 public class CustomerBookingInfoDto
 {
+    public long BookingId { get; set; }
     public long TripId { get; set; }
     public string BookingCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -12,6 +13,7 @@ public class CustomerBookingInfoDto
     public string Phone { get; set; } = string.Empty;
     public string PhoneNumber { get => Phone; set => Phone = value; }
     public string? Email { get; set; }
+    public bool ContactEmailConfirmed { get; set; }
     public string? PickupPoint { get; set; }
     public long? PickupPointId { get; set; }
     public long? DropoffPointId { get; set; }
@@ -32,7 +34,11 @@ public class CustomerBookingInfoDto
     public decimal TotalAmount { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
+    public DateTimeOffset? ConfirmedAt { get; set; }
+    public string? TransactionCode { get; set; }
+    public string? PaymentMethod { get; set; }
     public List<BookingPassengerDto> Passengers { get; set; } = new();
+    public List<PaymentTransactionDto> PaymentTransactions { get; set; } = new();
 
     public CustomerBookingInfoDto() { }
     public CustomerBookingInfoDto(string name, string phone, string? email = null, string? pickupPoint = null)

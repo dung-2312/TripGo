@@ -39,6 +39,23 @@ public class AppDbContext : DbContext
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingSeat> BookingSeats => Set<BookingSeat>();
     public DbSet<BookingPassenger> BookingPassengers => Set<BookingPassenger>();
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+    public DbSet<BookingConfirmationEmailOutbox> BookingConfirmationEmailOutbox =>
+        Set<BookingConfirmationEmailOutbox>();
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureWritesTargetIsolatedDatabase();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureWritesTargetIsolatedDatabase();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,5 +63,23 @@ public class AppDbContext : DbContext
 
         // Tự động quét và áp dụng tất cả các IEntityTypeConfiguration trong Assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+    }
+
+    private void EnsureWritesTargetIsolatedDatabase()
+    {
+        if (ChangeTracker.HasChanges())
+        {
+            EnsureWritesTargetIsolatedTestDatabase();
+        }
+    }
+
+    public void EnsureWritesTargetIsolatedTestDatabase()
+    {
+        var databaseName = Database.GetDbConnection().Database;
+        if (!string.Equals(databaseName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Writes are permitted only against TripgoDb_IsolatedTest. Target database '{databaseName}' is blocked.");
+        }
     }
 }

@@ -12,14 +12,14 @@
             <div>
                 <div class="eyebrow"><i class="bi bi-grid-1x2-fill"></i> TRIPGO ADMIN CENTER</div>
                 <h2>Quản lý chuyến xe</h2>
-                <p>Theo dõi vận hành, mở bán chuyến mới và kiểm soát tình trạng ghế.</p>
+                <p>Quản lý dữ liệu lịch trình; các chuyến tạo tại đây chưa phải dịch vụ vận tải mở bán thực tế.</p>
             </div>
             <a href="/" class="btn-back"><i class="bi bi-arrow-left"></i><span>Trang đặt vé</span></a>
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-bus-front-fill"></i></div><div><span>Chuyến đã mở</span><strong>@allTrips.Count(t => t.Status != "Cancelled")</strong></div></div>
-            <div class="stat-card"><div class="stat-icon green"><i class="bi bi-person-check-fill"></i></div><div><span>Ghế còn trống</span><strong>@allTrips.Where(t => t.Status != "Cancelled").Sum(t => t.AvailableSeats)</strong></div></div>
+            <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-bus-front-fill"></i></div><div><span>Lịch trình hiện có</span><strong>@allTrips.Count(t => t.Status != "Cancelled")</strong></div></div>
+            <div class="stat-card"><div class="stat-icon green"><i class="bi bi-person-check-fill"></i></div><div><span>Ghế trong sơ đồ</span><strong>@allTrips.Where(t => t.Status != "Cancelled").Sum(t => t.TotalSeats)</strong></div></div>
             <div class="stat-card"><div class="stat-icon violet"><i class="bi bi-signpost-split-fill"></i></div><div><span>Tuyến đường</span><strong>@routes.Count</strong></div></div>
             <div class="stat-card"><div class="stat-icon orange"><i class="bi bi-buildings-fill"></i></div><div><span>Nhà xe</span><strong>@operators.Count</strong></div></div>
         </div>
@@ -43,29 +43,36 @@
                 <div class="form-grid">
                     <div class="field span-2"><label>Tên nhà xe</label><input @bind="newOperator.Name" placeholder="Ví dụ: Sao Việt" /></div>
                     <div class="field"><label>Mã nhà xe</label><input @bind="newOperator.Code" placeholder="SAOVIET" /></div>
-                    <div class="field"><label>Hotline</label><input @bind="newOperator.Hotline" inputmode="tel" placeholder="1900 1234" /></div>
+                    <div class="field"><label>Hotline</label><input @bind="newOperator.Hotline" inputmode="tel" placeholder="0xxx xxx xxx" /></div>
                     <div class="field span-2"><label>Địa chỉ</label><input @bind="newOperator.Address" placeholder="Địa chỉ văn phòng" /></div>
                 </div>
                 <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateOperator"><i class="bi bi-plus-lg"></i> Thêm nhà xe</button></div>
-                <div class="table-responsive"><table class="trip-table"><thead><tr><th>Mã</th><th>Nhà xe</th><th>Hotline</th><th>Địa chỉ</th></tr></thead><tbody>
-                    @foreach (var op in operators) { <tr><td><strong>@op.Code</strong></td><td>@op.Name</td><td>@op.Hotline</td><td>@op.Address</td></tr> }
+                <div class="table-responsive"><table class="trip-table"><thead><tr><th>Mã</th><th>Nhà xe</th><th>Hotline</th><th>Địa chỉ</th><th>Xác minh</th></tr></thead><tbody>
+                    @foreach (var op in operators) { <tr><td><strong>@op.Code</strong></td><td>@op.Name</td><td>@op.Hotline</td><td>@op.Address</td><td><span class="status-pill @(op.IsVerified ? "scheduled" : "cancelled")">@(op.IsVerified ? "Đã xác minh" : "Chưa xác minh")</span></td></tr> }
                 </tbody></table></div>
             </section>
         }
         else if (activeTab == "fleet")
         {
             <section class="admin-card tab-panel">
-                <div class="section-head"><div class="section-icon"><i class="bi bi-bus-front"></i></div><div><h4>Thêm xe vào đội</h4><p>Mỗi xe mới được tạo kèm sơ đồ hai tầng, 24 giường.</p></div></div>
+                <div class="section-head"><div class="section-icon"><i class="bi bi-bus-front"></i></div><div><h4>Thêm xe vào đội</h4><p>Khai báo sơ đồ ghế theo cấu hình thực tế đã được nhà xe xác nhận.</p></div></div>
                 <div class="form-grid">
                     <div class="field"><label>Nhà xe</label><select @bind="newBus.OperatorId"><option value="0">Chọn nhà xe</option>@foreach (var op in operators) { <option value="@op.Id">@op.Name</option> }</select></div>
                     <div class="field"><label>Loại xe</label><select @bind="newBus.BusTypeId"><option value="0">Chọn loại xe</option>@foreach (var type in busTypes) { <option value="@type.Id">@type.Name</option> }</select></div>
                     <div class="field"><label>Biển số xe</label><input @bind="newBus.LicensePlate" placeholder="51B-888.88" /></div>
                     <div class="field"><label>Tên xe</label><input @bind="newBus.Name" placeholder="Limousine VIP 01" /></div>
+                    <div class="field span-2">
+                        <label for="seatLayoutDefinition">Sơ đồ ghế đã xác nhận</label>
+                        <textarea id="seatLayoutDefinition" @bind="newBus.SeatLayoutDefinition" rows="6"
+                                  placeholder="Mỗi dòng: mã ghế,tầng,hàng,cột,loại ghế&#10;Ví dụ định dạng: A01,1,1,1,Seat"
+                                  aria-describedby="seatLayoutHelp"></textarea>
+                        <small id="seatLayoutHelp">Nhập 1–100 ghế, mỗi vị trí một lần. Ví dụ chỉ minh họa định dạng; hãy thay bằng sơ đồ thực tế. Loại ghế có thể là Seat, Bed hoặc DoubleBed theo dữ liệu được xác nhận.</small>
+                    </div>
                 </div>
-                <div class="fleet-note"><i class="bi bi-grid-3x3-gap"></i> Sơ đồ sẽ gồm 12 giường tầng dưới (A01–A12) và 12 giường tầng trên (B01–B12).</div>
+                <div class="fleet-note"><i class="bi bi-shield-check"></i> TripGo không tự sinh số ghế hoặc vị trí tầng; chỉ lưu sơ đồ được nhập và xác nhận.</div>
                 <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateBus"><i class="bi bi-check2-circle"></i> Đăng ký xe</button></div>
                 <div class="table-responsive"><table class="trip-table"><thead><tr><th>Biển số</th><th>Tên xe</th><th>Nhà xe</th><th>Loại xe</th><th>Sơ đồ</th></tr></thead><tbody>
-                    @foreach (var bus in buses) { <tr><td><strong>@bus.LicensePlate</strong></td><td>@bus.Name</td><td>@bus.OperatorName</td><td>@bus.BusTypeName</td><td>@bus.TotalSeats giường · 2 tầng</td></tr> }
+                    @foreach (var bus in buses) { <tr><td><strong>@bus.LicensePlate</strong></td><td>@bus.Name</td><td>@bus.OperatorName</td><td>@bus.BusTypeName</td><td>@bus.TotalSeats ghế theo sơ đồ đã lưu</td></tr> }
                 </tbody></table></div>
             </section>
         }
@@ -89,16 +96,16 @@
         else
         {
             <section class="admin-card tab-panel">
-                <div class="section-head"><div class="section-icon"><i class="bi bi-calendar2-plus"></i></div><div><h4>Mở bán chuyến xe</h4><p>Chọn tuyến, xe tương ứng và thời gian vận hành.</p></div></div>
+                <div class="section-head"><div class="section-icon"><i class="bi bi-calendar2-plus"></i></div><div><h4>Thêm lịch trình tham khảo</h4><p>Chọn tuyến, xe tương ứng và thời gian tham khảo; thao tác này không mở bán hoặc xác nhận chỗ thật.</p></div></div>
                 <div class="form-grid">
                     <div class="field span-2"><label>Tuyến đường</label><select @bind="newTrip.RouteId" @bind:after="OnTripRouteChanged"><option value="0">Chọn tuyến</option>@foreach (var route in routes) { <option value="@route.Id">@route.OriginName → @route.DestinationName</option> }</select></div>
                     <div class="field"><label>Nhà xe</label><input value="@GetOperatorName(selectedTripOperatorId)" readonly placeholder="Tự động theo tuyến" /></div>
                     <div class="field"><label>Xe</label><select @bind="newTrip.BusId" disabled="@(selectedTripOperatorId == 0)"><option value="0">Chọn xe</option>@foreach (var bus in TripBuses) { <option value="@bus.Id">@bus.LicensePlate · @bus.BusTypeName</option> }</select></div>
                     <div class="field"><label>Ngày giờ xuất phát</label><input type="datetime-local" @bind="departureInput" /></div>
                     <div class="field"><label>Ngày giờ đến dự kiến</label><input type="datetime-local" @bind="arrivalInput" /></div>
-                    <div class="field span-2"><label>Giá vé cơ sở</label><div class="money-input"><input type="number" min="1" step="10000" @bind="newTrip.BasePrice" /><span>VNĐ</span></div></div>
+                    <div class="field span-2"><label>Giá tham khảo</label><div class="money-input"><input type="number" min="1" step="10000" @bind="newTrip.BasePrice" /><span>VNĐ</span></div></div>
                 </div>
-                <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateTrip"><i class="bi bi-megaphone-fill"></i> Mở bán chuyến xe</button></div>
+                <div class="form-actions"><button class="btn-create" disabled="@isSubmitting" @onclick="CreateTrip"><i class="bi bi-calendar-plus"></i> Lưu lịch trình tham khảo</button></div>
             </section>
 
             <section class="admin-card list-card">
@@ -107,10 +114,10 @@
                 else if (!FilteredTrips.Any()) { <div class="empty-state"><i class="bi bi-inbox"></i><strong>Chưa có chuyến phù hợp</strong></div> }
                 else
                 {
-                    <div class="table-responsive"><table class="trip-table"><thead><tr><th>Mã chuyến</th><th>Tuyến</th><th>Nhà xe / Biển số</th><th>Khởi hành</th><th>Giá vé</th><th>Ghế trống</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+                    <div class="table-responsive"><table class="trip-table"><thead><tr><th>Mã lịch trình</th><th>Tuyến</th><th>Nhà xe / Biển số</th><th>Khởi hành</th><th>Giá tham khảo</th><th>Ghế theo sơ đồ</th><th>Trạng thái</th><th></th></tr></thead><tbody>
                         @foreach (var trip in FilteredTrips)
                         {
-                            <tr><td><strong>@trip.TripCode</strong></td><td>@trip.RouteName</td><td><strong>@trip.OperatorName</strong><span class="table-subtitle">@trip.BusLicensePlate · @trip.BusTypeName</span></td><td>@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td><td><strong class="price">@trip.BasePrice.ToString("N0") đ</strong></td><td>@trip.AvailableSeats / @trip.TotalSeats</td><td><span class="status-pill @(trip.Status == "Cancelled" ? "cancelled" : "scheduled")">@(trip.Status == "Cancelled" ? "Đã hủy" : "Đang mở bán")</span></td><td><button class="cancel-trip" disabled="@(trip.Status == "Cancelled")" @onclick="() => CancelTrip(trip.Id)" title="Hủy chuyến"><i class="bi bi-x-circle"></i> Hủy</button></td></tr>
+                            <tr><td><strong>@trip.TripCode</strong></td><td>@trip.RouteName</td><td><strong>@trip.OperatorName</strong><span class="table-subtitle">@trip.BusLicensePlate · @trip.BusTypeName</span></td><td>@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td><td><strong class="price">@trip.BasePrice.ToString("N0") đ</strong></td><td>@(trip.IsBookable ? $"{trip.AvailableSeats} / {trip.TotalSeats}" : $"{trip.TotalSeats} ghế cấu hình")</td><td><span class="status-pill @(trip.Status == "Cancelled" ? "cancelled" : "scheduled")">@(trip.Status == "Cancelled" ? "Đã hủy" : trip.OperationalTierLabel)</span></td><td><button class="cancel-trip" disabled="@(trip.Status == "Cancelled")" @onclick="() => CancelTrip(trip.Id)" title="Hủy lịch trình"><i class="bi bi-x-circle"></i> Hủy</button></td></tr>
                         }
                     </tbody></table></div>
                 }
@@ -766,7 +773,7 @@
             await TripService.CreateBusWithLayoutAsync(newBus);
             newBus = new CreateBusDto();
             await LoadData();
-            SetStatus("Đã đăng ký xe và tạo sơ đồ 24 giường.", true);
+            SetStatus("Đã đăng ký xe và lưu sơ đồ ghế đã khai báo.", true);
         }
         catch (Exception exception)
         {
@@ -785,7 +792,6 @@
             return;
         }
         newRoute.Name = $"{origin.Name} - {destination.Name}";
-        newRoute.Code = $"{origin.Code}-{destination.Code}-{DateTime.UtcNow.Ticks % 100000}";
         isSubmitting = true;
         try
         {
@@ -822,11 +828,11 @@
             newTrip = new CreateTripDto { BasePrice = 500000 };
             selectedTripOperatorId = 0;
             await LoadData();
-            SetStatus("Đã mở bán chuyến xe.", true);
+            SetStatus("Đã lưu lịch trình tham khảo; lịch này chưa mở bán chỗ thật.", true);
         }
         catch (Exception exception)
         {
-            SetStatus($"Không thể mở bán chuyến: {exception.Message}", false);
+            SetStatus($"Không thể lưu lịch trình: {exception.Message}", false);
         }
         finally { isSubmitting = false; }
     }

@@ -41,7 +41,7 @@ public class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .IsRequired();
 
         builder.Property(x => x.PassengerEmail)
-            .HasMaxLength(200);
+            .HasMaxLength(254);
 
         builder.Property(x => x.PickupPointNote)
             .HasMaxLength(500);
@@ -87,7 +87,7 @@ public class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(x => x.User)
-            .WithMany()
+            .WithMany(u => u.Bookings)
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Restrict);
     }

@@ -20,4 +20,11 @@ public sealed class BookingSessionContext : IBookingSessionContext
         var value = state.User.FindFirstValue(OwnerClaimType);
         return Guid.TryParseExact(value, "N", out _) ? value : null;
     }
+
+    public async Task<long?> GetUserIdAsync()
+    {
+        var state = await _authenticationStateProvider.GetAuthenticationStateAsync();
+        var value = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return long.TryParse(value, out var userId) && userId > 0 ? userId : null;
+    }
 }

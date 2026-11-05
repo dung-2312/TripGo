@@ -12,6 +12,7 @@ public class CreateBookingRequestDto
     public string PassengerName { get; set; } = string.Empty;
     public string PassengerPhone { get; set; } = string.Empty;
     public string? PassengerEmail { get; set; }
+    public bool ContactEmailConfirmed { get; set; }
     public string? OwnerIdentifier { get; set; }
     public bool HasInsurance { get; set; }
     public List<BookingPassengerDto> Passengers { get; set; } = new();

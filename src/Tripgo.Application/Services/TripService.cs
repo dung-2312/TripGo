@@ -50,12 +50,26 @@ public class TripService : ITripService
         if (string.IsNullOrWhiteSpace(dto.Code) || string.IsNullOrWhiteSpace(dto.Name))
             throw new ArgumentException("Mã và tên nhà xe là bắt buộc.", nameof(dto));
 
+        var code = dto.Code.Trim();
+        var name = dto.Name.Trim();
+        var hotline = string.IsNullOrWhiteSpace(dto.Hotline) ? null : dto.Hotline.Trim();
+        var address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
+        if (code.Length > 30 ||
+            name.Length > 200 ||
+            hotline?.Length > 20 ||
+            address?.Length > 500)
+        {
+            throw new ArgumentException(
+                "Mã nhà xe tối đa 30 ký tự, tên 200, hotline 20 và địa chỉ 500 ký tự.",
+                nameof(dto));
+        }
+
         var operatorEntity = new Operator
         {
-            Code = dto.Code.Trim(),
-            Name = dto.Name.Trim(),
-            Phone = string.IsNullOrWhiteSpace(dto.Hotline) ? null : dto.Hotline.Trim(),
-            Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
+            Code = code,
+            Name = name,
+            Phone = hotline,
+            Address = address,
             IsActive = true,
             IsVerified = false,
             CreatedAt = DateTimeOffset.UtcNow
@@ -71,38 +85,19 @@ public class TripService : ITripService
         if (dto.OperatorId <= 0 || dto.BusTypeId <= 0 || string.IsNullOrWhiteSpace(dto.LicensePlate))
             throw new ArgumentException("Nhà xe, loại xe và biển số là bắt buộc.", nameof(dto));
 
+        var seatItems = ParseSeatLayout(dto.SeatLayoutDefinition);
         var hasOperator = await _repository.OperatorExistsAndActiveAsync(dto.OperatorId, ct);
         var busType = await _repository.GetActiveBusTypeByIdAsync(dto.BusTypeId, ct);
         if (!hasOperator || busType == null)
             throw new InvalidOperationException("Nhà xe hoặc loại xe không còn hoạt động.");
 
-        var busTypeName = busType.Name;
-        var isCoupleSuite = busTypeName.Contains("đôi", StringComparison.OrdinalIgnoreCase) ||
-                            busTypeName.Contains("double", StringComparison.OrdinalIgnoreCase);
-        var seatCount = isCoupleSuite ? 16 : 24;
-
         var layout = new SeatLayout
         {
             Name = $"Sơ đồ xe {dto.LicensePlate.Trim()}",
-            Floors = 2,
-            TotalSeats = seatCount,
+            Floors = seatItems.Max(item => item.Floor),
+            TotalSeats = seatItems.Count,
             IsActive = true,
-            Items = Enumerable.Range(1, seatCount).Select(index =>
-            {
-                var seatsPerFloor = seatCount / 2;
-                var floor = index <= seatsPerFloor ? 1 : 2;
-                var position = ((index - 1) % seatsPerFloor) + 1;
-                var prefix = isCoupleSuite ? 'P' : floor == 1 ? 'A' : 'B';
-                return new SeatLayoutItem
-                {
-                    SeatCode = $"{prefix}{position:D2}",
-                    Floor = floor,
-                    Row = (position - 1) / 2 + 1,
-                    Column = (position - 1) % 2 + 1,
-                    SeatType = isCoupleSuite ? "DoubleBed" : "Bed",
-                    IsActive = true
-                };
-            }).ToList()
+            Items = seatItems
         };
 
         var bus = new Bus
@@ -120,6 +115,62 @@ public class TripService : ITripService
         return bus.Id;
     }
 
+    private static List<SeatLayoutItem> ParseSeatLayout(string definition)
+    {
+        var lines = (definition ?? string.Empty)
+            .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length is 0 or > 100)
+        {
+            throw new ArgumentException(
+                "Nhập sơ đồ gồm từ 1 đến 100 ghế, mỗi dòng theo dạng: mã ghế,tầng,hàng,cột,loại ghế.",
+                nameof(definition));
+        }
+
+        var items = new List<SeatLayoutItem>(lines.Length);
+        var seatCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var positions = new HashSet<(int Floor, int Row, int Column)>();
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var parts = lines[index].Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Length != 5 ||
+                string.IsNullOrWhiteSpace(parts[0]) ||
+                parts[0].Length > 20 ||
+                !int.TryParse(parts[1], out var floor) ||
+                !int.TryParse(parts[2], out var row) ||
+                !int.TryParse(parts[3], out var column) ||
+                floor is < 1 or > 10 ||
+                row is < 1 or > 100 ||
+                column is < 1 or > 100 ||
+                string.IsNullOrWhiteSpace(parts[4]) ||
+                parts[4].Length > 32)
+            {
+                throw new ArgumentException(
+                    $"Dòng sơ đồ ghế {index + 1} không hợp lệ. Dùng mã ghế,tầng,hàng,cột,loại ghế.",
+                    nameof(definition));
+            }
+
+            if (!seatCodes.Add(parts[0]) || !positions.Add((floor, row, column)))
+            {
+                throw new ArgumentException(
+                    $"Dòng sơ đồ ghế {index + 1} trùng mã ghế hoặc vị trí đã khai báo.",
+                    nameof(definition));
+            }
+
+            items.Add(new SeatLayoutItem
+            {
+                SeatCode = parts[0],
+                Floor = floor,
+                Row = row,
+                Column = column,
+                SeatType = parts[4],
+                IsActive = true
+            });
+        }
+
+        return items;
+    }
+
     public async Task<List<BusTypeDto>> GetBusTypesAsync(CancellationToken ct = default)
     {
         var busTypes = await _repository.GetActiveBusTypesAsync(ct);
@@ -135,11 +186,12 @@ public class TripService : ITripService
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
 
-        var requestedDate = request.DepartureDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local);
-        var start = new DateTimeOffset(requestedDate);
+        var vnOffset = TimeSpan.FromHours(7);
+        var requestedDate = request.DepartureDate.ToDateTime(TimeOnly.MinValue);
+        var start = new DateTimeOffset(requestedDate, vnOffset);
         var end = start.AddDays(1).AddTicks(-1);
-        var windowStart = start.AddDays(-3);
-        var windowEnd = end.AddDays(3);
+        var windowStart = start;
+        var windowEnd = end;
 
         var matchingTrips = await _repository.SearchTripsAsync(
             request.OriginLocationId,
@@ -148,25 +200,21 @@ public class TripService : ITripService
             windowEnd,
             cancellationToken);
 
+        var targetDate = requestedDate.Date;
         var exactDateTrips = matchingTrips
-            .Where(trip => trip.DepartureTime.ToLocalTime().Date == request.DepartureDate.ToDateTime(TimeOnly.MinValue).Date)
+            .Where(trip => trip.DepartureTime.ToOffset(vnOffset).Date == targetDate)
             .ToList();
 
-        var trips = exactDateTrips.Count > 0
-            ? exactDateTrips
-            : matchingTrips
-                .OrderBy(trip => Math.Abs((trip.DepartureTime.ToLocalTime().Date - request.DepartureDate.ToDateTime(TimeOnly.MinValue).Date).Days))
-                .ThenBy(trip => trip.DepartureTime)
-                .ToList();
+        var trips = exactDateTrips;
 
         return trips.Select(t =>
         {
-            var isDemo = t.IsDemoTrip || t.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
+            var isDemo = IsSandboxDemoTrip(t);
             var isBookable = isDemo;
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? 0;
             var bookedCount = isDemo ? (t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0) : 0;
             var (pickups, dropoffs) = ExtractTripStops(t);
-            var operatorHotline = t.Route?.Operator?.Phone ?? "1900 8888";
+            var operatorHotline = t.Route?.Operator?.Phone ?? string.Empty;
 
             return new TripSearchResultDto
             {
@@ -192,14 +240,19 @@ public class TripService : ITripService
         }).ToList();
     }
 
+    private static bool IsSandboxDemoTrip(Trip t) =>
+        t.IsDemoTrip ||
+        t.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase) ||
+        t.TripCode.StartsWith("[SANDBOX]", StringComparison.OrdinalIgnoreCase);
+
     public async Task<TripDetailDto?> GetTripDetailsAsync(long tripId, CancellationToken cancellationToken = default)
     {
         var trip = await _repository.GetTripWithDetailsAsync(tripId, cancellationToken);
         if (trip == null) return null;
 
-        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
+        var isDemo = IsSandboxDemoTrip(trip);
         var (pickupPoints, dropoffPoints) = ExtractTripStops(trip);
-        var operatorHotline = trip.Route?.Operator?.Phone ?? "1900 8888";
+        var operatorHotline = trip.Route?.Operator?.Phone ?? string.Empty;
 
         List<SeatLayoutItemDto> seatItems;
         int availableSeats = 0;
@@ -259,7 +312,8 @@ public class TripService : ITripService
             Code = o.Code,
             Name = o.Name,
             Hotline = o.Phone,
-            Address = o.Address
+            Address = o.Address,
+            IsVerified = o.IsVerified
         }).ToList();
     }
 
@@ -299,13 +353,47 @@ public class TripService : ITripService
 
     public async Task<long> CreateRouteAsync(CreateRouteDto dto, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(dto);
+        if (dto.OperatorId <= 0 ||
+            dto.OriginLocationId <= 0 ||
+            dto.DestinationLocationId <= 0 ||
+            dto.OriginLocationId == dto.DestinationLocationId ||
+            string.IsNullOrWhiteSpace(dto.Name) ||
+            dto.DistanceKm <= 0 ||
+            dto.EstimatedDurationMinutes <= 0)
+        {
+            throw new ArgumentException(
+                "Nhà xe, hai điểm khác nhau, tên tuyến, cự ly và thời lượng hợp lệ là bắt buộc.",
+                nameof(dto));
+        }
+
+        if (dto.Name.Trim().Length > 200 ||
+            (!string.IsNullOrWhiteSpace(dto.Code) && dto.Code.Trim().Length > 50))
+        {
+            throw new ArgumentException(
+                "Tên tuyến tối đa 200 ký tự và mã tuyến tối đa 50 ký tự.",
+                nameof(dto));
+        }
+
+        if (!await _repository.OperatorExistsAndActiveAsync(dto.OperatorId, ct))
+            throw new InvalidOperationException("Nhà xe không còn hoạt động.");
+
+        var activeLocationIds = (await _repository.GetActiveLocationsAsync(ct))
+            .Select(location => location.Id)
+            .ToHashSet();
+        if (!activeLocationIds.Contains(dto.OriginLocationId) ||
+            !activeLocationIds.Contains(dto.DestinationLocationId))
+        {
+            throw new InvalidOperationException("Điểm đi hoặc điểm đến không còn hoạt động.");
+        }
+
         var route = new Route
         {
             OperatorId = dto.OperatorId,
             OriginLocationId = dto.OriginLocationId,
             DestinationLocationId = dto.DestinationLocationId,
-            Code = string.IsNullOrWhiteSpace(dto.Code) ? $"R-{DateTime.UtcNow.Ticks % 10000}" : dto.Code,
-            Name = dto.Name,
+            Code = string.IsNullOrWhiteSpace(dto.Code) ? $"R-{Guid.NewGuid():N}" : dto.Code.Trim(),
+            Name = dto.Name.Trim(),
             DistanceKm = dto.DistanceKm,
             EstimatedDurationMinutes = dto.EstimatedDurationMinutes,
             IsActive = true,
@@ -319,16 +407,40 @@ public class TripService : ITripService
     public async Task<long> CreateTripAsync(CreateTripDto dto, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(dto);
+        if (dto.RouteId <= 0 || dto.BusId <= 0)
+            throw new ArgumentException("Tuyến đường và xe là bắt buộc.", nameof(dto));
+
+        if (dto.DepartureTime <= DateTimeOffset.UtcNow ||
+            dto.ExpectedArrivalTime <= dto.DepartureTime)
+        {
+            throw new ArgumentException(
+                "Giờ đến dự kiến phải sau giờ khởi hành trong tương lai.",
+                nameof(dto));
+        }
+
+        if (dto.BasePrice <= 0)
+            throw new ArgumentException("Giá tham khảo phải lớn hơn 0.", nameof(dto));
+
         var routeOperatorId = await _repository.GetRouteOperatorIdAsync(dto.RouteId, ct);
         var busOperatorId = await _repository.GetBusOperatorIdAsync(dto.BusId, ct);
         if (routeOperatorId == null || busOperatorId == null || routeOperatorId != busOperatorId)
             throw new InvalidOperationException("Tuyến và xe phải thuộc cùng một nhà xe đang hoạt động.");
 
+        if (await _repository.HasConflictingScheduledTripAsync(
+                dto.BusId,
+                dto.DepartureTime,
+                dto.ExpectedArrivalTime,
+                ct))
+        {
+            throw new InvalidOperationException(
+                "Xe đã có lịch trình trùng thời gian. Chọn xe hoặc thời gian khác.");
+        }
+
         var trip = new Trip
         {
             RouteId = dto.RouteId,
             BusId = dto.BusId,
-            TripCode = $"TRIP-{DateTime.UtcNow.Ticks % 100000}",
+            TripCode = $"TRIP-{Guid.NewGuid():N}",
             DepartureTime = dto.DepartureTime,
             ExpectedArrivalTime = dto.ExpectedArrivalTime,
             BasePrice = dto.BasePrice,
@@ -345,8 +457,11 @@ public class TripService : ITripService
         var trips = await _repository.GetAllTripsAdminAsync(ct);
         return trips.Select(t =>
         {
+            var isDemo = IsSandboxDemoTrip(t);
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? (t.Seats?.Count ?? 0);
-            var bookedCount = t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0;
+            var bookedCount = isDemo
+                ? t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0
+                : 0;
 
             return new TripSearchResultDto
             {
@@ -361,7 +476,12 @@ public class TripService : ITripService
                 ArrivalTime = t.ExpectedArrivalTime,
                 BasePrice = t.BasePrice,
                 TotalSeats = totalSeats,
-                AvailableSeats = Math.Max(0, totalSeats - bookedCount)
+                AvailableSeats = isDemo ? Math.Max(0, totalSeats - bookedCount) : 0,
+                IsBookable = isDemo,
+                OperationalTier = isDemo ? "DEMO_SANDBOX_TRIP" : "PUBLISHED_REFERENCE_SCHEDULE",
+                OperationalTierLabel = isDemo
+                    ? "Chuyến xe chạy thử nghiệm (Demo Sandbox)"
+                    : "Lịch trình tham khảo"
             };
         }).ToList();
     }
@@ -379,7 +499,7 @@ public class TripService : ITripService
         var trip = await _repository.GetTripWithDetailsAsync(tripId, ct);
         if (trip == null) return false;
 
-        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
+        var isDemo = IsSandboxDemoTrip(trip);
         if (!isDemo || _bookingService == null)
         {
             // Reference trips strictly reject booking
@@ -410,6 +530,7 @@ public class TripService : ITripService
             PassengerName = customerInfo.Name,
             PassengerPhone = customerInfo.Phone,
             PassengerEmail = customerInfo.Email,
+            ContactEmailConfirmed = customerInfo.ContactEmailConfirmed,
             HasInsurance = customerInfo.HasInsurance,
             Passengers = customerInfo.Passengers
         }, ct);
@@ -434,6 +555,7 @@ public class TripService : ITripService
             var persistentList = await _bookingService.GetBookingsByPhoneAsync(phone, ct);
             return persistentList.Select(persistent => new CustomerBookingInfoDto
             {
+                    BookingId = persistent.Id,
                     TripId = persistent.TripId,
                     BookingCode = persistent.BookingCode,
                     Name = persistent.PassengerName,
@@ -456,7 +578,11 @@ public class TripService : ITripService
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
-                    Passengers = persistent.Passengers
+                    ConfirmedAt = persistent.ConfirmedAt,
+                    TransactionCode = persistent.TransactionCode,
+                    PaymentMethod = persistent.PaymentMethod,
+                    Passengers = persistent.Passengers,
+                    PaymentTransactions = persistent.PaymentTransactions
             }).ToList();
         }
 
@@ -473,6 +599,7 @@ public class TripService : ITripService
             {
                 return new CustomerBookingInfoDto
                 {
+                    BookingId = persistent.Id,
                     TripId = persistent.TripId,
                     BookingCode = persistent.BookingCode,
                     Name = persistent.PassengerName,
@@ -495,7 +622,11 @@ public class TripService : ITripService
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
-                    Passengers = persistent.Passengers
+                    ConfirmedAt = persistent.ConfirmedAt,
+                    TransactionCode = persistent.TransactionCode,
+                    PaymentMethod = persistent.PaymentMethod,
+                    Passengers = persistent.Passengers,
+                    PaymentTransactions = persistent.PaymentTransactions
                 };
             }
         }
@@ -503,19 +634,46 @@ public class TripService : ITripService
         return null;
     }
 
-    public Task<bool> SubmitSupportCallbackAsync(string name, string phone, CancellationToken ct = default)
+    public async Task<List<CustomerBookingInfoDto>> GetBookingsForCurrentUserAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(name) || NormalizePhone(phone).Length < 9)
-            return Task.FromResult(false);
-
-        _bookingStore.EnqueueSupportCallback(new SupportCallbackRequestDto
+        if (_bookingService != null)
         {
-            Name = name.Trim(),
-            Phone = phone.Trim(),
-            RequestedAt = DateTimeOffset.UtcNow
-        });
-        return Task.FromResult(true);
+            var persistentList = await _bookingService.GetBookingsForCurrentUserAsync(ct);
+            return persistentList.Select(persistent => new CustomerBookingInfoDto
+            {
+                BookingId = persistent.Id,
+                TripId = persistent.TripId,
+                BookingCode = persistent.BookingCode,
+                Name = persistent.PassengerName,
+                Phone = persistent.PassengerPhone,
+                Email = persistent.PassengerEmail,
+                SelectedPickupPoint = persistent.PickupPointName,
+                SelectedDropoffPoint = persistent.DropoffPointName,
+                PickupPoint = persistent.PickupPointName,
+                HasInsurance = persistent.InsuranceAmount > 0,
+                SeatCodes = persistent.SeatCodes,
+                RouteName = persistent.RouteName,
+                OperatorName = persistent.OperatorName,
+                BusTypeName = persistent.BusTypeName,
+                BusLicensePlate = persistent.BusLicensePlate,
+                DepartureTime = persistent.DepartureTime,
+                BookedAt = persistent.CreatedAt,
+                BasePrice = persistent.BaseAmount,
+                SurchargeAmount = persistent.SurchargeAmount,
+                InsuranceAmount = persistent.InsuranceAmount,
+                TotalAmount = persistent.TotalAmount,
+                BookingStatus = persistent.Status,
+                PaymentStatus = persistent.PaymentStatus,
+                ConfirmedAt = persistent.ConfirmedAt,
+                TransactionCode = persistent.TransactionCode,
+                PaymentMethod = persistent.PaymentMethod,
+                Passengers = persistent.Passengers,
+                PaymentTransactions = persistent.PaymentTransactions
+            }).ToList();
+        }
+
+        return new List<CustomerBookingInfoDto>();
     }
 
     private static Dictionary<string, string> CreateSeatCodeMap(SeatLayout? layout, BusType? busType)

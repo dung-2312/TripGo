@@ -82,8 +82,8 @@ namespace Tripgo.Infrastructure.Migrations
                         .HasColumnType("nvarchar(150)");
 
                     b.Property<string>("PassengerEmail")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
 
                     b.Property<string>("PassengerName")
                         .IsRequired()
@@ -149,6 +149,63 @@ namespace Tripgo.Infrastructure.Migrations
                     b.ToTable("Bookings", (string)null);
                 });
 
+            modelBuilder.Entity("Tripgo.Domain.Entities.BookingConfirmationEmailOutbox", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<long>("BookingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("BookingConfirmationEmailOutbox", (string)null);
+                });
+
             modelBuilder.Entity("Tripgo.Domain.Entities.BookingPassenger", b =>
                 {
                     b.Property<long>("Id")
@@ -161,8 +218,8 @@ namespace Tripgo.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
@@ -483,6 +540,61 @@ namespace Tripgo.Infrastructure.Migrations
                         .HasFilter("[TaxCode] IS NOT NULL");
 
                     b.ToTable("Operators", (string)null);
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<long>("BookingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsSandbox")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransactionCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionCode")
+                        .IsUnique();
+
+                    b.HasIndex("BookingId", "Status");
+
+                    b.ToTable("PaymentTransactions", (string)null);
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.PickupDropoffPoint", b =>
@@ -1062,7 +1174,7 @@ namespace Tripgo.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Tripgo.Domain.Entities.User", "User")
-                        .WithMany()
+                        .WithMany("Bookings")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -1073,6 +1185,17 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("Trip");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.BookingConfirmationEmailOutbox", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.BookingPassenger", b =>
@@ -1141,6 +1264,17 @@ namespace Tripgo.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Operator");
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("Tripgo.Domain.Entities.Booking", "Booking")
+                        .WithMany("PaymentTransactions")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.PickupDropoffPoint", b =>
@@ -1321,6 +1455,8 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("BookingSeats");
 
                     b.Navigation("Passengers");
+
+                    b.Navigation("PaymentTransactions");
                 });
 
             modelBuilder.Entity("Tripgo.Domain.Entities.Driver", b =>
@@ -1361,6 +1497,11 @@ namespace Tripgo.Infrastructure.Migrations
                     b.Navigation("BookingSeats");
 
                     b.Navigation("SeatHolds");
+                });
+
+            modelBuilder.Entity("Tripgo.Domain.Entities.User", b =>
+                {
+                    b.Navigation("Bookings");
                 });
 #pragma warning restore 612, 618
         }

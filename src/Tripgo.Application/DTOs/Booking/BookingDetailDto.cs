@@ -27,8 +27,12 @@ public class BookingDetailDto
     public decimal TotalAmount { get; set; }
     public string Status { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
+    public DateTimeOffset? ConfirmedAt { get; set; }
+    public string? TransactionCode { get; set; }
+    public string? PaymentMethod { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public bool IsDemoBooking { get; set; } = true;
     public List<BookingPassengerDto> Passengers { get; set; } = new();
+    public List<PaymentTransactionDto> PaymentTransactions { get; set; } = new();
 }

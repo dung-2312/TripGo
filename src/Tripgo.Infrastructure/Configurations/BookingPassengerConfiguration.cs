@@ -21,7 +21,7 @@ public class BookingPassengerConfiguration : IEntityTypeConfiguration<BookingPas
             .IsRequired();
 
         builder.Property(x => x.Email)
-            .HasMaxLength(200);
+            .HasMaxLength(254);
 
         builder.Property(x => x.IdentityCard)
             .HasMaxLength(50);

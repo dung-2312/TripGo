@@ -16,7 +16,6 @@ public class InMemoryTemporaryBookingStore : ITemporaryBookingStore
 {
     private static readonly ConcurrentDictionary<long, HashSet<string>> _bookedSeatsMemory = new();
     private static readonly ConcurrentQueue<CustomerBookingInfoDto> _bookingsMemory = new();
-    private static readonly ConcurrentQueue<SupportCallbackRequestDto> _supportCallbacksMemory = new();
 
     public int GetBookedSeatCount(long tripId)
     {
@@ -95,11 +94,6 @@ public class InMemoryTemporaryBookingStore : ITemporaryBookingStore
         var booking = _bookingsMemory.FirstOrDefault(item =>
             string.Equals(item.BookingCode, bookingCode?.Trim(), StringComparison.OrdinalIgnoreCase));
         return booking == null ? null : CloneBooking(booking);
-    }
-
-    public void EnqueueSupportCallback(SupportCallbackRequestDto callback)
-    {
-        _supportCallbacksMemory.Enqueue(callback);
     }
 
     public void RemoveTripBookedSeats(long tripId)

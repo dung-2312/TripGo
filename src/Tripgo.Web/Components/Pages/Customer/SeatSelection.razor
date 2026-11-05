@@ -8,6 +8,13 @@
 
     protected override void OnInitialized()
     {
-        NavigationManager.NavigateTo("/search-trips", replace: true);
+        if (TripId > 0)
+        {
+            NavigationManager.NavigateTo($"/search-trips?tripId={TripId}", replace: true);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/search-trips", replace: true);
+        }
     }
 }

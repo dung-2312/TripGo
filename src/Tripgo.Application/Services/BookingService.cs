@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
@@ -204,12 +205,22 @@ public class BookingService : IBookingService
         }
 
         var email = request.PassengerEmail?.Trim();
-        if (!string.IsNullOrWhiteSpace(email) && (!email.Contains('@') || !email.Contains('.')))
+        if (string.IsNullOrWhiteSpace(email) || email.Length > 254 ||
+            !new EmailAddressAttribute().IsValid(email))
         {
             return new BookingResultDto
             {
                 Success = false,
-                Message = "Định dạng email không hợp lệ."
+                Message = "Vui lòng nhập địa chỉ email hợp lệ để nhận vé điện tử."
+            };
+        }
+
+        if (!request.ContactEmailConfirmed)
+        {
+            return new BookingResultDto
+            {
+                Success = false,
+                Message = "Vui lòng xác nhận địa chỉ email nhận vé điện tử là chính xác."
             };
         }
 
@@ -255,15 +266,19 @@ public class BookingService : IBookingService
             };
         }
 
-        // 3. Validate pickup and dropoff points against trip route & stop direction
+        // 3. Validate pickup and dropoff points against trip stops or route stops
         var routeStops = trip.Route?.Stops?.OrderBy(s => s.StopOrder).ToList() ?? new List<RouteStop>();
+        var tripStops = trip.Stops?.OrderBy(s => s.StopOrder).ToList() ?? new List<TripStop>();
 
         string pickupName;
-        RouteStop? pickupStop = null;
+        int? pickupOrder = null;
         if (request.PickupPointId.HasValue)
         {
-            pickupStop = routeStops.FirstOrDefault(s => s.PointId == request.PickupPointId.Value);
-            if (pickupStop == null)
+            var pId = request.PickupPointId.Value;
+            var tripStop = tripStops.FirstOrDefault(s => s.PointId == pId);
+            var routeStop = routeStops.FirstOrDefault(s => s.PointId == pId);
+
+            if (tripStop == null && routeStop == null)
             {
                 return new BookingResultDto
                 {
@@ -271,7 +286,9 @@ public class BookingService : IBookingService
                     Message = "Điểm đón được chọn không thuộc lộ trình xác thực của chuyến xe này."
                 };
             }
-            if (!pickupStop.AllowPickup)
+
+            var allowPickup = tripStop?.AllowPickup ?? routeStop?.AllowPickup ?? false;
+            if (!allowPickup)
             {
                 return new BookingResultDto
                 {
@@ -279,7 +296,9 @@ public class BookingService : IBookingService
                     Message = "Điểm dừng này không cho phép đón khách."
                 };
             }
-            pickupName = pickupStop.Point?.Name ?? "Điểm đón";
+
+            pickupOrder = tripStop?.StopOrder ?? routeStop?.StopOrder;
+            pickupName = tripStop?.Point?.Name ?? routeStop?.Point?.Name ?? "Điểm đón";
         }
         else
         {
@@ -287,11 +306,14 @@ public class BookingService : IBookingService
         }
 
         string dropoffName;
-        RouteStop? dropoffStop = null;
+        int? dropoffOrder = null;
         if (request.DropoffPointId.HasValue)
         {
-            dropoffStop = routeStops.FirstOrDefault(s => s.PointId == request.DropoffPointId.Value);
-            if (dropoffStop == null)
+            var dId = request.DropoffPointId.Value;
+            var tripStop = tripStops.FirstOrDefault(s => s.PointId == dId);
+            var routeStop = routeStops.FirstOrDefault(s => s.PointId == dId);
+
+            if (tripStop == null && routeStop == null)
             {
                 return new BookingResultDto
                 {
@@ -299,7 +321,9 @@ public class BookingService : IBookingService
                     Message = "Điểm trả được chọn không thuộc lộ trình xác thực của chuyến xe này."
                 };
             }
-            if (!dropoffStop.AllowDropoff)
+
+            var allowDropoff = tripStop?.AllowDropoff ?? routeStop?.AllowDropoff ?? false;
+            if (!allowDropoff)
             {
                 return new BookingResultDto
                 {
@@ -307,7 +331,9 @@ public class BookingService : IBookingService
                     Message = "Điểm dừng này không cho phép trả khách."
                 };
             }
-            dropoffName = dropoffStop.Point?.Name ?? "Điểm trả";
+
+            dropoffOrder = tripStop?.StopOrder ?? routeStop?.StopOrder;
+            dropoffName = tripStop?.Point?.Name ?? routeStop?.Point?.Name ?? "Điểm trả";
         }
         else
         {
@@ -315,7 +341,7 @@ public class BookingService : IBookingService
         }
 
         // Validate stop sequence / direction: pickup stop must precede dropoff stop
-        if (pickupStop != null && dropoffStop != null && pickupStop.StopOrder >= dropoffStop.StopOrder)
+        if (pickupOrder.HasValue && dropoffOrder.HasValue && pickupOrder.Value >= dropoffOrder.Value)
         {
             return new BookingResultDto
             {
@@ -354,6 +380,8 @@ public class BookingService : IBookingService
         var bookingCode = GenerateBookingCode();
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
 
+        var userId = await _bookingSessionContext.GetUserIdAsync();
+
         var booking = new Booking
         {
             BookingCode = bookingCode,
@@ -375,7 +403,8 @@ public class BookingService : IBookingService
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = expiresAt,
             IsDemoBooking = true,
-            OwnerIdentifier = ownerIdentifier
+            OwnerIdentifier = ownerIdentifier,
+            UserId = userId
         };
 
         var bookingSeats = requestedSeats.Select(s => new BookingSeat
@@ -444,7 +473,8 @@ public class BookingService : IBookingService
                 }
 
                 var pEmail = p.Email?.Trim();
-                if (!string.IsNullOrWhiteSpace(pEmail) && (!pEmail.Contains('@') || !pEmail.Contains('.')))
+                if (!string.IsNullOrWhiteSpace(pEmail) &&
+                    (pEmail.Length > 254 || !new EmailAddressAttribute().IsValid(pEmail)))
                 {
                     return new BookingResultDto
                     {
@@ -501,17 +531,19 @@ public class BookingService : IBookingService
     public async Task<bool> CancelBookingAsync(long bookingId, string reason, CancellationToken ct = default)
     {
         var ownerIdentifier = await _bookingSessionContext.GetOwnerIdentifierAsync();
-        if (string.IsNullOrWhiteSpace(ownerIdentifier)) return false;
-        return await _bookingRepository.CancelBookingAsync(bookingId, ownerIdentifier, reason, ct);
+        var userId = await _bookingSessionContext.GetUserIdAsync();
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return false;
+        return await _bookingRepository.CancelBookingAsync(bookingId, ownerIdentifier, userId, reason, ct);
     }
 
     public async Task<BookingDetailDto?> GetBookingByCodeAsync(string bookingCode, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(bookingCode)) return null;
         var ownerIdentifier = await _bookingSessionContext.GetOwnerIdentifierAsync();
-        if (string.IsNullOrWhiteSpace(ownerIdentifier)) return null;
+        var userId = await _bookingSessionContext.GetUserIdAsync();
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return null;
 
-        var booking = await _bookingRepository.GetBookingByCodeAsync(bookingCode.Trim(), ownerIdentifier, ct);
+        var booking = await _bookingRepository.GetBookingByCodeAsync(bookingCode.Trim(), ownerIdentifier, userId, ct);
         return booking == null ? null : MapToDetail(booking);
     }
 
@@ -520,10 +552,30 @@ public class BookingService : IBookingService
         var normalizedPhone = NormalizePhone(phone);
         if (string.IsNullOrEmpty(normalizedPhone)) return new List<BookingDetailDto>();
         var ownerIdentifier = await _bookingSessionContext.GetOwnerIdentifierAsync();
-        if (string.IsNullOrWhiteSpace(ownerIdentifier)) return new List<BookingDetailDto>();
+        var userId = await _bookingSessionContext.GetUserIdAsync();
+        if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return new List<BookingDetailDto>();
 
-        var bookings = await _bookingRepository.GetBookingsByPhoneAsync(normalizedPhone, ownerIdentifier, ct);
+        var bookings = await _bookingRepository.GetBookingsByPhoneAsync(normalizedPhone, ownerIdentifier, userId, ct);
         return bookings.Select(MapToDetail).ToList();
+    }
+
+    public async Task<List<BookingDetailDto>> GetBookingsForCurrentUserAsync(CancellationToken ct = default)
+    {
+        var userId = await _bookingSessionContext.GetUserIdAsync();
+        if (userId.HasValue && userId.Value > 0)
+        {
+            var userBookings = await _bookingRepository.GetBookingsByUserIdAsync(userId.Value, ct);
+            return userBookings.Select(MapToDetail).ToList();
+        }
+
+        var ownerIdentifier = await _bookingSessionContext.GetOwnerIdentifierAsync();
+        if (!string.IsNullOrWhiteSpace(ownerIdentifier))
+        {
+            var guestBookings = await _bookingRepository.GetBookingsByOwnerIdentifierAsync(ownerIdentifier, ct);
+            return guestBookings.Select(MapToDetail).ToList();
+        }
+
+        return new List<BookingDetailDto>();
     }
 
     private static BookingDetailDto MapToDetail(Booking b)
@@ -552,6 +604,11 @@ public class BookingService : IBookingService
             TotalAmount = b.TotalAmount,
             Status = b.Status.ToString(),
             PaymentStatus = b.PaymentStatus.ToString(),
+            ConfirmedAt = b.ConfirmedAt,
+            TransactionCode = b.PaymentTransactions?.FirstOrDefault(t => t.Status == PaymentStatus.Paid)?.TransactionCode
+                ?? b.PaymentTransactions?.OrderByDescending(t => t.CreatedAt).FirstOrDefault()?.TransactionCode,
+            PaymentMethod = b.PaymentTransactions?.FirstOrDefault(t => t.Status == PaymentStatus.Paid)?.PaymentMethod
+                ?? b.PaymentTransactions?.OrderByDescending(t => t.CreatedAt).FirstOrDefault()?.PaymentMethod,
             CreatedAt = b.CreatedAt,
             ExpiresAt = b.ExpiresAt,
             IsDemoBooking = b.IsDemoBooking,
@@ -562,7 +619,21 @@ public class BookingService : IBookingService
                 Email = p.Email,
                 IdentityCard = p.IdentityCard,
                 IsPrimaryContact = p.IsPrimaryContact
-            }).ToList() ?? new List<BookingPassengerDto>()
+            }).ToList() ?? new List<BookingPassengerDto>(),
+            PaymentTransactions = b.PaymentTransactions?.Select(t => new PaymentTransactionDto
+            {
+                Id = t.Id,
+                BookingId = t.BookingId,
+                TransactionCode = t.TransactionCode,
+                PaymentMethod = t.PaymentMethod,
+                Amount = t.Amount,
+                Status = t.Status.ToString(),
+                ProviderReference = t.ProviderReference,
+                Note = t.Note,
+                IsSandbox = t.IsSandbox,
+                CreatedAt = t.CreatedAt,
+                CompletedAt = t.CompletedAt
+            }).ToList() ?? new List<PaymentTransactionDto>()
         };
     }
 

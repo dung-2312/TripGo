@@ -13,6 +13,7 @@ public static class DbInitializer
     public static async Task SeedAsync(AppDbContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        context.EnsureWritesTargetIsolatedTestDatabase();
 
         var locations = new Dictionary<string, Location>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in new[]

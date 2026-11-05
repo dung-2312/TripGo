@@ -12,6 +12,10 @@
     <ProjectReference Include="..\Tripgo.Infrastructure\Tripgo.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tripgo.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>

@@ -1,124 +1,619 @@
 @page "/my-tickets"
+@using Tripgo.Application.DTOs
 @using Tripgo.Application.Interfaces
+@using System.Security.Claims
 @inject ITripService TripService
+@inject IBookingService BookingService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<MyTickets> Logger
 @rendermode InteractiveServer
 
-<PageTitle>Vé của tôi | Tripgo</PageTitle>
+<PageTitle>Đơn đặt chỗ của tôi | TripGo</PageTitle>
 
-<section class="ticket-page">
-    <div class="ticket-wrap">
-        <div class="mb-3">
-            <BackButton Label="Quay lại trang chủ" FallbackUrl="/" />
+<section class="py-4 py-md-5" style="background-color: var(--tg-bg); min-height: calc(100vh - 160px);">
+    <div class="container">
+        <!-- Top Navigation / Breadcrumb -->
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+            <div>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb mb-1">
+                        <li class="breadcrumb-item"><a href="/" class="text-decoration-none text-muted">Trang chủ</a></li>
+                        <li class="breadcrumb-item active text-primary fw-semibold" aria-current="page">Vé của tôi</li>
+                    </ol>
+                </nav>
+                <h2 class="fw-bold text-dark mb-0" style="font-size: 1.75rem;">Đơn đặt chỗ của tôi</h2>
+            </div>
+
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-2 fw-semibold"
+                        @onclick="() => showLookupBox = !showLookupBox">
+                    <i class="bi @(showLookupBox ? "bi-chevron-up" : "bi-search") me-1"></i>
+                    <span>@(showLookupBox ? "Ẩn tìm kiếm" : "Tra cứu theo mã / SĐT")</span>
+                </button>
+                <a href="/search-trips" class="btn btn-warning btn-sm rounded-pill px-3 py-2 fw-bold text-dark shadow-sm">
+                    <i class="bi bi-plus-circle-fill me-1"></i> Đặt vé mới
+                </a>
+            </div>
         </div>
-        <header class="ticket-heading">
-            <span class="eyebrow">TRIPGO · HÀNH TRÌNH CỦA BẠN</span>
-            <h1>Tra cứu đặt chỗ</h1>
-            <p>Nhập số điện thoại đặt chỗ hoặc mã đặt chỗ trong trình duyệt này.</p>
-        </header>
 
-        <div class="lookup-bar">
-            <i class="bi bi-search"></i>
-            <input aria-label="Số điện thoại hoặc mã đặt chỗ" placeholder="Số điện thoại hoặc TRIPGO-XXXXX" @bind="lookupValue" @bind:event="oninput" @onkeydown="HandleKeyDown" />
-            <button type="button" class="lookup-button" disabled="@isSearching" @onclick="LookupTickets">
-                @if (isSearching) { <span class="spinner-border spinner-border-sm"></span> }
-                else { <i class="bi bi-arrow-right"></i> }
-                Tra cứu
-            </button>
-        </div>
-
-        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        <!-- Optional Direct Lookup Tool (Collapsible) -->
+        @if (showLookupBox)
         {
-            <div class="lookup-status @(tickets.Count > 0 ? "success" : "")" role="status">@statusMessage</div>
+            <div class="card shadow-sm rounded-4 border-0 p-4 mb-4" style="background: var(--tg-surface); border: 1px solid var(--tg-border) !important;">
+                <div class="row align-items-center g-3">
+                    <div class="col-lg-8">
+                        <label class="form-label fw-bold text-dark small mb-1" for="manualLookupInput">
+                            Tra cứu nhanh bằng Mã đặt chỗ hoặc Số điện thoại
+                        </label>
+                        <div class="tg-auth-input-group">
+                            <span class="tg-auth-input-icon">
+                                <i class="bi bi-search"></i>
+                            </span>
+                            <input id="manualLookupInput" type="text" class="tg-auth-input"
+                                   placeholder="Nhập mã TRIPGO-XXXX hoặc số điện thoại..."
+                                   @bind="manualLookupQuery" @bind:event="oninput" @onkeydown="HandleLookupKeyDown" />
+                            <button type="button" class="tg-auth-btn-primary py-2 px-4 m-1" disabled="@isSearchingManual" @onclick="ExecuteManualLookup">
+                                @if (isSearchingManual)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Đang tìm...</span>
+                                }
+                                else
+                                {
+                                    <span>Tra cứu</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-lg-4 text-muted small border-start-lg ps-lg-4">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="bi bi-shield-check text-success fs-5"></i>
+                            <span>Chỉ các vé thuộc quyền sở hữu của tài khoản hoặc phiên trình duyệt hiện tại mới được hiển thị nhằm bảo mật thông tin hành khách.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         }
 
-        @foreach (var ticket in tickets)
+        <!-- Status & Feedback Alerts -->
+        @if (!string.IsNullOrWhiteSpace(actionAlertMessage))
         {
-            <article class="ticket-card">
-                <div class="ticket-main">
-                    <div class="ticket-topline"><span class="ticket-code">@ticket.BookingCode</span><span class="ticket-paid @(ticket.BookingStatus == "PendingPayment" ? "reservation" : "")">@GetBookingStatusLabel(ticket)</span></div>
-                    <h2>@ticket.RouteName</h2>
-                    <div class="ticket-operator"><i class="bi bi-bus-front-fill"></i><span>@ticket.OperatorName</span><span class="bus-type">@ticket.BusTypeName</span></div>
-                    <div class="ticket-route-line">
-                        <div><small>GIỜ KHỞI HÀNH</small><strong>@ticket.DepartureTime.ToLocalTime().ToString("HH:mm")</strong><span>@ticket.DepartureTime.ToLocalTime().ToString("ddd, dd/MM/yyyy")</span></div>
-                        <div class="route-rule"><i class="bi bi-arrow-right"></i></div>
-                        <div><small>BIỂN SỐ XE</small><strong>@ticket.BusLicensePlate</strong><span>Vui lòng có mặt trước giờ chạy 30 phút</span></div>
+            <div class="alert @(actionAlertIsError ? "alert-danger" : "alert-success") alert-dismissible fade show rounded-4 shadow-sm mb-4 border-0" role="alert">
+                <i class="bi @(actionAlertIsError ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill") me-2 fs-5"></i>
+                <span>@actionAlertMessage</span>
+                <button type="button" class="btn-close" @onclick="() => actionAlertMessage = null" aria-label="Close"></button>
+            </div>
+        }
+
+        <!-- Account Context Header -->
+        <AuthorizeView>
+            <Authorized>
+                <div class="card shadow-sm border-0 rounded-4 p-3 px-md-4 mb-4 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3"
+                     style="background: var(--tg-surface); border: 1px solid var(--tg-border) !important;">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="tg-user-avatar-circle text-white fw-bold"
+                             style="width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--tg-primary), #072f7a); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                            @(string.IsNullOrWhiteSpace(context.User.Identity?.Name) ? "U" : context.User.Identity.Name.Substring(0, 1).ToUpper())
+                        </div>
+                        <div>
+                            <div class="fw-bold text-dark">Xin chào, @context.User.Identity?.Name!</div>
+                            <small class="text-muted">
+                                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                Các đơn đặt chỗ của bạn được tự động đồng bộ hóa trên mọi thiết bị.
+                            </small>
+                        </div>
                     </div>
-                    <div class="ticket-facts">
-                        <div><small>HÀNH KHÁCH</small><b>@ticket.Name</b></div>
-                        <div><small>SỐ ĐIỆN THOẠI</small><b>@ticket.Phone</b></div>
-                        <div><small>GIƯỜNG</small><b>@string.Join(", ", ticket.SeatCodes)</b></div>
-                        <div><small>ĐIỂM ĐÓN</small><b>@ticket.SelectedPickupPoint</b></div>
-                        <div><small>ĐIỂM TRẢ</small><b>@ticket.SelectedDropoffPoint</b></div>
-                        <div><small>PHỤ PHÍ GHẾ</small><b>@(ticket.SurchargeAmount > 0 ? $"{ticket.SurchargeAmount:N0} đ" : "0 đ")</b></div>
+                    <div class="d-flex gap-2">
+                        <a href="/account/profile" class="btn btn-light btn-sm rounded-pill border px-3 py-1 fw-semibold">
+                            <i class="bi bi-person-gear me-1"></i> Hồ sơ của tôi
+                        </a>
                     </div>
-                    @if (ticket.Passengers != null && ticket.Passengers.Count > 1)
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="alert alert-info rounded-4 border-0 shadow-sm p-3 px-md-4 mb-4 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3"
+                     style="background: var(--tg-primary-subtle); border-left: 4px solid var(--tg-primary) !important;">
+                    <div>
+                        <div class="fw-bold text-primary mb-1">
+                            <i class="bi bi-info-circle-fill me-1"></i> Bạn đang xem vé ở chế độ Khách (Phiên hiện tại)
+                        </div>
+                        <div class="small text-secondary">
+                            Đăng nhập để xem các đơn đặt chỗ sandbox được lưu cho tài khoản này. Thời gian lưu phụ thuộc vào môi trường thử nghiệm.
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-shrink-0">
+                        <a href="/login?ReturnUrl=/my-tickets" class="tg-auth-btn-primary btn-sm text-decoration-none px-3 py-1">
+                            Đăng nhập
+                        </a>
+                        <a href="/register?ReturnUrl=/my-tickets" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 fw-bold">
+                            Đăng ký
+                        </a>
+                    </div>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+
+        <!-- Filter Tabs -->
+        <div class="mb-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div class="tg-ticket-tabs">
+                <button class="tg-ticket-tab-item @(activeFilter == "all" ? "active" : "")"
+                        @onclick='() => SetFilter("all")'>
+                    <span>Tất cả vé</span>
+                    <span class="tg-ticket-tab-badge">@allTickets.Count</span>
+                </button>
+                <button class="tg-ticket-tab-item @(activeFilter == "upcoming" ? "active" : "")"
+                        @onclick='() => SetFilter("upcoming")'>
+                    <span>Sắp khởi hành</span>
+                    <span class="tg-ticket-tab-badge">@upcomingCount</span>
+                </button>
+                <button class="tg-ticket-tab-item @(activeFilter == "completed" ? "active" : "")"
+                        @onclick='() => SetFilter("completed")'>
+                    <span>Đã hoàn thành</span>
+                    <span class="tg-ticket-tab-badge">@completedCount</span>
+                </button>
+                <button class="tg-ticket-tab-item @(activeFilter == "cancelled" ? "active" : "")"
+                        @onclick='() => SetFilter("cancelled")'>
+                    <span>Đã hủy / Hết hạn</span>
+                    <span class="tg-ticket-tab-badge">@cancelledCount</span>
+                </button>
+            </div>
+
+            <div class="text-muted small">
+                Hiển thị <strong>@filteredTickets.Count</strong> đơn đặt chỗ
+            </div>
+        </div>
+
+        <!-- Content Area: List of Boarding Pass Ticket Cards -->
+        @if (isLoading)
+        {
+            <div class="text-center py-5 card rounded-4 border-0 shadow-sm" style="background: var(--tg-surface);">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <div class="text-muted">Đang tải danh sách đơn đặt chỗ...</div>
+            </div>
+        }
+        else if (filteredTickets.Count == 0)
+        {
+            <!-- Empty State -->
+            <div class="text-center py-5 card rounded-4 border-0 shadow-sm p-4 p-md-5" style="background: var(--tg-surface);">
+                <div class="d-inline-flex align-items-center justify-content-center rounded-circle mx-auto mb-3"
+                     style="width: 80px; height: 80px; background: var(--tg-primary-subtle); color: var(--tg-primary); font-size: 2.25rem;">
+                    <i class="bi bi-ticket-perforated"></i>
+                </div>
+                <h4 class="fw-bold text-dark mb-2">Chưa có vé nào trong mục này</h4>
+                <p class="text-muted small mb-4" style="max-width: 480px; margin: 0 auto; line-height: 1.6;">
+                    @if (activeFilter == "all")
                     {
-                        <div class="mt-2 p-2 rounded" style="background: #f1f5f9; font-size: 12px;">
-                            <span class="text-secondary fw-bold d-block mb-1">DANH SÁCH TẤT CẢ HÀNH KHÁCH:</span>
-                            <div class="d-flex flex-wrap gap-2">
-                                @foreach (var p in ticket.Passengers)
-                                {
-                                    <span class="badge bg-white text-dark border">
-                                        <i class="bi bi-person me-1"></i>@p.FullName (@p.PhoneNumber)@(p.IsPrimaryContact ? " [Đại diện]" : "")
-                                    </span>
-                                }
+                        <span>Bạn chưa có đơn đặt chỗ nào trong tài khoản hoặc phiên trình duyệt này.</span>
+                    }
+                    else
+                    {
+                        <span>Không có chuyến xe nào phù hợp với bộ lọc "@(activeFilter switch { "upcoming" => "Sắp khởi hành", "completed" => "Đã hoàn thành", _ => "Đã hủy" })".</span>
+                    }
+                </p>
+                <div>
+                    <a href="/search-trips" class="tg-auth-btn-primary d-inline-flex align-items-center gap-2 text-decoration-none px-4 py-2">
+                        <i class="bi bi-bus-front"></i>
+                        <span>Tìm & Đặt vé xe khách</span>
+                    </a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-4">
+                @foreach (var ticket in filteredTickets)
+                {
+                    <div class="tg-ticket-boarding-pass">
+                        <!-- Top Header -->
+                        <div class="tg-ticket-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <span class="badge bg-dark text-white px-3 py-2 rounded-pill font-monospace" style="letter-spacing: 0.05em; font-size: 0.85rem;">
+                                    <i class="bi bi-upc-scan me-1 text-warning"></i> @ticket.BookingCode
+                                </span>
+                                <span class="badge @GetStatusBadgeClass(ticket) rounded-pill px-3 py-2 fw-bold">
+                                    @GetStatusLabel(ticket)
+                                </span>
+                                <span class="badge bg-warning bg-opacity-25 text-dark border border-warning rounded-pill px-2 py-1 small fw-bold">
+                                    SANDBOX
+                                </span>
+                            </div>
+                            <div class="text-muted small">
+                                <i class="bi bi-clock-history me-1"></i>Đặt lúc: @ticket.BookedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
                             </div>
                         </div>
-                    }
-                    <div class="boarding-note"><i class="bi bi-info-circle-fill"></i><span>Đây là thông tin đặt chỗ, không phải vé điện tử đã xác minh. TripGo chưa hỗ trợ thanh toán hoặc xác thực vé/QR.</span></div>
-                </div>
-                <aside class="ticket-qr-panel">
-                    <strong>THÔNG TIN ĐẶT CHỖ</strong>
-                    <small>Đặt lúc @ticket.BookedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>
-                    <div class="ticket-total">@ticket.TotalAmount.ToString("N0") đ</div>
-                </aside>
-            </article>
+
+                        <!-- Sandbox booking summary -->
+                        <div class="row g-0">
+                            <!-- Main Pass Body (Left 70-75%) -->
+                            <div class="col-lg-8 p-3 p-md-4">
+                                <!-- Reference route and vehicle data -->
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                                    <span class="badge bg-primary rounded-pill px-3 py-1 fw-bold">
+                                        <i class="bi bi-building me-1"></i> @ticket.OperatorName
+                                    </span>
+                                    <span class="badge bg-light text-dark border rounded-pill px-3 py-1">
+                                        <i class="bi bi-bus-front me-1"></i> @ticket.BusTypeName
+                                    </span>
+                                    <span class="badge bg-light text-secondary border rounded-pill px-2 py-1 font-monospace">
+                                        BS: @(string.IsNullOrWhiteSpace(ticket.BusLicensePlate) ? "Chưa có dữ liệu xe" : ticket.BusLicensePlate)
+                                    </span>
+                                </div>
+
+                                <!-- Route Timeline Visual -->
+                                <div class="bg-light p-3 rounded-4 mb-3">
+                                    <div class="row align-items-center text-center text-md-start g-2">
+                                        <div class="col-md-4">
+                                            <div class="text-muted text-uppercase fw-bold" style="font-size: 0.72rem; letter-spacing: 0.05em;">Khởi hành</div>
+                                            <div class="fs-3 fw-bold text-primary">@ticket.DepartureTime.ToLocalTime().ToString("HH:mm")</div>
+                                            <div class="fw-semibold text-dark small">@ticket.DepartureTime.ToLocalTime().ToString("ddd, dd/MM/yyyy")</div>
+                                            <div class="text-truncate text-secondary small fw-bold mt-1">@GetOriginFromRoute(ticket.RouteName)</div>
+                                        </div>
+
+                                        <div class="col-md-4 py-2 py-md-0">
+                                            <div class="tg-ticket-timeline">
+                                                <div class="tg-ticket-station-dot" title="Điểm xuất phát"></div>
+                                                <div class="tg-ticket-route-line">
+                                                    <span class="tg-ticket-route-badge">
+                                                        <i class="bi bi-bus-front text-primary"></i>
+                                                        <span>Lộ trình tham khảo</span>
+                                                    </span>
+                                                </div>
+                                                <div class="tg-ticket-station-dot destination" title="Điểm đến"></div>
+                                            </div>
+                                            <div class="text-center text-muted small mt-1" style="font-size: 0.75rem;">
+                                                <span class="text-muted">Thông tin chuyến thử nghiệm</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-4 text-md-end">
+                                            <div class="text-muted text-uppercase fw-bold" style="font-size: 0.72rem; letter-spacing: 0.05em;">Điểm đến</div>
+                                            <div class="fw-semibold text-dark small">Thời gian đến chưa có dữ liệu</div>
+                                            <div class="text-truncate text-secondary small fw-bold mt-1">@GetDestFromRoute(ticket.RouteName)</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Stops Details -->
+                                <div class="row g-3 small mb-3">
+                                    <div class="col-md-6">
+                                        <div class="p-2 px-3 rounded-3 border bg-white h-100">
+                                            <div class="d-flex align-items-start gap-2">
+                                                <i class="bi bi-geo-alt-fill text-primary mt-1"></i>
+                                                <div>
+                                                    <strong class="text-dark d-block">Điểm đón khách:</strong>
+                                                    <span class="text-secondary">@ticket.SelectedPickupPoint</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="p-2 px-3 rounded-3 border bg-white h-100">
+                                            <div class="d-flex align-items-start gap-2">
+                                                <i class="bi bi-geo-alt-fill text-danger mt-1"></i>
+                                                <div>
+                                                    <strong class="text-dark d-block">Điểm trả khách:</strong>
+                                                    <span class="text-secondary">@ticket.SelectedDropoffPoint</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Passenger & Seats -->
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2 border-top">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="text-muted small">Ghế / Giường:</span>
+                                        <div class="d-flex flex-wrap gap-1">
+                                            @foreach (var sc in ticket.SeatCodes)
+                                            {
+                                                <span class="tg-seat-pill-luxury">
+                                                    <i class="bi bi-bookmark-check-fill text-primary"></i> @sc
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="small text-muted">
+                                        <span>Khách đặt: <strong>@ticket.Name</strong> (@ticket.Phone)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Perforated Tear-off Stub (Right 25-30%) -->
+                            <div class="col-lg-4 p-3 p-md-4 tg-ticket-perforated bg-light d-flex flex-column justify-content-between">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <span class="text-muted text-uppercase fw-bold" style="font-size: 0.72rem; letter-spacing: 0.05em;">Thanh toán</span>
+                                        <span class="badge @(ticket.PaymentStatus == "Paid" ? "bg-success" : "bg-warning text-dark") rounded-pill px-2 py-1 small">
+                                            @(ticket.PaymentStatus == "Paid" ? "Đã thanh toán" : "Chưa thanh toán")
+                                        </span>
+                                    </div>
+
+                                    <div class="fs-2 fw-bold text-danger mb-1">
+                                        @ticket.TotalAmount.ToString("N0") <span class="fs-6 text-muted">đ</span>
+                                    </div>
+
+                                    <div class="small text-muted mb-3" style="font-size: 0.8rem;">
+                                        @if (!string.IsNullOrWhiteSpace(ticket.PaymentMethod))
+                                        {
+                                            <div>Phương thức: <strong>@ticket.PaymentMethod</strong></div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(ticket.TransactionCode))
+                                        {
+                                            <div class="text-truncate" title="@ticket.TransactionCode">Mã GD: <span class="font-monospace">@ticket.TransactionCode</span></div>
+                                        }
+                                    </div>
+
+                                    <div class="mb-3 d-none d-sm-block">
+                                        <div class="text-center font-monospace text-muted" style="font-size: 0.68rem; letter-spacing: 0.1em;">
+                                            @ticket.BookingCode
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Stub Action Buttons -->
+                                <div class="d-flex flex-column gap-2 mt-2">
+                                    <button type="button" class="btn btn-primary fw-bold rounded-pill shadow-sm py-2 d-flex align-items-center justify-content-center gap-2"
+                                            @onclick="() => OpenTicketModal(ticket)">
+                                        <i class="bi bi-ticket-perforated"></i>
+                                        <span>Xem thông tin đặt chỗ</span>
+                                    </button>
+
+                                    @if (CanCancel(ticket))
+                                    {
+                                        @if (confirmingCancelId == ticket.BookingId)
+                                        {
+                                            <div class="p-2 border border-danger rounded-3 bg-danger-subtle text-center">
+                                                <div class="small fw-bold text-danger mb-2">Hủy đơn đặt chỗ này?</div>
+                                                <div class="d-flex gap-2 justify-content-center">
+                                                    <button class="btn btn-danger btn-sm fw-bold px-3 rounded-pill"
+                                                            disabled="@isCancelling"
+                                                            @onclick="() => ExecuteCancelAsync(ticket)">
+                                                        @if (isCancelling)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>Xác nhận</span>
+                                                        }
+                                                    </button>
+                                                    <button class="btn btn-secondary btn-sm rounded-pill"
+                                                            disabled="@isCancelling"
+                                                            @onclick="() => confirmingCancelId = null">
+                                                        Đóng
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-outline-danger btn-sm rounded-pill py-2"
+                                                    @onclick="() => confirmingCancelId = ticket.BookingId">
+                                                <i class="bi bi-x-circle me-1"></i> Hủy đặt chỗ
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
         }
     </div>
 </section>
 
+<!-- TASK 6: TICKET DETAILS & DIGITAL BOARDING PASS MODAL -->
+@if (selectedDetailTicket != null)
+{
+    <div class="tg-modal-backdrop" @onclick="CloseTicketModal">
+        <div class="tg-modal-dialog" @onclick:stopPropagation="true">
+            <!-- Modal Header / Airline & Bus Boarding Pass Top -->
+            <div class="tg-boarding-pass-head d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="tg-hero-logo-box" style="width: 36px; height: 36px;">
+                        <svg viewBox="0 0 36 36" fill="none" style="width: 24px; height: 24px;" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="36" height="36" rx="9" fill="#FFCA28" />
+                            <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#071F49" />
+                            <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
+                            <circle cx="13.5" cy="21.5" r="2" fill="#FFCA28" />
+                            <circle cx="22.5" cy="21.5" r="2" fill="#FFCA28" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="fw-bold fs-5 text-white">THÔNG TIN ĐẶT CHỖ</div>
+                        <div class="text-white-50" style="font-size: 0.72rem; letter-spacing: 0.08em;">SANDBOX BOOKING DETAILS — TRIPGO</div>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge @GetStatusBadgeClass(selectedDetailTicket) px-3 py-2 rounded-pill fw-bold">
+                        @GetStatusLabel(selectedDetailTicket)
+                    </span>
+                    <button type="button" class="btn-close btn-close-white ms-2" @onclick="CloseTicketModal" aria-label="Đóng cửa sổ chi tiết vé"></button>
+                </div>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-4">
+                <!-- Sandbox booking reference -->
+                <div class="text-center p-4 bg-light rounded-4 mb-4 border">
+                    <div class="tg-ticket-reference-icon mb-3" aria-hidden="true">
+                        <i class="bi bi-ticket-perforated-fill"></i>
+                    </div>
+
+                    <div class="text-muted small fw-semibold text-uppercase mb-1">Mã đặt chỗ sandbox</div>
+                    <div class="fs-4 fw-bold font-monospace text-dark mb-1">
+                        @selectedDetailTicket.BookingCode
+                    </div>
+                    <div class="p-2 px-3 bg-white rounded-3 border small text-muted mb-3 mx-auto" style="max-width: 540px;">
+                        <i class="bi bi-shield-exclamation text-warning me-1"></i>
+                        <span>Đây là mã đặt chỗ của môi trường thử nghiệm, không phải mã QR lên xe hoặc vé xe khách thương mại.</span>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3"
+                                aria-label="Sao chép mã đặt chỗ"
+                                @onclick="() => CopyBookingCode(selectedDetailTicket.BookingCode)">
+                            <i class="bi @(isCopied ? "bi-check2 text-success" : "bi-clipboard") me-1"></i>
+                            <span>@(isCopied ? "Đã sao chép!" : "Sao chép mã vé")</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning py-2 px-3 small rounded-3 mb-4 d-flex align-items-center gap-2">
+                    <i class="bi bi-cpu text-dark fs-5 flex-shrink-0"></i>
+                    <div>
+                        <strong>CHUYẾN XE MÔ PHỎNG — SANDBOX:</strong> Thẻ lên xe điện tử và thanh toán mô phỏng phục vụ kiểm thử kỹ thuật, không phát sinh giao dịch tiền tệ thực tế.
+                    </div>
+                </div>
+
+                <!-- Route & Timing Summary -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="p-3 rounded-3 bg-light border">
+                            <div class="text-muted small fw-bold text-uppercase">Tuyến đường & Nhà xe</div>
+                            <div class="fw-bold text-dark fs-6 mt-1">@selectedDetailTicket.RouteName</div>
+                            <div class="text-primary small fw-semibold">@selectedDetailTicket.OperatorName · @selectedDetailTicket.BusTypeName</div>
+                            <div class="small text-secondary font-monospace mt-1">Biển số: @(string.IsNullOrWhiteSpace(selectedDetailTicket.BusLicensePlate) ? "Đang điều phối" : selectedDetailTicket.BusLicensePlate)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 rounded-3 bg-light border">
+                            <div class="text-muted small fw-bold text-uppercase">Thời gian khởi hành</div>
+                            <div class="fw-bold text-primary fs-5 mt-1">@selectedDetailTicket.DepartureTime.ToLocalTime().ToString("HH:mm - dddd, dd/MM/yyyy")</div>
+                            <div class="small text-muted mt-1">
+                                <i class="bi bi-exclamation-circle text-warning me-1"></i>
+                                Quý khách vui lòng có mặt tại điểm đón trước <strong>30 phút</strong>.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pickup & Dropoff -->
+                <div class="card p-3 rounded-3 border mb-4">
+                    <div class="d-flex flex-column gap-3">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="bi bi-geo-alt-fill text-primary mt-1"></i>
+                            <div>
+                                <strong class="text-dark d-block">Điểm đón khách:</strong>
+                                <span class="text-secondary small">@selectedDetailTicket.SelectedPickupPoint</span>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="bi bi-geo-alt-fill text-danger mt-1"></i>
+                            <div>
+                                <strong class="text-dark d-block">Điểm trả khách:</strong>
+                                <span class="text-secondary small">@selectedDetailTicket.SelectedDropoffPoint</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Passenger Manifest -->
+                <div class="mb-4">
+                    <h6 class="fw-bold text-dark mb-2">Danh sách hành khách & Chỗ ngồi</h6>
+                    <div class="table-responsive border rounded-3 overflow-hidden">
+                        <table class="table table-sm table-striped mb-0 small">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Số ghế</th>
+                                    <th>Họ và tên</th>
+                                    <th>Số điện thoại</th>
+                                    <th>Vai trò</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (selectedDetailTicket.Passengers != null && selectedDetailTicket.Passengers.Count > 0)
+                                {
+                                    @foreach (var p in selectedDetailTicket.Passengers)
+                                    {
+                                        <tr>
+                                            <td><span class="badge bg-primary font-monospace">@(p.SeatCode ?? "Ghế đặt")</span></td>
+                                            <td class="fw-bold text-dark">@p.FullName</td>
+                                            <td>@p.PhoneNumber</td>
+                                            <td>@(p.IsPrimaryContact ? "Người liên hệ chính" : "Hành khách đi cùng")</td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td>
+                                            @foreach (var sc in selectedDetailTicket.SeatCodes)
+                                            {
+                                                <span class="badge bg-primary font-monospace me-1">@sc</span>
+                                            }
+                                        </td>
+                                        <td class="fw-bold text-dark">@selectedDetailTicket.Name</td>
+                                        <td>@selectedDetailTicket.Phone</td>
+                                        <td>Người đặt vé</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Financial Breakdown -->
+                <div class="p-3 bg-light rounded-3 border mb-4">
+                    <h6 class="fw-bold text-dark mb-3">Chi tiết thanh toán</h6>
+                    <div class="d-flex flex-column gap-2 small">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-secondary">Giá vé gốc (@selectedDetailTicket.SeatCodes.Count chỗ):</span>
+                            <span class="fw-semibold">@selectedDetailTicket.BasePrice.ToString("N0") đ</span>
+                        </div>
+                        @if (selectedDetailTicket.SurchargeAmount > 0)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <span class="text-secondary">Phụ phí / Giường VIP:</span>
+                                <span class="fw-semibold">+@selectedDetailTicket.SurchargeAmount.ToString("N0") đ</span>
+                            </div>
+                        }
+                        @if (selectedDetailTicket.InsuranceAmount > 0)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <span class="text-secondary">Bảo hiểm hành khách:</span>
+                                <span class="fw-semibold">+@selectedDetailTicket.InsuranceAmount.ToString("N0") đ</span>
+                            </div>
+                        }
+                        <hr class="my-1" />
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong class="text-dark fs-6">Tổng tiền thanh toán:</strong>
+                            <strong class="text-danger fs-5">@selectedDetailTicket.TotalAmount.ToString("N0") đ</strong>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 pt-2 border-top small text-muted">
+                        <div>Phương thức thanh toán: <strong>@(selectedDetailTicket.PaymentMethod ?? "Sandbox Test Payment")</strong></div>
+                        @if (!string.IsNullOrWhiteSpace(selectedDetailTicket.TransactionCode))
+                        {
+                            <div>Mã giao dịch xác nhận: <strong class="font-monospace">@selectedDetailTicket.TransactionCode</strong></div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                    <button type="button" class="btn btn-outline-primary rounded-pill px-4 fw-bold" @onclick="PrintBoardingPass">
+                        <i class="bi bi-printer me-1"></i> In vé / Lưu PDF
+                    </button>
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" @onclick="CloseTicketModal">
+                        Đóng
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
-    .ticket-page { min-height: 100vh; padding: 48px 22px 72px; background: #f2f6f8; color: #183042; }
-    .ticket-wrap { max-width: 1120px; margin: 0 auto; }
-    .ticket-heading { margin-bottom: 25px; }
-    .eyebrow { color: #0d5cb6; font-size: 12px; font-weight: 800; }
-    .ticket-heading h1 { margin: 9px 0 5px; font-size: 32px; font-weight: 800; }
-    .ticket-heading p { margin: 0; color: #647784; }
-    .lookup-bar { display: flex; align-items: center; gap: 12px; padding: 9px 10px 9px 16px; border: 1px solid #dce5e9; border-radius: 8px; background: white; box-shadow: 0 7px 24px rgba(18,54,72,.06); }
-    .lookup-bar > i { color: #8295a1; }
-    .lookup-bar input { flex: 1; min-width: 0; border: 0; outline: 0; padding: 10px 0; }
-    .lookup-button { display: flex; align-items: center; gap: 8px; padding: 11px 17px; border: 0; border-radius: 6px; background: #ffd333; color: #1c2f3b; font-weight: 800; }
-    .lookup-status { margin: 14px 0; color: #a33c2c; }
-    .lookup-status.success { color: #177347; }
-    .ticket-card { display: grid; grid-template-columns: minmax(0, 1fr) 210px; margin-top: 20px; border: 1px solid #dce5e9; border-radius: 8px; background: #fff; box-shadow: 0 8px 26px rgba(18,54,72,.06); overflow: hidden; }
-    .ticket-main { padding: 24px; }
-    .ticket-topline { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
-    .ticket-code { color: #0d5cb6; font-weight: 800; }
-    .ticket-paid { padding: 5px 8px; border-radius: 4px; background: #e4f5ea; color: #217445; font-size: 10px; font-weight: 800; }
-    .ticket-paid.reservation { background: #fff3d6; color: #8b5a00; }
-    .ticket-main h2 { margin: 13px 0; font-size: 21px; font-weight: 800; }
-    .ticket-operator { display: flex; align-items: center; gap: 9px; color: #304956; font-weight: 700; }
-    .ticket-operator i { color: #0d5cb6; }
-    .bus-type { color: #71838e; font-size: 13px; font-weight: 500; }
-    .ticket-route-line { display: grid; grid-template-columns: 1fr 80px 1fr; align-items: center; gap: 12px; padding: 18px 0; margin: 12px 0; border-bottom: 1px solid #e9eef0; }
-    .ticket-route-line > div:not(.route-rule) { display: grid; gap: 4px; }
-    .ticket-route-line small, .ticket-facts small { color: #81929b; font-size: 10px; font-weight: 800; }
-    .ticket-route-line strong { font-size: 20px; }
-    .ticket-route-line span { color: #667985; font-size: 12px; }
-    .route-rule { display: grid; place-items: center; color: #0d5cb6; border-bottom: 1px dashed #aabac2; }
-    .ticket-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 20px; }
-    .ticket-facts > div { display: grid; gap: 4px; }
-    .ticket-facts b { overflow-wrap: anywhere; font-size: 13px; }
-    .boarding-note { display: flex; gap: 9px; align-items: flex-start; margin-top: 18px; padding: 11px 12px; background: #eef6fb; color: #375b70; font-size: 12px; }
-    .boarding-note i { color: #0d5cb6; }
-    .ticket-qr-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 20px 16px; border-left: 1px dashed #d5e0e5; background: #f9fbfc; text-align: center; }
-    .qr-code { display: grid; grid-template-columns: repeat(21, 6px); grid-template-rows: repeat(21, 6px); gap: 1px; padding: 6px; background: white; border: 1px solid #e1e8eb; }
-    .qr-code span { background: transparent; }
-    .qr-code span.qr-dark { background: #102a38; }
-    .ticket-qr-panel > strong { color: #0d5cb6; font-size: 11px; letter-spacing: .04em; }
-    .ticket-qr-panel small { color: #71838e; font-size: 10px; }
-    .ticket-total { margin-top: 4px; font-size: 18px; font-weight: 800; }
-    @@media (max-width: 760px) { .ticket-page { padding: 30px 14px; } .ticket-card { grid-template-columns: 1fr; } .ticket-qr-panel { border-left: 0; border-top: 1px dashed #d5e0e5; } .ticket-facts { grid-template-columns: repeat(2, minmax(0,1fr)); } .ticket-main { padding: 18px; } }
+    @@media (min-width: 992px) {
+        .border-start-lg {
+            border-left: 1px solid var(--tg-border);
+        }
+    }
 </style>
 
 @code {
@@ -128,69 +623,283 @@
     [SupplyParameterFromQuery(Name = "phone")]
     public string? QueryPhone { get; set; }
 
-    private string lookupValue = string.Empty;
-    private string? statusMessage;
-    private bool isSearching;
-    private List<CustomerBookingInfoDto> tickets = new();
+    private bool isLoading = true;
+    private bool isSearchingManual = false;
+    private bool isCancelling = false;
+    private bool showLookupBox = false;
+    private bool isCopied = false;
+
+    private string activeFilter = "all";
+    private string manualLookupQuery = string.Empty;
+    private long? confirmingCancelId;
+
+    private string? actionAlertMessage;
+    private bool actionAlertIsError = false;
+
+    private List<CustomerBookingInfoDto> allTickets = new();
+    private List<CustomerBookingInfoDto> filteredTickets = new();
+    private CustomerBookingInfoDto? selectedDetailTicket;
+
+    private int upcomingCount = 0;
+    private int completedCount = 0;
+    private int cancelledCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
-        if (!string.IsNullOrWhiteSpace(QueryCode))
+        await LoadTicketsAsync();
+
+        if (!string.IsNullOrWhiteSpace(QueryCode) || !string.IsNullOrWhiteSpace(QueryPhone))
         {
-            lookupValue = QueryCode.Trim();
-            await LookupTickets();
-        }
-        else if (!string.IsNullOrWhiteSpace(QueryPhone))
-        {
-            lookupValue = QueryPhone.Trim();
-            await LookupTickets();
+            showLookupBox = true;
+            manualLookupQuery = QueryCode ?? QueryPhone ?? string.Empty;
+            await ExecuteManualLookup();
         }
     }
 
-    private async Task HandleKeyDown(KeyboardEventArgs args)
+    private async Task LoadTicketsAsync()
+    {
+        isLoading = true;
+        try
+        {
+            allTickets = await TripService.GetBookingsForCurrentUserAsync();
+            ApplyFilter();
+
+            if (!string.IsNullOrWhiteSpace(QueryCode))
+            {
+                var match = allTickets.FirstOrDefault(t => string.Equals(t.BookingCode, QueryCode.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    selectedDetailTicket = match;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not load booking summaries for the current session.");
+            actionAlertMessage = "Không thể tải danh sách vé lúc này. Vui lòng thử lại sau.";
+            actionAlertIsError = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SetFilter(string filter)
+    {
+        activeFilter = filter;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        upcomingCount = allTickets.Count(t =>
+            t.DepartureTime > now &&
+            t.BookingStatus != "Cancelled" &&
+            t.BookingStatus != "Expired");
+
+        completedCount = allTickets.Count(t =>
+            t.DepartureTime <= now &&
+            t.BookingStatus != "Cancelled" &&
+            t.BookingStatus != "Expired");
+
+        cancelledCount = allTickets.Count(t =>
+            t.BookingStatus == "Cancelled" ||
+            t.BookingStatus == "Expired");
+
+        filteredTickets = activeFilter switch
+        {
+            "upcoming" => allTickets.Where(t => t.DepartureTime > now && t.BookingStatus != "Cancelled" && t.BookingStatus != "Expired").ToList(),
+            "completed" => allTickets.Where(t => t.DepartureTime <= now && t.BookingStatus != "Cancelled" && t.BookingStatus != "Expired").ToList(),
+            "cancelled" => allTickets.Where(t => t.BookingStatus == "Cancelled" || t.BookingStatus == "Expired").ToList(),
+            _ => allTickets.ToList()
+        };
+    }
+
+    private async Task HandleLookupKeyDown(KeyboardEventArgs args)
     {
         if (args.Key == "Enter")
-            await LookupTickets();
+        {
+            await ExecuteManualLookup();
+        }
     }
 
-    private async Task LookupTickets()
+    private async Task ExecuteManualLookup()
     {
-        statusMessage = null;
-        tickets.Clear();
-        if (string.IsNullOrWhiteSpace(lookupValue))
+        if (string.IsNullOrWhiteSpace(manualLookupQuery))
         {
-            statusMessage = "Nhập số điện thoại hoặc mã đặt chỗ để tra cứu.";
+            actionAlertMessage = "Vui lòng nhập mã đặt chỗ hoặc số điện thoại để tra cứu.";
+            actionAlertIsError = true;
             return;
         }
 
-        isSearching = true;
+        isSearchingManual = true;
+        actionAlertMessage = null;
+
         try
         {
-            if (lookupValue.Trim().StartsWith("TRIPGO-", StringComparison.OrdinalIgnoreCase))
+            var query = manualLookupQuery.Trim();
+            if (query.StartsWith("TRIPGO-", StringComparison.OrdinalIgnoreCase))
             {
-                var ticket = await TripService.GetBookingByCodeAsync(lookupValue);
-                if (ticket != null) tickets.Add(ticket);
+                var found = await TripService.GetBookingByCodeAsync(query);
+                if (found != null)
+                {
+                    if (!allTickets.Any(t => t.BookingId == found.BookingId))
+                    {
+                        allTickets.Insert(0, found);
+                    }
+                    selectedDetailTicket = found;
+                    actionAlertMessage = $"Đã tìm thấy thông tin đơn đặt chỗ {found.BookingCode}.";
+                    actionAlertIsError = false;
+                }
+                else
+                {
+                    actionAlertMessage = "Không tìm thấy vé phù hợp hoặc bạn không có quyền xem vé này.";
+                    actionAlertIsError = true;
+                }
             }
             else
             {
-                tickets = await TripService.GetBookingsByPhoneAsync(lookupValue);
+                var list = await TripService.GetBookingsByPhoneAsync(query);
+                if (list.Count > 0)
+                {
+                    foreach (var item in list)
+                    {
+                        if (!allTickets.Any(t => t.BookingId == item.BookingId))
+                        {
+                            allTickets.Add(item);
+                        }
+                    }
+                    actionAlertMessage = $"Đã tìm thấy {list.Count} vé phù hợp.";
+                    actionAlertIsError = false;
+                }
+                else
+                {
+                    actionAlertMessage = "Không tìm thấy vé phù hợp với số điện thoại trong phiên hiện tại.";
+                    actionAlertIsError = true;
+                }
             }
-            statusMessage = tickets.Count > 0 ? $"Tìm thấy {tickets.Count} thông tin đặt chỗ trong trình duyệt này." : "Không tìm thấy đặt chỗ thuộc phiên trình duyệt này.";
+
+            ApplyFilter();
         }
-        finally { isSearching = false; }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Booking lookup failed for the current session.");
+            actionAlertMessage = "Không thể tra cứu đơn đặt chỗ lúc này. Vui lòng thử lại sau.";
+            actionAlertIsError = true;
+        }
+        finally
+        {
+            isSearchingManual = false;
+        }
     }
 
-    private static string GetBookingStatusLabel(CustomerBookingInfoDto booking)
+    private void OpenTicketModal(CustomerBookingInfoDto ticket)
     {
-        if (booking.BookingStatus == "PendingPayment" && booking.PaymentStatus == "Unpaid")
-            return "CHỜ THANH TOÁN · ĐẶT CHỖ";
-        return booking.BookingStatus switch
+        selectedDetailTicket = ticket;
+        isCopied = false;
+    }
+
+    private void CloseTicketModal()
+    {
+        selectedDetailTicket = null;
+        isCopied = false;
+    }
+
+    private async Task CopyBookingCode(string code)
+    {
+        try
         {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            isCopied = true;
+        }
+        catch
+        {
+            isCopied = false;
+        }
+    }
+
+    private async Task PrintBoardingPass()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("window.print");
+        }
+        catch { }
+    }
+
+    private static string GetOriginFromRoute(string routeName)
+    {
+        var parts = routeName.Split(new[] { '-', '→', '–' }, StringSplitOptions.TrimEntries);
+        return parts.Length > 0 ? parts[0] : routeName;
+    }
+
+    private static string GetDestFromRoute(string routeName)
+    {
+        var parts = routeName.Split(new[] { '-', '→', '–' }, StringSplitOptions.TrimEntries);
+        return parts.Length > 1 ? parts[1] : routeName;
+    }
+
+    private static bool CanCancel(CustomerBookingInfoDto ticket)
+    {
+        return ticket.BookingStatus == "PendingPayment";
+    }
+
+    private static string GetStatusBadgeClass(CustomerBookingInfoDto ticket)
+    {
+        if (ticket.BookingStatus == "PendingPayment") return "bg-warning text-dark";
+        if (ticket.BookingStatus == "Confirmed" && ticket.PaymentStatus == "Paid") return "bg-success text-white";
+        if (ticket.BookingStatus == "Cancelled") return "bg-danger text-white";
+        if (ticket.BookingStatus == "Expired") return "bg-secondary text-white";
+        return "bg-secondary text-white";
+    }
+
+    private static string GetStatusLabel(CustomerBookingInfoDto ticket)
+    {
+        if (ticket.BookingStatus == "PendingPayment" && ticket.PaymentStatus == "Unpaid")
+            return "CHỜ THANH TOÁN";
+        return ticket.BookingStatus switch
+        {
+            "Confirmed" when ticket.PaymentStatus == "Paid" => "ĐÃ XÁC NHẬN (ĐÃ THANH TOÁN)",
             "Cancelled" => "ĐÃ HỦY",
-            "Expired" => "ĐÃ HẾT HẠN",
-            "Completed" => "ĐÃ HOÀN TẤT · CHƯA XÁC THỰC VÉ",
-            "Confirmed" when booking.PaymentStatus == "Paid" => "ĐÃ THANH TOÁN · CHƯA XÁC THỰC VÉ",
-            _ => "ĐẶT CHỖ · CHƯA XÁC THỰC VÉ"
+            "Expired" => "HẾT HẠN",
+            "Completed" => "ĐÃ HOÀN TẤT",
+            _ => ticket.BookingStatus
         };
+    }
+
+    private async Task ExecuteCancelAsync(CustomerBookingInfoDto ticket)
+    {
+        isCancelling = true;
+        actionAlertMessage = null;
+
+        try
+        {
+            var success = await BookingService.CancelBookingAsync(ticket.BookingId, "Khách hàng tự hủy trên trang Vé của tôi");
+            if (success)
+            {
+                actionAlertIsError = false;
+                actionAlertMessage = $"Đã hủy đặt chỗ {ticket.BookingCode} thành công. Ghế đã được hoàn trả lại hệ thống.";
+                confirmingCancelId = null;
+                await LoadTicketsAsync();
+            }
+            else
+            {
+                actionAlertIsError = true;
+                actionAlertMessage = "Không thể hủy đặt chỗ (chỉ có thể hủy đơn đặt chỗ đang chờ thanh toán thuộc quyền sở hữu của bạn).";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Booking cancellation failed for booking {BookingId}.", ticket.BookingId);
+            actionAlertIsError = true;
+            actionAlertMessage = "Không thể hủy đơn đặt chỗ lúc này. Vui lòng thử lại sau.";
+        }
+        finally
+        {
+            isCancelling = false;
+        }
     }
 }
