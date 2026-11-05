@@ -58,6 +58,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
         var seatIds = bookings.SelectMany(b => b.BookingSeats).Select(bs => bs.TripSeatId).Distinct().ToList();
 
         await context.PaymentTransactions.Where(p => bookingIds.Contains(p.BookingId)).ExecuteDeleteAsync();
+        await context.BookingConfirmationEmailOutbox.Where(item => bookingIds.Contains(item.BookingId)).ExecuteDeleteAsync();
         await context.BookingPassengers.Where(p => bookingIds.Contains(p.BookingId)).ExecuteDeleteAsync();
         await context.BookingSeats.Where(s => bookingIds.Contains(s.BookingId)).ExecuteDeleteAsync();
         await context.Bookings.Where(b => bookingIds.Contains(b.Id)).ExecuteDeleteAsync();
@@ -247,7 +248,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             Assert.NotNull(dropoffPoint);
 
             // STEP 5: Passenger validation check (invalid passenger)
-            var invalidPassengerRequest = new CreateBookingRequestDto
+            var invalidPassengerRequest = new TestCreateBookingRequestDto
             {
                 TripId = targetTrip.Id,
                 HoldToken = holdResult.HoldToken,
@@ -268,7 +269,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             // STEP 6: Create Booking with Valid Information
             var customerPhone = $"09{Random.Shared.Next(10000000, 99999999)}";
             var customerEmail = $"test.{_testRunId}.{route.Id}@tripgo-sandbox.test";
-            var validRequest = new CreateBookingRequestDto
+            var validRequest = new TestCreateBookingRequestDto
             {
                 TripId = targetTrip.Id,
                 HoldToken = holdResult.HoldToken,
@@ -394,7 +395,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
         var pickup = trip.Stops.First(s => s.AllowPickup).Point!;
         var dropoff = trip.Stops.First(s => s.AllowDropoff).Point!;
 
-        var createResult = await bookingService.CreateBookingAsync(new CreateBookingRequestDto
+        var createResult = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
         {
             TripId = trip.Id,
             HoldToken = hold.HoldToken!,
@@ -530,7 +531,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
 
             // Step 4 & 5: Passenger Entry & Booking Creation
             var phone = $"097{Random.Shared.Next(1000000, 9999999)}";
-            var bookingResult = await bookingService.CreateBookingAsync(new CreateBookingRequestDto
+            var bookingResult = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
             {
                 TripId = targetTrip.Id,
                 HoldToken = holdResult.HoldToken!,
@@ -572,6 +573,49 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             Assert.Contains(phoneLookup, b => b.BookingCode == bookingResult.BookingCode);
             _output?.WriteLine($"[STEP 8 & 9 - MY TICKETS] Verified ticket {confirmedBooking.BookingCode} owned by {confirmedBooking.PassengerName} ({phone}) is CONFIRMED and PAID.\n");
         }
+    }
+
+    [Fact]
+    public async Task SearchHaNoiToSaPa_ReturnsValidSandboxTrips()
+    {
+        await using var context = CreateIsolatedContext();
+        var (bookingService, paymentService, tripService) = CreateServices(context, "test-owner");
+
+        var locations = await tripService.GetLocationsAsync();
+        var haNoi = locations.FirstOrDefault(l => l.Code == "HAN" || l.Province.Contains("Hà Nội") || l.Name.Contains("Hà Nội"));
+        var saPa = locations.FirstOrDefault(l => l.Code == "SAP" || l.Province.Contains("Lào Cai") || l.Name.Contains("Sa Pa"));
+
+        Assert.NotNull(haNoi);
+        Assert.NotNull(saPa);
+        Assert.Equal("HAN", haNoi.Code);
+        Assert.Equal("SAP", saPa.Code);
+
+        var vnOffset = TimeSpan.FromHours(7);
+        var tomorrow = DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(vnOffset).Date.AddDays(1));
+
+        var request = new TripSearchRequestDto
+        {
+            OriginLocationId = haNoi.Id,
+            DestinationLocationId = saPa.Id,
+            DepartureDate = tomorrow
+        };
+
+        var results = await tripService.SearchTripsAsync(request);
+        _output?.WriteLine($"Search results count: {results.Count}");
+        foreach (var r in results)
+        {
+            _output?.WriteLine($"Trip: {r.TripCode}, Route: {r.RouteName}, Departure: {r.DepartureTime:yyyy-MM-dd HH:mm:ss zzz}, Available Seats: {r.AvailableSeats}");
+        }
+
+        Assert.NotEmpty(results);
+        var sandboxTrips = results.Where(r => r.IsBookable).ToList();
+        Assert.NotEmpty(sandboxTrips);
+        Assert.True(sandboxTrips.Count >= 3, $"Expected at least 3 bookable sandbox trips, found {sandboxTrips.Count}");
+        Assert.All(sandboxTrips, r => Assert.True(r.AvailableSeats > 0));
+
+        var referenceTrips = results.Where(r => !r.IsBookable).ToList();
+        Assert.NotEmpty(referenceTrips);
+        Assert.All(referenceTrips, r => Assert.Equal("PUBLISHED_REFERENCE_SCHEDULE", r.OperationalTier));
     }
 
     private static async Task<Trip?> bookingRepo_GetTripForBookingAsync(AppDbContext context, long tripId)

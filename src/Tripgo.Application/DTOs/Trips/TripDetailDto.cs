@@ -23,9 +23,9 @@ public class TripDetailDto
     public string OperationalTier { get; set; } = "PUBLISHED_REFERENCE_SCHEDULE";
     public string OperationalTierLabel { get; set; } = "Lịch trình tham khảo";
     public string OperatorHotline { get; set; } = string.Empty;
-    public string DurationText { get; set; } = "12h15m";
-    public double Rating { get; set; } = 4.8;
-    public int ReviewCount { get; set; } = 250;
+    public string DurationText { get; set; } = string.Empty;
+    public double Rating { get; set; }
+    public int ReviewCount { get; set; }
 
     public TripDetailDto() { }
     public TripDetailDto(long id, string tripCode, string routeName, string operatorName, string busLicensePlate, DateTimeOffset departureTime, DateTimeOffset arrivalTime, decimal basePrice, int availableSeats, List<SeatLayoutItemDto> seats, string busTypeName = "")

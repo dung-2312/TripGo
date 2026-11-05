@@ -24,5 +24,4 @@ public interface ITripService
     Task<List<CustomerBookingInfoDto>> GetBookingsByPhoneAsync(string phone, CancellationToken ct = default);
     Task<CustomerBookingInfoDto?> GetBookingByCodeAsync(string bookingCode, CancellationToken ct = default);
     Task<List<CustomerBookingInfoDto>> GetBookingsForCurrentUserAsync(CancellationToken ct = default);
-    Task<bool> SubmitSupportCallbackAsync(string name, string phone, CancellationToken ct = default);
 }

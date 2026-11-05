@@ -45,9 +45,11 @@ public sealed class BookingExpirationWorker : BackgroundService
             await using var scope = _scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var dbName = dbContext.Database.GetDbConnection().Database;
-            if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(dbName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogCritical("BookingExpirationWorker detected target database is 'TripgoDb'. Aborting cleanup to protect production.");
+                _logger.LogWarning(
+                    "Booking expiration is disabled for database {Database}; only TripgoDb_IsolatedTest is permitted.",
+                    dbName);
                 return false;
             }
 

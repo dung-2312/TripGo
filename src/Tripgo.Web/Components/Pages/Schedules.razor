@@ -3,7 +3,7 @@
 @inject ITripService TripService
 @rendermode InteractiveServer
 
-<PageTitle>Lịch trình chuyến | Tripgo</PageTitle>
+<PageTitle>Lịch trình tham khảo | TripGo</PageTitle>
 
 <section class="schedule-page">
     <div class="schedule-wrap">
@@ -11,37 +11,87 @@
             <BackButton Label="Quay lại trang chủ" FallbackUrl="/" />
         </div>
         <header class="schedule-heading">
-            <div><span class="eyebrow">LỊCH KHỞI HÀNH TOÀN QUỐC</span><h1>Lịch trình chuyến xe</h1><p>Tra cứu giờ chạy, loại xe và giá vé niêm yết.</p></div>
-            <label class="schedule-date"><span>Ngày khởi hành</span><InputDate @bind-Value="selectedDate" /></label>
+            <div>
+                <span class="eyebrow">LỊCH TRÌNH THAM KHẢO · SANDBOX</span>
+                <h1>Lịch trình chuyến xe</h1>
+                <p>Dữ liệu lịch trình và giá trong môi trường thử nghiệm chưa được xác nhận bởi nhà xe, không phải dịch vụ đặt vé thương mại.</p>
+            </div>
+            <label class="schedule-date">
+                <span>Chọn ngày khởi hành</span>
+                <InputDate @bind-Value="selectedDate" class="form-control rounded-3" />
+            </label>
         </header>
-        <div class="schedule-toolbar"><span><i class="bi bi-calendar3"></i> @selectedDate.ToDateTime(TimeOnly.MinValue).ToString("dddd, dd/MM/yyyy", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))</span><label><i class="bi bi-search"></i><input placeholder="Lọc tuyến, nhà xe, loại xe..." @bind="filterText" @bind:event="oninput" /></label></div>
+
+        <div class="schedule-toolbar">
+            <span>
+                <i class="bi bi-calendar3 text-primary"></i>
+                @selectedDate.ToDateTime(TimeOnly.MinValue).ToString("dddd, dd/MM/yyyy", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))
+            </span>
+            <div class="tg-auth-input-group" style="width: min(380px, 100%);">
+                <span class="tg-auth-input-icon"><i class="bi bi-search"></i></span>
+                <input class="tg-auth-input py-2" placeholder="Lọc tuyến, nhà xe, loại xe..." @bind="filterText" @bind:event="oninput" />
+            </div>
+        </div>
 
         @if (isLoading)
         {
-            <div class="schedule-empty"><span class="spinner-border text-primary"></span> Đang tải lịch chạy...</div>
+            <div class="schedule-empty">
+                <span class="spinner-border text-primary"></span>
+                <span>Đang tải danh sách lịch chạy...</span>
+            </div>
         }
         else if (!VisibleTrips.Any())
         {
-            <div class="schedule-empty"><i class="bi bi-calendar-x"></i><strong>Chưa có chuyến phù hợp ngày này</strong><span>Hãy chọn ngày khác hoặc đổi từ khóa tìm kiếm.</span></div>
+            <div class="schedule-empty">
+                <i class="bi bi-calendar-x text-muted fs-1 mb-2"></i>
+                <strong class="fs-5 text-dark">Chưa có chuyến xe phù hợp ngày này</strong>
+                <span class="text-muted small">Hãy chọn một ngày khởi hành khác hoặc điều chỉnh từ khóa tìm kiếm.</span>
+            </div>
         }
         else
         {
             <div class="table-responsive schedule-table-wrap">
                 <table class="schedule-table">
-                    <thead><tr><th>Mã chuyến</th><th>Tuyến xe</th><th>Nhà xe</th><th>Giờ xuất bến</th><th>Thời gian chạy</th><th>Loại xe</th><th>Giá niêm yết</th><th>Chỗ trống</th><th></th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>Mã chuyến</th>
+                            <th>Tuyến xe</th>
+                            <th>Nhà xe</th>
+                            <th>Giờ xuất bến</th>
+                            <th>Thời gian chạy</th>
+                            <th>Loại xe</th>
+                            <th>Giá tham khảo</th>
+                            <th>Chỗ trống</th>
+                            <th></th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var trip in VisibleTrips)
                         {
                             <tr>
-                                <td><strong class="trip-code">@trip.TripCode</strong></td>
-                                <td><strong>@trip.RouteName</strong></td>
-                                <td>@trip.OperatorName<span class="operator-vehicle">@trip.BusLicensePlate</span></td>
-                                <td><strong>@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</strong><span class="operator-vehicle">@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy")</span></td>
-                                <td>@DurationLabel(trip)</td>
-                                <td>@trip.BusTypeName</td>
+                                <td><span class="badge bg-light text-primary border font-monospace px-2 py-1">@trip.TripCode</span></td>
+                                <td><strong class="text-dark">@trip.RouteName</strong></td>
+                                <td>
+                                    <div class="fw-bold text-dark">@trip.OperatorName</div>
+                                    <span class="operator-vehicle font-monospace">@trip.BusLicensePlate</span>
+                                </td>
+                                <td>
+                                    <strong class="fs-6 text-primary">@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</strong>
+                                    <span class="operator-vehicle">@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy")</span>
+                                </td>
+                                <td><span class="badge bg-light text-secondary border">@DurationLabel(trip)</span></td>
+                                <td><span class="small text-dark">@trip.BusTypeName</span></td>
                                 <td><strong class="schedule-price">@trip.BasePrice.ToString("N0") đ</strong></td>
-                                <td>@trip.AvailableSeats / @trip.TotalSeats</td>
-                                <td><a class="schedule-book" href="@GetSearchUrl(trip)">Tìm vé</a></td>
+                                <td>
+                                    <span class="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1">
+                                        @trip.AvailableSeats / @trip.TotalSeats chỗ
+                                    </span>
+                                </td>
+                                <td>
+                                    <a class="tg-auth-btn-accent text-decoration-none py-1 px-3 d-inline-block small" href="@GetSearchUrl(trip)">
+                                        Đặt vé
+                                    </a>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -52,32 +102,24 @@
 </section>
 
 <style>
-    .schedule-page { min-height: 100vh; padding: 42px 22px 70px; background: #f2f6f8; color: #183042; }
+    .schedule-page { min-height: 100vh; padding: 42px 20px 70px; background: var(--tg-bg); color: var(--tg-text); }
     .schedule-wrap { max-width: 1260px; margin: auto; }
-    .schedule-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 24px; }
-    .eyebrow { color: #0d5cb6; font-size: 11px; font-weight: 800; letter-spacing: .07em; }
-    .schedule-heading h1 { margin: 8px 0 5px; font-size: 30px; font-weight: 800; }
-    .schedule-heading p { margin: 0; color: #647784; }
-    .schedule-date { display: grid; gap: 5px; color: #667985; font-size: 12px; font-weight: 700; }
-    .schedule-date input { padding: 9px 11px; border: 1px solid #d6e0e4; border-radius: 6px; background: white; color: #183042; }
-    .schedule-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 17px; border: 1px solid #dce5e9; border-bottom: 0; border-radius: 8px 8px 0 0; background: white; color: #536a78; font-size: 13px; }
+    .schedule-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 24px; }
+    .eyebrow { color: var(--tg-primary); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+    .schedule-heading h1 { margin: 8px 0 5px; font-size: 30px; font-weight: 800; color: var(--tg-text); }
+    .schedule-heading p { margin: 0; color: var(--tg-text-muted); font-size: 14.5px; }
+    .schedule-date { display: grid; gap: 5px; color: var(--tg-text-secondary); font-size: 12px; font-weight: 700; }
+    .schedule-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 20px; border: 1px solid var(--tg-border); border-bottom: 0; border-radius: var(--tg-radius-lg) var(--tg-radius-lg) 0 0; background: var(--tg-surface); color: var(--tg-text); font-size: 13.5px; }
     .schedule-toolbar > span { display: flex; gap: 8px; align-items: center; font-weight: 700; }
-    .schedule-toolbar i { color: #0d5cb6; }
-    .schedule-toolbar label { display: flex; align-items: center; gap: 9px; width: min(360px, 100%); padding: 7px 10px; border: 1px solid #dce5e9; border-radius: 6px; }
-    .schedule-toolbar input { width: 100%; border: 0; outline: 0; }
-    .schedule-table-wrap { border: 1px solid #dce5e9; border-radius: 0 0 8px 8px; background: white; }
+    .schedule-table-wrap { border: 1px solid var(--tg-border); border-radius: 0 0 var(--tg-radius-lg) var(--tg-radius-lg); background: var(--tg-surface); box-shadow: var(--tg-shadow-sm); }
     .schedule-table { width: 100%; border-collapse: collapse; min-width: 1050px; }
-    .schedule-table th { padding: 13px 14px; background: #f7fafb; color: #637884; text-align: left; font-size: 10px; letter-spacing: .04em; white-space: nowrap; }
-    .schedule-table td { padding: 14px; border-top: 1px solid #edf1f3; vertical-align: middle; font-size: 12px; }
-    .schedule-table tbody tr:hover { background: #fbfdfe; }
-    .trip-code { color: #0d5cb6; }
-    .operator-vehicle { display: block; margin-top: 4px; color: #7a8d97; font-size: 11px; }
-    .schedule-price { color: #0d5cb6; white-space: nowrap; }
-    .schedule-book { display: inline-block; padding: 7px 10px; border-radius: 5px; background: #ffd333; color: #1b303d; text-decoration: none; font-weight: 800; white-space: nowrap; }
-    .schedule-empty { display: grid; justify-items: center; gap: 9px; padding: 58px 18px; border: 1px solid #dce5e9; border-radius: 8px; background: white; color: #667985; }
-    .schedule-empty > i { color: #0d5cb6; font-size: 30px; }
-    .schedule-empty strong { color: #183042; }
-    @@media (max-width: 700px) { .schedule-page { padding: 28px 13px; } .schedule-heading { align-items: flex-start; flex-direction: column; } .schedule-heading h1 { font-size: 25px; } .schedule-toolbar { align-items: stretch; flex-direction: column; } }
+    .schedule-table th { padding: 14px 16px; background: #f8fafc; color: var(--tg-text-secondary); text-align: left; font-size: 11px; letter-spacing: .04em; font-weight: 700; white-space: nowrap; border-bottom: 1px solid var(--tg-border); }
+    .schedule-table td { padding: 15px 16px; border-top: 1px solid var(--tg-border-light); vertical-align: middle; font-size: 13px; }
+    .schedule-table tbody tr:hover { background: #f8fafc; }
+    .operator-vehicle { display: block; margin-top: 3px; color: var(--tg-text-muted); font-size: 11.5px; }
+    .schedule-price { color: var(--tg-danger); font-size: 15px; font-weight: 800; white-space: nowrap; }
+    .schedule-empty { display: grid; justify-items: center; gap: 10px; padding: 60px 20px; border: 1px solid var(--tg-border); border-radius: var(--tg-radius-lg); background: var(--tg-surface); box-shadow: var(--tg-shadow-sm); }
+    @@media (max-width: 768px) { .schedule-page { padding: 28px 14px; } .schedule-heading { align-items: flex-start; flex-direction: column; } .schedule-heading h1 { font-size: 25px; } .schedule-toolbar { align-items: stretch; flex-direction: column; } }
 </style>
 
 @code {
@@ -117,7 +159,7 @@
 
     private static string GetSearchUrl(TripSearchResultDto trip)
     {
-        var parts = trip.RouteName.Split('-', StringSplitOptions.TrimEntries);
+        var parts = trip.RouteName.Split(new[] { '-', '→', '–' }, StringSplitOptions.TrimEntries);
         if (parts.Length >= 2)
         {
             var origin = Uri.EscapeDataString(parts[0]);

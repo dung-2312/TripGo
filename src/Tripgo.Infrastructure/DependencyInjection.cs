@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<ITripRepository, TripRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<Tripgo.Application.Interfaces.IEmailSender, Services.SmtpEmailSender>();
         services.AddScoped<Tripgo.Application.Interfaces.ISandboxFixtureService, Tripgo.Infrastructure.Services.SandboxFixtureService>();
 
         return services;

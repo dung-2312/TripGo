@@ -6,7 +6,7 @@ public class CreateBusDto
     public long BusTypeId { get; set; }
     public string LicensePlate { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public int TotalSeats { get; set; } = 24;
+    public string SeatLayoutDefinition { get; set; } = string.Empty;
 
     public CreateBusDto() { }
 }

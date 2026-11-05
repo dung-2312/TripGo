@@ -129,6 +129,7 @@ public class TripRepository : ITripRepository
     {
         return await _context.Trips
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
             .Include(t => t.Route)
@@ -159,6 +160,7 @@ public class TripRepository : ITripRepository
     {
         return await _context.Trips
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(t => t.Id == tripId)
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
@@ -203,6 +205,20 @@ public class TripRepository : ITripRepository
             .Include(item => item.Bus).ThenInclude(bus => bus.BusType)
             .Include(item => item.Bus).ThenInclude(bus => bus.SeatLayout).ThenInclude(layout => layout.Items)
             .FirstOrDefaultAsync(item => item.Id == tripId && item.Status == TripStatus.Scheduled, ct);
+    }
+
+    public Task<bool> HasConflictingScheduledTripAsync(
+        long busId,
+        DateTimeOffset departureTime,
+        DateTimeOffset arrivalTime,
+        CancellationToken ct = default)
+    {
+        return _context.Trips.AnyAsync(trip =>
+            trip.BusId == busId &&
+            trip.Status != TripStatus.Cancelled &&
+            trip.DepartureTime < arrivalTime &&
+            trip.ExpectedArrivalTime > departureTime,
+            ct);
     }
 
     public async Task AddTripAsync(Trip trip, CancellationToken ct = default)

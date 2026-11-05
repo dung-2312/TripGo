@@ -41,7 +41,7 @@ public class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .IsRequired();
 
         builder.Property(x => x.PassengerEmail)
-            .HasMaxLength(200);
+            .HasMaxLength(254);
 
         builder.Property(x => x.PickupPointNote)
             .HasMaxLength(500);

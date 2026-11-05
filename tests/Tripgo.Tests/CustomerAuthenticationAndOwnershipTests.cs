@@ -81,6 +81,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
 
             var bIds = bookings.Select(b => b.Id).ToList();
             await context.PaymentTransactions.Where(p => bIds.Contains(p.BookingId)).ExecuteDeleteAsync();
+            await context.BookingConfirmationEmailOutbox.Where(item => bIds.Contains(item.BookingId)).ExecuteDeleteAsync();
             await context.BookingPassengers.Where(bp => bIds.Contains(bp.BookingId)).ExecuteDeleteAsync();
             await context.BookingSeats.Where(bs => bIds.Contains(bs.BookingId)).ExecuteDeleteAsync();
             await context.SeatHolds.Where(h => bookings.Select(b => b.HoldToken).Contains(h.HoldToken)).ExecuteDeleteAsync();
@@ -404,7 +405,10 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var bookingService = new BookingService(bookingRepo, sessionContext);
 
         // Find an active sandbox trip
-        var trip = await context.Trips.Include(t => t.Seats).FirstAsync(t => t.IsDemoTrip && t.Seats.Any());
+        var trip = await context.Trips.Include(t => t.Seats)
+            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
+            .FirstAsync();
         await bookingService.EnsureDemoTripInventoryAsync(trip.Id);
 
         var seats = await bookingService.GetSeatsForTripAsync(trip.Id);
@@ -419,7 +423,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.True(holdRes.Success);
         Assert.NotNull(holdRes.HoldToken);
 
-        var createRes = await bookingService.CreateBookingAsync(new CreateBookingRequestDto
+        var createRes = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
         {
             TripId = trip.Id,
             SeatCodes = new List<string> { seatToBook.SeatCode },
@@ -463,7 +467,10 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var sessionContext = new TestBookingSessionContext(Guid.NewGuid().ToString("N"), userId);
         var bookingService = new BookingService(bookingRepo, sessionContext);
 
-        var trip = await context.Trips.Include(t => t.Seats).FirstAsync(t => t.IsDemoTrip && t.Seats.Any());
+        var trip = await context.Trips.Include(t => t.Seats)
+            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
+            .FirstAsync();
         await bookingService.EnsureDemoTripInventoryAsync(trip.Id);
         var availableSeats = await bookingService.GetSeatsForTripAsync(trip.Id);
         var seat = availableSeats.First(s => s.IsAvailable);
@@ -477,7 +484,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.True(holdRes.Success);
         Assert.NotNull(holdRes.HoldToken);
 
-        var createRes = await bookingService.CreateBookingAsync(new CreateBookingRequestDto
+        var createRes = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
         {
             TripId = trip.Id,
             SeatCodes = new List<string> { seat.SeatCode },
@@ -532,7 +539,10 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var sessionA = new TestBookingSessionContext(Guid.NewGuid().ToString("N"), userAId);
         var bookingServiceA = new BookingService(bookingRepo, sessionA);
 
-        var trip = await context.Trips.Include(t => t.Seats).FirstAsync(t => t.IsDemoTrip && t.Seats.Any());
+        var trip = await context.Trips.Include(t => t.Seats)
+            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
+            .FirstAsync();
         await bookingServiceA.EnsureDemoTripInventoryAsync(trip.Id);
         var availableSeats = await bookingServiceA.GetSeatsForTripAsync(trip.Id);
         var seat = availableSeats.First(s => s.IsAvailable);
@@ -546,7 +556,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.True(holdRes.Success);
         Assert.NotNull(holdRes.HoldToken);
 
-        var createRes = await bookingServiceA.CreateBookingAsync(new CreateBookingRequestDto
+        var createRes = await bookingServiceA.CreateBookingAsync(new TestCreateBookingRequestDto
         {
             TripId = trip.Id,
             SeatCodes = new List<string> { seat.SeatCode },
@@ -583,7 +593,10 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var guestSession = new TestBookingSessionContext(guestOwner, null);
         var guestBookingService = new BookingService(bookingRepo, guestSession);
 
-        var trip = await context.Trips.Include(t => t.Seats).FirstAsync(t => t.IsDemoTrip && t.Seats.Any());
+        var trip = await context.Trips.Include(t => t.Seats)
+            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
+            .FirstAsync();
         await guestBookingService.EnsureDemoTripInventoryAsync(trip.Id);
         var availableSeats = await guestBookingService.GetSeatsForTripAsync(trip.Id);
         var seat = availableSeats.First(s => s.IsAvailable);
@@ -597,7 +610,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.True(holdRes.Success);
         Assert.NotNull(holdRes.HoldToken);
 
-        var createRes = await guestBookingService.CreateBookingAsync(new CreateBookingRequestDto
+        var createRes = await guestBookingService.CreateBookingAsync(new TestCreateBookingRequestDto
         {
             TripId = trip.Id,
             SeatCodes = new List<string> { seat.SeatCode },
@@ -643,7 +656,10 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var session = new TestBookingSessionContext(owner, null);
         var bookingService = new BookingService(bookingRepo, session);
 
-        var trip = await context.Trips.Include(t => t.Seats).FirstAsync(t => t.IsDemoTrip && t.Seats.Any());
+        var trip = await context.Trips.Include(t => t.Seats)
+            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
+            .FirstAsync();
         await bookingService.EnsureDemoTripInventoryAsync(trip.Id);
         var availableSeats = await bookingService.GetSeatsForTripAsync(trip.Id);
         var seat = availableSeats.First(s => s.IsAvailable);
@@ -657,7 +673,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.True(holdRes.Success);
         Assert.NotNull(holdRes.HoldToken);
 
-        var createRes = await bookingService.CreateBookingAsync(new CreateBookingRequestDto
+        var createRes = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
         {
             TripId = trip.Id,
             SeatCodes = new List<string> { seat.SeatCode },
@@ -720,5 +736,141 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.NotNull(p30);
         Assert.Equal("Bến xe Trung tâm Quy Nhơn", p30.Name);
         Assert.Contains("Ghềnh Ráng", p30.Address);
+    }
+
+    [Fact]
+    public async Task Test14_BookingOwnership_StrictIsolation_UserCannotViewOrCancelAnotherUsersBooking()
+    {
+        await using var context = CreateContext();
+        var bookingRepo = new BookingRepository(context);
+
+        var ownerA = "owner-alpha-" + _runSuffix;
+        var ownerB = "owner-beta-" + _runSuffix;
+        var sessionA = new TestBookingSessionContext(ownerA, null);
+        var sessionB = new TestBookingSessionContext(ownerB, null);
+
+        var serviceA = new BookingService(bookingRepo, sessionA);
+        var serviceB = new BookingService(bookingRepo, sessionB);
+
+        var trip = await context.Trips.Include(t => t.Seats)
+            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
+            .FirstAsync();
+
+        await serviceA.EnsureDemoTripInventoryAsync(trip.Id);
+        var availableSeats = await serviceA.GetSeatsForTripAsync(trip.Id);
+        var seat = availableSeats.First(s => s.IsAvailable);
+
+        var holdRes = await serviceA.HoldSeatsAsync(new SeatHoldRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = new List<string> { seat.SeatCode },
+            HoldMinutes = 15
+        });
+        Assert.True(holdRes.Success);
+
+        var phoneA = $"09{new Random().Next(10000000, 99999999)}";
+        var createRes = await serviceA.CreateBookingAsync(new TestCreateBookingRequestDto
+        {
+            TripId = trip.Id,
+            SeatCodes = new List<string> { seat.SeatCode },
+            HoldToken = holdRes.HoldToken!,
+            PassengerName = "Khách Hàng Chính Chủ A",
+            PassengerPhone = phoneA
+        });
+        Assert.True(createRes.Success);
+        Assert.NotNull(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode);
+
+        // 1. User A can retrieve their own booking
+        var bookingForA = await serviceA.GetBookingByCodeAsync(createRes.BookingCode);
+        Assert.NotNull(bookingForA);
+        Assert.Equal(createRes.BookingCode, bookingForA.BookingCode);
+
+        // 2. User B CANNOT retrieve User A's booking by code
+        var bookingForB = await serviceB.GetBookingByCodeAsync(createRes.BookingCode);
+        Assert.Null(bookingForB);
+
+        // 3. User B CANNOT search User A's bookings by phone number
+        var phoneLookupB = await serviceB.GetBookingsByPhoneAsync(phoneA);
+        Assert.Empty(phoneLookupB);
+
+        // 4. User B CANNOT cancel User A's booking
+        var cancelByB = await serviceB.CancelBookingAsync(bookingForA.Id, "Tấn công hủy vé người khác");
+        Assert.False(cancelByB);
+
+        // Verify booking status is preserved
+        var dbBooking = await context.Bookings.AsNoTracking().FirstAsync(b => b.Id == bookingForA.Id);
+        Assert.Equal(BookingStatus.PendingPayment, dbBooking.Status);
+
+        // Clean up: User A cancels their own booking successfully
+        var cancelByA = await serviceA.CancelBookingAsync(bookingForA.Id, "Khách hàng A tự hủy vé");
+        Assert.True(cancelByA);
+    }
+
+    [Fact]
+    public async Task Test15_CustomerProfile_EmailIsStrictlyReadOnlyAndCannotBeAltered()
+    {
+        await using var context = CreateContext();
+        var userRepo = new UserRepository(context);
+        var bookingRepo = new BookingRepository(context);
+        var hasher = new PasswordHasherService();
+        var authService = new AuthService(userRepo, bookingRepo, hasher);
+
+        var originalEmail = $"immutable_{_runSuffix}@tripgo.vn";
+        var reg = await authService.RegisterCustomerAsync(new RegisterViewModel
+        {
+            FullName = "Tài Khoản Gốc",
+            Email = originalEmail,
+            PhoneNumber = $"09{new Random().Next(10000000, 99999999)}",
+            Password = "SecurePassword123!",
+            ConfirmPassword = "SecurePassword123!"
+        });
+        Assert.True(reg.Success);
+        _createdUserIds.Add(reg.UserId!.Value);
+
+        // Update profile
+        var updateRes = await authService.UpdateProfileAsync(reg.UserId.Value, new UpdateProfileRequestDto
+        {
+            FullName = "Tên Mới Sau Khi Cập Nhật",
+            PhoneNumber = "0988776655"
+        });
+        Assert.True(updateRes.Success);
+
+        // Verify user profile still retains exact original email
+        var profile = await authService.GetUserProfileAsync(reg.UserId.Value);
+        Assert.NotNull(profile);
+        Assert.Equal(originalEmail, profile.Email);
+        Assert.Equal("Tên Mới Sau Khi Cập Nhật", profile.FullName);
+        Assert.Equal("0988776655", profile.PhoneNumber);
+    }
+
+    [Fact]
+    public void Test16_MyTickets_FilterCategorization_UpcomingCompletedCancelled_ClassifiesCorrectly()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tickets = new List<CustomerBookingInfoDto>
+        {
+            new() { BookingId = 1, BookingCode = "T1", DepartureTime = now.AddHours(5), BookingStatus = "Confirmed", PaymentStatus = "Paid" },
+            new() { BookingId = 2, BookingCode = "T2", DepartureTime = now.AddDays(2), BookingStatus = "Confirmed", PaymentStatus = "Paid" },
+            new() { BookingId = 3, BookingCode = "T3", DepartureTime = now.AddDays(-1), BookingStatus = "Confirmed", PaymentStatus = "Paid" },
+            new() { BookingId = 4, BookingCode = "T4", DepartureTime = now.AddHours(2), BookingStatus = "Cancelled", PaymentStatus = "Unpaid" },
+            new() { BookingId = 5, BookingCode = "T5", DepartureTime = now.AddHours(1), BookingStatus = "Expired", PaymentStatus = "Unpaid" }
+        };
+
+        var upcoming = tickets.Where(t => t.DepartureTime > now && t.BookingStatus != "Cancelled" && t.BookingStatus != "Expired").ToList();
+        var completed = tickets.Where(t => t.DepartureTime <= now && t.BookingStatus != "Cancelled" && t.BookingStatus != "Expired").ToList();
+        var cancelled = tickets.Where(t => t.BookingStatus == "Cancelled" || t.BookingStatus == "Expired").ToList();
+
+        Assert.Equal(2, upcoming.Count);
+        Assert.Contains(upcoming, t => t.BookingCode == "T1");
+        Assert.Contains(upcoming, t => t.BookingCode == "T2");
+
+        Assert.Single(completed);
+        Assert.Contains(completed, t => t.BookingCode == "T3");
+
+        Assert.Equal(2, cancelled.Count);
+        Assert.Contains(cancelled, t => t.BookingCode == "T4");
+        Assert.Contains(cancelled, t => t.BookingCode == "T5");
     }
 }

@@ -47,9 +47,10 @@ public class SandboxFixtureService : ISandboxFixtureService
         {
             _logger.LogInformation("Beginning dynamic sandbox trip and route stop preparation in {Database}...", dbName);
 
-            // 0. Ensure default roles and users exist, and repair pickup/dropoff Unicode text
+            // 0. Ensure default roles and users exist, repair pickup/dropoff Unicode text, and deduplicate locations
             await EnsureRolesAndDefaultUsersAsync(ct);
             await RepairPickupDropoffUnicodeAsync(ct);
+            await EnsureCanonicalLocationsAsync(ct);
 
             // 1. Ensure nationwide corridor routes (e.g. HAN <-> DAD) are active for complete test coverage
             var routesToActivate = await _context.Routes
@@ -93,6 +94,45 @@ public class SandboxFixtureService : ISandboxFixtureService
         }
     }
 
+    private async Task EnsureCanonicalLocationsAsync(CancellationToken ct)
+    {
+        // Consolidate legacy location 1 (HN) into verified canonical 10002 (HAN)
+        var loc1 = await _context.Locations.FindAsync(new object[] { 1L }, ct);
+        var locHan = await _context.Locations.FirstOrDefaultAsync(l => l.Code == "HAN" && l.Id != 1L, ct);
+        if (loc1 != null && locHan != null)
+        {
+            var routesOrigin = await _context.Routes.Where(r => r.OriginLocationId == 1L).ToListAsync(ct);
+            foreach (var r in routesOrigin) r.OriginLocationId = locHan.Id;
+
+            var routesDest = await _context.Routes.Where(r => r.DestinationLocationId == 1L).ToListAsync(ct);
+            foreach (var r in routesDest) r.DestinationLocationId = locHan.Id;
+
+            var points = await _context.PickupDropoffPoints.Where(p => p.LocationId == 1L).ToListAsync(ct);
+            foreach (var p in points) p.LocationId = locHan.Id;
+
+            loc1.IsActive = false;
+        }
+
+        // Consolidate legacy location 2 (HCM) into verified canonical 10003 (SGN)
+        var loc2 = await _context.Locations.FindAsync(new object[] { 2L }, ct);
+        var locSgn = await _context.Locations.FirstOrDefaultAsync(l => l.Code == "SGN" && l.Id != 2L, ct);
+        if (loc2 != null && locSgn != null)
+        {
+            var routesOrigin = await _context.Routes.Where(r => r.OriginLocationId == 2L).ToListAsync(ct);
+            foreach (var r in routesOrigin) r.OriginLocationId = locSgn.Id;
+
+            var routesDest = await _context.Routes.Where(r => r.DestinationLocationId == 2L).ToListAsync(ct);
+            foreach (var r in routesDest) r.DestinationLocationId = locSgn.Id;
+
+            var points = await _context.PickupDropoffPoints.Where(p => p.LocationId == 2L).ToListAsync(ct);
+            foreach (var p in points) p.LocationId = locSgn.Id;
+
+            loc2.IsActive = false;
+        }
+
+        await _context.SaveChangesAsync(ct);
+    }
+
     private async Task EnsureRouteCoverageAsync(Route route, CancellationToken ct)
     {
         // 1. Ensure valid pickup and dropoff points exist in RouteStops
@@ -128,60 +168,128 @@ public class SandboxFixtureService : ISandboxFixtureService
         var durationMinutes = route.EstimatedDurationMinutes ?? 360;
         var basePrice = CalculateSandboxBasePrice(route);
 
-        // 3. Define standard upcoming test departures
-        var now = DateTimeOffset.Now;
-        var todayDeparture = now.TimeOfDay < new TimeSpan(21, 0, 0)
-            ? new DateTimeOffset(DateTime.Today.AddHours(22).AddMinutes(30), TimeSpan.FromHours(7))
+        // 3. Define rolling future test departures (14 days ahead in UTC+7)
+        var vnOffset = TimeSpan.FromHours(7);
+        var now = DateTimeOffset.UtcNow.ToOffset(vnOffset);
+        var today = now.Date;
+
+        var shiftsToEnsure = new List<(string TripCode, DateTimeOffset DepartureTime)>();
+
+        // Legacy shifts for backward compatibility
+        var legacyToday = now.TimeOfDay < new TimeSpan(21, 0, 0)
+            ? new DateTimeOffset(today.AddHours(22).AddMinutes(30), vnOffset)
             : now.AddHours(2);
+        var legacyTomorrowMorning = new DateTimeOffset(today.AddDays(1).AddHours(8), vnOffset);
+        var legacyTomorrowEvening = new DateTimeOffset(today.AddDays(1).AddHours(20), vnOffset);
 
-        var tomorrowMorningDeparture = new DateTimeOffset(DateTime.Today.AddDays(1).AddHours(8), TimeSpan.FromHours(7));
-        var tomorrowEveningDeparture = new DateTimeOffset(DateTime.Today.AddDays(1).AddHours(20), TimeSpan.FromHours(7));
+        shiftsToEnsure.Add(($"DEMO-SANDBOX-{route.Code}-TODAY", legacyToday));
+        shiftsToEnsure.Add(($"DEMO-SANDBOX-{route.Code}-TOMORROW-0800", legacyTomorrowMorning));
+        shiftsToEnsure.Add(($"DEMO-SANDBOX-{route.Code}-TOMORROW-2000", legacyTomorrowEvening));
 
-        var testShifts = new (string Suffix, DateTimeOffset DepartureTime)[]
+        // Rolling 14-day schedule: 3 daily shifts (08:00 morning, 14:00 afternoon, 20:30 evening)
+        var dailyTimes = new (int Hour, int Minute)[] { (8, 0), (14, 0), (20, 30) };
+        for (int day = 0; day <= 14; day++)
         {
-            ("TODAY", todayDeparture),
-            ("TOMORROW-0800", tomorrowMorningDeparture),
-            ("TOMORROW-2000", tomorrowEveningDeparture)
-        };
-
-        foreach (var shift in testShifts)
-        {
-            var tripCode = $"DEMO-SANDBOX-{route.Code}-{shift.Suffix}";
-            await EnsureSandboxTripAsync(route, bus, tripCode, shift.DepartureTime, durationMinutes, basePrice, routeStops, ct);
+            var targetDay = today.AddDays(day);
+            foreach (var (hour, minute) in dailyTimes)
+            {
+                var depTime = new DateTimeOffset(targetDay.AddHours(hour).AddMinutes(minute), vnOffset);
+                if (depTime > now.AddMinutes(15))
+                {
+                    var code = $"[SANDBOX]-{route.Code}-{depTime:yyMMdd}-{depTime:HHmm}";
+                    shiftsToEnsure.Add((code, depTime));
+                }
+            }
         }
 
-        // 4. Synchronize any existing legacy demo trips on this route (e.g. Route 1 demo trips)
-        var legacyDemoTrips = await _context.Trips
-            .Include(t => t.Stops)
-            .Include(t => t.Seats)
-            .Where(t => t.RouteId == route.Id && (t.IsDemoTrip || t.TripCode.StartsWith("DEMO-")))
+        // 3. Batch check existing trips on this route to avoid redundant queries
+        var existingTripCodes = (await _context.Trips
+            .Where(t => t.RouteId == route.Id)
+            .Select(t => t.TripCode)
+            .ToListAsync(ct)).ToHashSet();
+
+        var newTrips = new List<Trip>();
+        var layoutItems = bus.SeatLayout?.Items?.Where(i => i.IsActive).ToList() ?? new List<SeatLayoutItem>();
+        var createdTimestamp = DateTimeOffset.UtcNow;
+
+        foreach (var (tripCode, depTime) in shiftsToEnsure)
+        {
+            if (existingTripCodes.Contains(tripCode))
+                continue;
+
+            var stops = new List<TripStop>();
+            foreach (var rs in routeStops.OrderBy(s => s.StopOrder))
+            {
+                stops.Add(new TripStop
+                {
+                    PointId = rs.PointId,
+                    StopOrder = rs.StopOrder,
+                    AllowPickup = rs.AllowPickup,
+                    AllowDropoff = rs.AllowDropoff,
+                    ScheduledDepartureTime = rs.AllowPickup ? depTime.AddMinutes(rs.DepartureOffsetMinutes ?? 0) : null,
+                    ScheduledArrivalTime = rs.AllowDropoff ? depTime.AddMinutes(rs.ArrivalOffsetMinutes ?? durationMinutes) : null
+                });
+            }
+
+            var seats = new List<TripSeat>();
+            foreach (var item in layoutItems)
+            {
+                var isCouple = string.Equals(item.SeatType, "DoubleBed", StringComparison.OrdinalIgnoreCase);
+                var seatPrice = basePrice + (isCouple ? 100_000m : 0m);
+                seats.Add(new TripSeat
+                {
+                    SeatLayoutItemId = item.Id,
+                    SeatCode = item.SeatCode,
+                    SeatType = item.SeatType,
+                    Floor = item.Floor,
+                    Row = item.Row,
+                    Column = item.Column,
+                    Price = seatPrice,
+                    Status = TripSeatStatus.Available,
+                    CreatedAt = createdTimestamp
+                });
+            }
+
+            newTrips.Add(new Trip
+            {
+                RouteId = route.Id,
+                BusId = bus.Id,
+                TripCode = tripCode,
+                DepartureTime = depTime,
+                ExpectedArrivalTime = depTime.AddMinutes(durationMinutes),
+                BasePrice = basePrice,
+                Status = TripStatus.Scheduled,
+                IsDemoTrip = true,
+                CreatedAt = createdTimestamp,
+                Stops = stops,
+                Seats = seats
+            });
+        }
+
+        if (newTrips.Count > 0)
+        {
+            await _context.Trips.AddRangeAsync(newTrips, ct);
+            await _context.SaveChangesAsync(ct);
+            _context.ChangeTracker.Clear();
+            _logger.LogInformation("Batch-created {Count} sandbox trips for route {RouteCode}.", newTrips.Count, route.Code);
+        }
+
+        // 4. Roll forward legacy TODAY/TOMORROW trips if in the past
+        var legacyToRoll = await _context.Trips
+            .Where(t => t.RouteId == route.Id && (t.TripCode.EndsWith("-TODAY") || t.TripCode.Contains("-TOMORROW-")) && t.DepartureTime < DateTimeOffset.Now)
             .ToListAsync(ct);
-
-        foreach (var demoTrip in legacyDemoTrips)
+        if (legacyToRoll.Count > 0)
         {
-            // If departure is in the past, roll forward
-            if (demoTrip.DepartureTime < DateTimeOffset.Now)
+            foreach (var lt in legacyToRoll)
             {
-                demoTrip.DepartureTime = tomorrowMorningDeparture;
-                demoTrip.ExpectedArrivalTime = tomorrowMorningDeparture.AddMinutes(durationMinutes);
-                demoTrip.Status = TripStatus.Scheduled;
-                demoTrip.IsDemoTrip = true;
+                lt.DepartureTime = legacyTomorrowMorning;
+                lt.ExpectedArrivalTime = legacyTomorrowMorning.AddMinutes(durationMinutes);
+                lt.Status = TripStatus.Scheduled;
+                lt.IsDemoTrip = true;
             }
-
-            // Ensure TripStops exist
-            if (demoTrip.Stops == null || demoTrip.Stops.Count == 0)
-            {
-                await CreateTripStopsAsync(demoTrip, routeStops, durationMinutes, ct);
-            }
-
-            // Ensure TripSeats exist
-            if (demoTrip.Seats == null || demoTrip.Seats.Count == 0)
-            {
-                await CreateTripSeatsAsync(demoTrip, bus, ct);
-            }
+            await _context.SaveChangesAsync(ct);
+            _context.ChangeTracker.Clear();
         }
-
-        await _context.SaveChangesAsync(ct);
     }
 
     private async Task EnsureRouteStopsAsync(Route route, CancellationToken ct)
@@ -325,6 +433,40 @@ public class SandboxFixtureService : ISandboxFixtureService
         var now = DateTimeOffset.UtcNow;
         if (trip == null)
         {
+            var initialStops = new List<TripStop>();
+            foreach (var rs in routeStops.OrderBy(s => s.StopOrder))
+            {
+                initialStops.Add(new TripStop
+                {
+                    PointId = rs.PointId,
+                    StopOrder = rs.StopOrder,
+                    AllowPickup = rs.AllowPickup,
+                    AllowDropoff = rs.AllowDropoff,
+                    ScheduledDepartureTime = rs.AllowPickup ? departureTime.AddMinutes(rs.DepartureOffsetMinutes ?? 0) : null,
+                    ScheduledArrivalTime = rs.AllowDropoff ? departureTime.AddMinutes(rs.ArrivalOffsetMinutes ?? durationMinutes) : null
+                });
+            }
+
+            var layoutItems = bus.SeatLayout?.Items?.Where(i => i.IsActive).ToList() ?? new List<SeatLayoutItem>();
+            var initialSeats = new List<TripSeat>();
+            foreach (var item in layoutItems)
+            {
+                var isCouple = string.Equals(item.SeatType, "DoubleBed", StringComparison.OrdinalIgnoreCase);
+                var seatPrice = basePrice + (isCouple ? 100_000m : 0m);
+                initialSeats.Add(new TripSeat
+                {
+                    SeatLayoutItemId = item.Id,
+                    SeatCode = item.SeatCode,
+                    SeatType = item.SeatType,
+                    Floor = item.Floor,
+                    Row = item.Row,
+                    Column = item.Column,
+                    Price = seatPrice,
+                    Status = TripSeatStatus.Available,
+                    CreatedAt = now
+                });
+            }
+
             trip = new Trip
             {
                 RouteId = route.Id,
@@ -335,37 +477,46 @@ public class SandboxFixtureService : ISandboxFixtureService
                 BasePrice = basePrice,
                 Status = TripStatus.Scheduled,
                 IsDemoTrip = true,
-                CreatedAt = now
+                CreatedAt = now,
+                Stops = initialStops,
+                Seats = initialSeats
             };
+
             _context.Trips.Add(trip);
             await _context.SaveChangesAsync(ct);
-            _logger.LogInformation("Created sandbox trip {TripCode} on route {RouteCode}.", tripCode, route.Code);
+            _context.ChangeTracker.Clear();
+            return;
         }
         else
         {
-            // If departure is in the past, update to upcoming
-            if (trip.DepartureTime < DateTimeOffset.Now)
+            // For legacy relative shifts, roll forward if past
+            if (tripCode.EndsWith("-TODAY") || tripCode.Contains("-TOMORROW-"))
             {
-                trip.DepartureTime = departureTime;
-                trip.ExpectedArrivalTime = departureTime.AddMinutes(durationMinutes);
-                trip.Status = TripStatus.Scheduled;
-                trip.IsDemoTrip = true;
-                trip.UpdatedAt = now;
-                await _context.SaveChangesAsync(ct);
+                if (trip.DepartureTime < DateTimeOffset.Now)
+                {
+                    trip.DepartureTime = departureTime;
+                    trip.ExpectedArrivalTime = departureTime.AddMinutes(durationMinutes);
+                    trip.Status = TripStatus.Scheduled;
+                    trip.IsDemoTrip = true;
+                    trip.UpdatedAt = now;
+                    await _context.SaveChangesAsync(ct);
+                }
             }
         }
 
-        // Ensure TripStops are populated
+        // Ensure TripStops are populated if missing
         if (trip.Stops == null || trip.Stops.Count == 0)
         {
             await CreateTripStopsAsync(trip, routeStops, durationMinutes, ct);
         }
 
-        // Ensure TripSeats inventory is populated
+        // Ensure TripSeats inventory is populated if missing
         if (trip.Seats == null || trip.Seats.Count == 0)
         {
             await CreateTripSeatsAsync(trip, bus, ct);
         }
+
+        _context.ChangeTracker.Clear();
     }
 
     private async Task CreateTripStopsAsync(Trip trip, List<RouteStop> routeStops, int durationMinutes, CancellationToken ct)

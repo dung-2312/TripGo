@@ -1,33 +1,20 @@
-@using Tripgo.Application.Interfaces
-@inject ITripService TripService
-
 @if (IsOpen)
 {
     <div class="support-drawer-scrim" @onclick="CloseAsync">
         <section class="support-drawer" role="dialog" aria-modal="true" aria-labelledby="support-drawer-title" @onclick:stopPropagation="true">
             <header class="drawer-header">
-                <div><span>TRIPGO · 24/7</span><h2 id="support-drawer-title">Hỗ trợ khách hàng</h2></div>
+                <div><span>TRIPGO · SANDBOX</span><h2 id="support-drawer-title">Thông tin hỗ trợ</h2></div>
                 <button type="button" class="drawer-close" aria-label="Đóng hỗ trợ" @onclick="CloseAsync"><i class="bi bi-x-lg"></i></button>
             </header>
-            <a class="drawer-hotline" href="tel:19008888"><i class="bi bi-telephone-fill"></i><span><small>HOTLINE KHẨN CẤP</small><strong>1900 8888</strong></span><i class="bi bi-arrow-up-right"></i></a>
-            <div class="drawer-faq-title">Câu hỏi thường gặp</div>
-            <details class="drawer-faq"><summary>Hành lý và thú cưng</summary><p>Quy định tùy nhà xe. Gọi hotline trước chuyến nếu gửi thú cưng hoặc hành lý cồng kềnh.</p></details>
-            <details class="drawer-faq"><summary>Cam kết hoàn tiền 150%</summary><p>Nếu nhà xe không giữ chỗ đã xác nhận, gọi 1900 8888 và cung cấp mã đặt chỗ để được hỗ trợ.</p></details>
-            <details class="drawer-faq"><summary>Đổi giờ khởi hành</summary><p>Việc đổi giờ phụ thuộc điều kiện vé và chỗ trống. Hãy liên hệ tổng đài sớm nhất có thể.</p></details>
-            <div class="drawer-callback">
-                <h3><i class="bi bi-chat-dots"></i> Yêu cầu gọi lại</h3>
-                @if (callbackSent)
-                {
-                    <div class="drawer-callback-success"><i class="bi bi-check-circle-fill"></i> Đã nhận yêu cầu. Tổng đài sẽ gọi lại trong tối đa 5 phút.</div>
-                }
-                else
-                {
-                    <input aria-label="Họ và tên" placeholder="Họ và tên" @bind="name" />
-                    <input aria-label="Số điện thoại" inputmode="tel" placeholder="Số điện thoại" @bind="phone" />
-                    @if (!string.IsNullOrWhiteSpace(errorMessage)) { <small class="drawer-error">@errorMessage</small> }
-                    <button type="button" disabled="@isSending" @onclick="SubmitCallbackAsync"><i class="bi bi-send-fill"></i> Gửi yêu cầu</button>
-                }
+            <div class="drawer-notice" role="status">
+                Đặt chỗ và thanh toán trong ứng dụng chỉ là mô phỏng. Chưa có hotline hoặc dịch vụ gọi lại được xác minh; không dùng TripGo để điều phối chuyến đi thực tế hay xử lý tình huống khẩn cấp.
             </div>
+            <div class="drawer-faq-title">Thông tin</div>
+            <details class="drawer-faq"><summary>Mã đặt chỗ sandbox có phải vé lên xe?</summary><p>Không. TripGo chưa phát hành vé thương mại hoặc mã QR lên xe.</p></details>
+            <details class="drawer-faq"><summary>Lịch trình, nhà xe và giá vé đã được xác nhận?</summary><p>Chưa. Thông tin hiển thị chỉ phục vụ thử nghiệm và cần xác minh độc lập trước khi sử dụng.</p></details>
+            <details class="drawer-faq"><summary>Có thể đổi chuyến hoặc hoàn tiền thật?</summary><p>Không. Ứng dụng hiện chưa hỗ trợ đổi chuyến hoặc hoàn tiền thực tế.</p></details>
+            <a class="drawer-action" href="/my-tickets">Mở đơn đặt chỗ sandbox</a>
+            <a class="drawer-action secondary" href="/search-trips">Tìm kiếm thông tin tham khảo</a>
         </section>
     </div>
 }
@@ -39,24 +26,13 @@
     .drawer-header span { color: #0d5cb6; font-size: 10px; font-weight: 850; letter-spacing: .08em; }
     .drawer-header h2 { margin: 6px 0 0; font-size: 22px; font-weight: 800; }
     .drawer-close { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #dce5e9; border-radius: 5px; background: white; color: #536a78; }
-    .drawer-hotline { display: flex; align-items: center; gap: 12px; margin: 20px 0; padding: 15px; border-radius: 6px; background: #0d5cb6; color: white; text-decoration: none; }
-    .drawer-hotline > i:first-child { font-size: 21px; }
-    .drawer-hotline > i:last-child { margin-left: auto; color: #ffd333; }
-    .drawer-hotline span { display: grid; gap: 3px; }
-    .drawer-hotline small { color: #d7e8fa; font-size: 9px; font-weight: 800; }
-    .drawer-hotline strong { font-size: 21px; }
+    .drawer-notice { margin: 20px 0; padding: 14px; border: 1px solid #f0c36d; border-radius: 5px; background: #fff6df; color: #604816; font-size: 12px; line-height: 1.55; }
     .drawer-faq-title { margin-bottom: 8px; font-size: 13px; font-weight: 800; }
     .drawer-faq { margin-bottom: 7px; border: 1px solid #dce5e9; border-radius: 5px; background: white; }
     .drawer-faq summary { padding: 12px; cursor: pointer; font-size: 12px; font-weight: 750; }
     .drawer-faq p { margin: 0; padding: 0 12px 12px; color: #647784; font-size: 12px; line-height: 1.55; }
-    .drawer-callback { display: grid; gap: 9px; margin-top: 19px; padding-top: 17px; border-top: 1px solid #dce5e9; }
-    .drawer-callback h3 { margin: 0 0 3px; font-size: 15px; font-weight: 800; }
-    .drawer-callback h3 i { margin-right: 6px; color: #0d5cb6; }
-    .drawer-callback input { height: 42px; padding: 0 10px; border: 1px solid #d6e0e4; border-radius: 5px; background: white; }
-    .drawer-callback > button { display: flex; align-items: center; justify-content: center; gap: 7px; height: 42px; border: 0; border-radius: 5px; background: #ffd333; color: #203443; font-weight: 800; }
-    .drawer-callback > button:disabled { opacity: .65; }
-    .drawer-callback-success { display: flex; gap: 8px; padding: 11px; border-radius: 5px; background: #e5f4e9; color: #17683d; font-size: 12px; }
-    .drawer-error { color: #b42318; }
+    .drawer-action { display: block; margin-top: 12px; padding: 11px 14px; border: 1px solid #0d5cb6; border-radius: 5px; background: #0d5cb6; color: white; text-align: center; text-decoration: none; font-size: 13px; font-weight: 750; }
+    .drawer-action.secondary { background: white; color: #0d5cb6; }
     @@keyframes drawer-in { from { transform: translateX(18px); opacity: .7; } to { transform: translateX(0); opacity: 1; } }
 </style>
 
@@ -64,24 +40,5 @@
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
-    private string name = string.Empty;
-    private string phone = string.Empty;
-    private string? errorMessage;
-    private bool callbackSent;
-    private bool isSending;
-
     private Task CloseAsync() => OnClose.InvokeAsync();
-
-    private async Task SubmitCallbackAsync()
-    {
-        errorMessage = null;
-        isSending = true;
-        try
-        {
-            callbackSent = await TripService.SubmitSupportCallbackAsync(name, phone);
-            if (!callbackSent)
-                errorMessage = "Nhập họ tên và số điện thoại hợp lệ để gửi yêu cầu.";
-        }
-        finally { isSending = false; }
-    }
 }

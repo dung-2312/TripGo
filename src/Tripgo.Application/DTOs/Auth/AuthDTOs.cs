@@ -146,9 +146,6 @@ public class ForgotPasswordRequestDto
 public class ResetPasswordRequestDto
 {
     [Required]
-    public string Email { get; set; } = string.Empty;
-
-    [Required]
     public string Token { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "Vui lòng nhập mật khẩu mới")]

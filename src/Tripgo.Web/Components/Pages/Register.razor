@@ -12,86 +12,105 @@
 
 <PageTitle>Đăng ký tài khoản | TripGo</PageTitle>
 
-<div class="tg-auth-container py-4 py-md-5">
+<div class="tg-auth-container">
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-12 col-xl-10">
-                <div class="tg-auth-card shadow-lg rounded-4 overflow-hidden border-0">
+                <div class="tg-auth-card">
                     <div class="row g-0">
-                        <!-- Left Hero Banner -->
+                        <!-- Left Hero / Brand Visual -->
                         <div class="col-lg-5 tg-auth-hero d-none d-lg-flex flex-column justify-content-between p-5 text-white">
                             <div>
-                                <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none text-white mb-4">
-                                    <div class="tg-hero-logo-box">
-                                        <svg viewBox="0 0 36 36" fill="none" class="tg-hero-logo" xmlns="http://www.w3.org/2000/svg">
-                                            <rect width="36" height="36" rx="9" fill="#ffd333" />
-                                            <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#0d5cb6" />
-                                            <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
-                                            <circle cx="13.5" cy="21.5" r="2" fill="#ffd333" />
-                                            <circle cx="22.5" cy="21.5" r="2" fill="#ffd333" />
-                                        </svg>
-                                    </div>
-                                    <span class="fs-3 fw-bold">Trip<span class="text-warning">Go</span></span>
-                                </a>
+                                <div class="mb-4">
+                                    <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none text-white">
+                                        <div class="tg-hero-logo-box">
+                                            <svg viewBox="0 0 36 36" fill="none" style="width: 28px; height: 28px;" xmlns="http://www.w3.org/2000/svg">
+                                                <rect width="36" height="36" rx="9" fill="#FFCA28" />
+                                                <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#071F49" />
+                                                <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
+                                                <circle cx="13.5" cy="21.5" r="2" fill="#FFCA28" />
+                                                <circle cx="22.5" cy="21.5" r="2" fill="#FFCA28" />
+                                            </svg>
+                                        </div>
+                                        <span class="fs-4 fw-bold tracking-tight">Trip<span class="text-warning">Go</span></span>
+                                    </a>
+                                </div>
 
-                                <h2 class="fw-bold mb-3">Tạo tài khoản TripGo</h2>
-                                <p class="text-white-50 mb-4">
-                                    Gia nhập cộng đồng hơn 500.000 hành khách đặt vé thông minh trên toàn quốc.
+                                <div class="mb-3">
+                                    <span class="d-inline-flex align-items-center gap-1 rounded-pill px-3 py-1 small fw-semibold" style="background: rgba(255, 255, 255, 0.12); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                        <i class="bi bi-person-plus me-1 text-warning"></i> Tài khoản TripGo
+                                    </span>
+                                </div>
+
+                                <h2 class="fw-bold mb-3" style="font-size: 1.85rem; line-height: 1.3;">Tạo tài khoản TripGo</h2>
+                                <p class="text-white-50 mb-4 small" style="line-height: 1.6;">
+                                    Tạo tài khoản để quản lý các đơn đặt chỗ sandbox gắn với thông tin của bạn.
                                 </p>
 
-                                <div class="tg-hero-features d-flex flex-column gap-3 mt-4">
-                                    <div class="d-flex align-items-center gap-3">
-                                        <div class="tg-feature-icon">
-                                            <i class="bi bi-clock-history text-warning"></i>
+                                <div class="d-flex flex-column gap-3 mt-4">
+                                    <div class="tg-auth-feature-pill">
+                                        <div class="tg-auth-feature-icon">
+                                            <i class="bi bi-clock-history"></i>
                                         </div>
                                         <div>
-                                            <div class="fw-bold">Tra cứu vé không cần mã</div>
-                                            <small class="text-white-50">Lịch sử đặt vé được lưu trữ vĩnh viễn</small>
+                                            <div class="fw-bold small text-white">Quản lý đơn đặt chỗ</div>
+                                            <div class="text-white-50" style="font-size: 0.78rem;">Xem đơn gắn với tài khoản sau khi đăng nhập</div>
                                         </div>
                                     </div>
 
-                                    <div class="d-flex align-items-center gap-3">
-                                        <div class="tg-feature-icon">
-                                            <i class="bi bi-gift-fill text-warning"></i>
+                                    <div class="tg-auth-feature-pill">
+                                        <div class="tg-auth-feature-icon">
+                                            <i class="bi bi-percent"></i>
                                         </div>
                                         <div>
-                                            <div class="fw-bold">Ưu đãi độc quyền</div>
-                                            <small class="text-white-50">Giảm giá chuyến xe và quà tặng dịp lễ</small>
+                                            <div class="fw-bold small text-white">Không phát sinh giao dịch thật</div>
+                                            <div class="text-white-50" style="font-size: 0.78rem;">Thanh toán và đặt chỗ chỉ được mô phỏng</div>
                                         </div>
                                     </div>
 
-                                    <div class="d-flex align-items-center gap-3">
-                                        <div class="tg-feature-icon">
-                                            <i class="bi bi-phone-fill text-warning"></i>
+                                    <div class="tg-auth-feature-pill">
+                                        <div class="tg-auth-feature-icon">
+                                            <i class="bi bi-bell-fill"></i>
                                         </div>
                                         <div>
-                                            <div class="fw-bold">Thông báo xuất bến tức thì</div>
-                                            <small class="text-white-50">Cập nhật biển số xe, vị trí đón theo thời gian thực</small>
+                                            <div class="fw-bold small text-white">Thông tin tham khảo</div>
+                                            <div class="text-white-50" style="font-size: 0.78rem;">Lịch trình chưa được xác nhận bởi nhà xe</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="pt-4 border-top border-white-25 small text-white-50">
-                                Bằng việc đăng ký, bạn đồng ý với <span class="text-white">Điều khoản sử dụng</span> của TripGo.
+                            <div class="pt-4 border-top border-white border-opacity-10 small text-white-50">
+                                Không nhập thông tin thanh toán thật. Các đơn đặt chỗ trong ứng dụng là dữ liệu thử nghiệm.
                             </div>
                         </div>
 
                         <!-- Right Form Panel -->
-                        <div class="col-lg-7 p-4 p-md-5 bg-white d-flex flex-column justify-content-center">
+                        <div class="col-lg-7 p-4 p-md-5 d-flex flex-column justify-content-center">
                             <div class="mb-4">
                                 <div class="d-lg-none d-flex align-items-center gap-2 mb-3">
-                                    <span class="fs-4 fw-bold text-primary">Trip<span class="text-warning">Go</span></span>
+                                    <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none">
+                                        <div class="tg-hero-logo-box bg-primary bg-opacity-10">
+                                            <svg viewBox="0 0 36 36" fill="none" style="width: 28px; height: 28px;" xmlns="http://www.w3.org/2000/svg">
+                                                <rect width="36" height="36" rx="9" fill="#FFCA28" />
+                                                <path d="M9 11C9 8.79086 10.7909 7 13 7H23C25.2091 7 27 8.79086 27 11V22C27 24.2091 25.2091 26 23 26H13C10.7909 26 9 24.2091 9 22V11Z" fill="#071F49" />
+                                                <rect x="11" y="9.5" width="14" height="6.5" rx="2" fill="white" />
+                                                <circle cx="13.5" cy="21.5" r="2" fill="#FFCA28" />
+                                                <circle cx="22.5" cy="21.5" r="2" fill="#FFCA28" />
+                                            </svg>
+                                        </div>
+                                        <span class="fs-4 fw-bold text-dark">Trip<span class="text-warning">Go</span></span>
+                                    </a>
                                 </div>
                                 <h3 class="fw-bold text-dark mb-1">Đăng ký tài khoản mới</h3>
-                                <p class="text-muted small">Điền các thông tin dưới đây để tạo tài khoản thành viên</p>
+                                <p class="text-muted small">Điền các thông tin dưới đây để đăng ký tài khoản thành viên</p>
                             </div>
 
                             @if (!string.IsNullOrWhiteSpace(errorMessage))
                             {
-                                <div class="alert alert-danger alert-dismissible fade show mb-4 rounded-3" role="alert">
+                                <div class="alert alert-danger alert-dismissible fade show mb-4 rounded-3 border-0 shadow-sm" role="alert" aria-live="assertive">
                                     <i class="bi bi-exclamation-triangle-fill me-2"></i>@errorMessage
-                                    <button type="button" class="btn-close" @onclick="() => errorMessage = null" aria-label="Close"></button>
+                                    <button type="button" class="btn-close" @onclick="() => errorMessage = null" aria-label="Đóng thông báo lỗi"></button>
                                 </div>
                             }
 
@@ -100,61 +119,66 @@
 
                                 <!-- Full Name -->
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-dark" for="regFullName">Họ và tên</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text bg-light border-end-0 text-muted">
+                                    <label class="form-label fw-bold small text-dark mb-1" for="regFullName">Họ và tên</label>
+                                    <div class="tg-auth-input-group">
+                                        <span class="tg-auth-input-icon">
                                             <i class="bi bi-person"></i>
                                         </span>
-                                        <InputText id="regFullName" class="form-control border-start-0 ps-0"
+                                        <InputText id="regFullName" class="tg-auth-input"
                                                    placeholder="Ví dụ: Nguyễn Văn A"
+                                                   autocomplete="name"
                                                    @bind-Value="model.FullName" disabled="@isSubmitting" />
                                     </div>
                                     <ValidationMessage For="@(() => model.FullName)" class="text-danger small mt-1" />
                                 </div>
 
-                                <!-- Email Address -->
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-dark" for="regEmail">Địa chỉ Email</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text bg-light border-end-0 text-muted">
-                                            <i class="bi bi-envelope"></i>
-                                        </span>
-                                        <InputText id="regEmail" class="form-control border-start-0 ps-0"
-                                                   placeholder="email@example.com"
-                                                   @bind-Value="model.Email" disabled="@isSubmitting" />
+                                <!-- Email & Phone side-by-side on tablet/desktop -->
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-dark mb-1" for="regEmail">Địa chỉ Email</label>
+                                        <div class="tg-auth-input-group">
+                                            <span class="tg-auth-input-icon">
+                                                <i class="bi bi-envelope"></i>
+                                            </span>
+                                            <InputText id="regEmail" class="tg-auth-input"
+                                                       placeholder="email@example.com"
+                                                       autocomplete="email"
+                                                       @bind-Value="model.Email" disabled="@isSubmitting" />
+                                        </div>
+                                        <ValidationMessage For="@(() => model.Email)" class="text-danger small mt-1" />
                                     </div>
-                                    <ValidationMessage For="@(() => model.Email)" class="text-danger small mt-1" />
-                                </div>
 
-                                <!-- Phone Number -->
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-dark" for="regPhone">Số điện thoại</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text bg-light border-end-0 text-muted">
-                                            <i class="bi bi-telephone"></i>
-                                        </span>
-                                        <InputText id="regPhone" class="form-control border-start-0 ps-0"
-                                                   placeholder="0912345678"
-                                                   @bind-Value="model.PhoneNumber" disabled="@isSubmitting" />
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-dark mb-1" for="regPhone">Số điện thoại</label>
+                                        <div class="tg-auth-input-group">
+                                            <span class="tg-auth-input-icon">
+                                                <i class="bi bi-telephone"></i>
+                                            </span>
+                                            <InputText id="regPhone" class="tg-auth-input"
+                                                       placeholder="0912345678"
+                                                       autocomplete="tel"
+                                                       @bind-Value="model.PhoneNumber" disabled="@isSubmitting" />
+                                        </div>
+                                        <ValidationMessage For="@(() => model.PhoneNumber)" class="text-danger small mt-1" />
                                     </div>
-                                    <ValidationMessage For="@(() => model.PhoneNumber)" class="text-danger small mt-1" />
                                 </div>
 
                                 <!-- Password -->
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-dark" for="regPassword">Mật khẩu</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text bg-light border-end-0 text-muted">
-                                            <i class="bi bi-lock"></i>
+                                    <label class="form-label fw-bold small text-dark mb-1" for="regPassword">Mật khẩu</label>
+                                    <div class="tg-auth-input-group">
+                                        <span class="tg-auth-input-icon">
+                                            <i class="bi bi-shield-lock"></i>
                                         </span>
                                         <input id="regPassword" type="@(showPassword ? "text" : "password")"
-                                               class="form-control border-start-0 border-end-0 ps-0"
+                                               class="tg-auth-input"
                                                placeholder="Tối thiểu 6 ký tự..."
+                                               autocomplete="new-password"
                                                @bind="model.Password"
                                                disabled="@isSubmitting" />
-                                        <button type="button" class="input-group-text bg-light border-start-0 text-muted"
+                                        <button type="button" class="tg-auth-toggle-pwd"
                                                 @onclick="() => showPassword = !showPassword"
-                                                tabindex="-1"
+                                                aria-label="@(showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")"
                                                 title="@(showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")">
                                             <i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i>
                                         </button>
@@ -164,19 +188,20 @@
 
                                 <!-- Confirm Password -->
                                 <div class="mb-4">
-                                    <label class="form-label fw-semibold small text-dark" for="regConfirmPassword">Xác nhận mật khẩu</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text bg-light border-end-0 text-muted">
-                                            <i class="bi bi-lock-fill"></i>
+                                    <label class="form-label fw-bold small text-dark mb-1" for="regConfirmPassword">Xác nhận mật khẩu</label>
+                                    <div class="tg-auth-input-group">
+                                        <span class="tg-auth-input-icon">
+                                            <i class="bi bi-shield-check"></i>
                                         </span>
                                         <input id="regConfirmPassword" type="@(showConfirmPassword ? "text" : "password")"
-                                               class="form-control border-start-0 border-end-0 ps-0"
+                                               class="tg-auth-input"
                                                placeholder="Nhập lại mật khẩu..."
+                                               autocomplete="new-password"
                                                @bind="model.ConfirmPassword"
                                                disabled="@isSubmitting" />
-                                        <button type="button" class="input-group-text bg-light border-start-0 text-muted"
+                                        <button type="button" class="tg-auth-toggle-pwd"
                                                 @onclick="() => showConfirmPassword = !showConfirmPassword"
-                                                tabindex="-1"
+                                                aria-label="@(showConfirmPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")"
                                                 title="@(showConfirmPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu")">
                                             <i class="bi @(showConfirmPassword ? "bi-eye-slash" : "bi-eye")"></i>
                                         </button>
@@ -185,12 +210,12 @@
                                 </div>
 
                                 <!-- Submit Button -->
-                                <button type="submit" class="btn btn-warning w-100 py-2 fw-bold text-dark rounded-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                <button type="submit" class="tg-auth-btn-accent w-100 d-flex align-items-center justify-content-center gap-2"
                                         disabled="@isSubmitting">
                                     @if (isSubmitting)
                                     {
                                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                        <span>Đang tạo tài khoản...</span>
+                                        <span>Đang tạo tài khoản thành viên...</span>
                                     }
                                     else
                                     {
@@ -214,52 +239,6 @@
         </div>
     </div>
 </div>
-
-<style>
-    .tg-auth-container {
-        min-height: calc(100vh - 160px);
-        background: #f1f5f9;
-        display: flex;
-        align-items: center;
-    }
-
-    .tg-auth-card {
-        background: #ffffff;
-        border-radius: 1.25rem !important;
-        overflow: hidden;
-    }
-
-    .tg-auth-hero {
-        background: linear-gradient(135deg, #0d5cb6 0%, #083e7d 100%);
-        position: relative;
-    }
-
-    .tg-hero-logo {
-        width: 40px;
-        height: 40px;
-    }
-
-    .tg-hero-features .tg-feature-icon {
-        width: 36px;
-        height: 36px;
-        background: rgba(255, 255, 255, 0.12);
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.1rem;
-        flex-shrink: 0;
-    }
-
-    .border-white-25 {
-        border-color: rgba(255, 255, 255, 0.18) !important;
-    }
-
-    .form-control:focus {
-        border-color: #0d5cb6;
-        box-shadow: 0 0 0 0.25rem rgba(13, 92, 182, 0.15);
-    }
-</style>
 
 @code {
     [SupplyParameterFromQuery]
@@ -317,7 +296,7 @@
 
             NavigationManager.NavigateTo($"/auth/exchange?token={token}", forceLoad: true);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             errorMessage = "Đã xảy ra lỗi hệ thống trong quá trình đăng ký. Vui lòng thử lại sau.";
         }

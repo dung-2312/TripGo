@@ -46,6 +46,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<ISignInExchangeStore, SignInExchangeStore>();
 builder.Services.AddScoped<IBookingSessionContext, BookingSessionContext>();
 builder.Services.AddHostedService<BookingExpirationWorker>();
+builder.Services.AddHostedService<BookingConfirmationEmailWorker>();
 
 var keyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("Tripgo");

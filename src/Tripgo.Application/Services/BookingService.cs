@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
@@ -204,12 +205,22 @@ public class BookingService : IBookingService
         }
 
         var email = request.PassengerEmail?.Trim();
-        if (!string.IsNullOrWhiteSpace(email) && (!email.Contains('@') || !email.Contains('.')))
+        if (string.IsNullOrWhiteSpace(email) || email.Length > 254 ||
+            !new EmailAddressAttribute().IsValid(email))
         {
             return new BookingResultDto
             {
                 Success = false,
-                Message = "Định dạng email không hợp lệ."
+                Message = "Vui lòng nhập địa chỉ email hợp lệ để nhận vé điện tử."
+            };
+        }
+
+        if (!request.ContactEmailConfirmed)
+        {
+            return new BookingResultDto
+            {
+                Success = false,
+                Message = "Vui lòng xác nhận địa chỉ email nhận vé điện tử là chính xác."
             };
         }
 
@@ -276,7 +287,7 @@ public class BookingService : IBookingService
                 };
             }
 
-            var allowPickup = (tripStop != null && tripStop.AllowPickup) || (routeStop != null && routeStop.AllowPickup);
+            var allowPickup = tripStop?.AllowPickup ?? routeStop?.AllowPickup ?? false;
             if (!allowPickup)
             {
                 return new BookingResultDto
@@ -311,7 +322,7 @@ public class BookingService : IBookingService
                 };
             }
 
-            var allowDropoff = (tripStop != null && tripStop.AllowDropoff) || (routeStop != null && routeStop.AllowDropoff);
+            var allowDropoff = tripStop?.AllowDropoff ?? routeStop?.AllowDropoff ?? false;
             if (!allowDropoff)
             {
                 return new BookingResultDto
@@ -462,7 +473,8 @@ public class BookingService : IBookingService
                 }
 
                 var pEmail = p.Email?.Trim();
-                if (!string.IsNullOrWhiteSpace(pEmail) && (!pEmail.Contains('@') || !pEmail.Contains('.')))
+                if (!string.IsNullOrWhiteSpace(pEmail) &&
+                    (pEmail.Length > 254 || !new EmailAddressAttribute().IsValid(pEmail)))
                 {
                     return new BookingResultDto
                     {

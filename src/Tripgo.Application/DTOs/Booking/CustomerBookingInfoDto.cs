@@ -13,6 +13,7 @@ public class CustomerBookingInfoDto
     public string Phone { get; set; } = string.Empty;
     public string PhoneNumber { get => Phone; set => Phone = value; }
     public string? Email { get; set; }
+    public bool ContactEmailConfirmed { get; set; }
     public string? PickupPoint { get; set; }
     public long? PickupPointId { get; set; }
     public long? DropoffPointId { get; set; }

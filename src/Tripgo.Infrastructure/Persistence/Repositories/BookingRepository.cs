@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
@@ -72,6 +73,7 @@ public class BookingRepository : IBookingRepository
 
         var tripId = tripIds[0];
         var lockResource = $"TripSeatInventory:{tripId}";
+        _context.EnsureWritesTargetIsolatedTestDatabase();
         var strategy = _context.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
@@ -102,6 +104,7 @@ public class BookingRepository : IBookingRepository
 
         return await strategy.ExecuteAsync(async () =>
         {
+            _context.EnsureWritesTargetIsolatedTestDatabase();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
@@ -826,21 +829,18 @@ public class BookingRepository : IBookingRepository
 
         return await strategy.ExecuteAsync(async () =>
         {
+            _context.EnsureWritesTargetIsolatedTestDatabase();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
                 var now = DateTimeOffset.UtcNow;
-                var dbName = _context.Database.GetDbConnection().Database;
-                if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
-                {
-                    await transaction.RollbackAsync(ct);
-                    throw new InvalidOperationException("Sandbox payment simulation is strictly forbidden against production database 'TripgoDb'.");
-                }
-
                 var booking = await _context.Bookings
                     .Include(b => b.BookingSeats)
                         .ThenInclude(bs => bs.TripSeat)
                     .Include(b => b.PaymentTransactions)
+                    .Include(b => b.Trip)
+                        .ThenInclude(trip => trip.Route)
+                            .ThenInclude(route => route.Operator)
                     .FirstOrDefaultAsync(b => b.BookingCode == bookingCode, ct);
 
                 if (booking == null)
@@ -983,6 +983,36 @@ public class BookingRepository : IBookingRepository
                 booking.PaymentStatus = PaymentStatus.Paid;
                 booking.Status = BookingStatus.Confirmed;
                 booking.ConfirmedAt = now;
+
+                if (booking.IsDemoBooking && !string.IsNullOrWhiteSpace(booking.PassengerEmail))
+                {
+                    var confirmation = new BookingConfirmationEmailDto
+                    {
+                        BookingCode = booking.BookingCode,
+                        PassengerName = booking.PassengerName,
+                        RecipientEmail = booking.PassengerEmail,
+                        RouteName = booking.Trip.Route?.Name ?? string.Empty,
+                        OperatorName = booking.Trip.Route?.Operator?.Name ?? string.Empty,
+                        DepartureTime = booking.Trip.DepartureTime,
+                        PickupPoint = booking.PickupPointNote,
+                        DropoffPoint = booking.DropoffPointNote,
+                        SeatCodes = booking.BookingSeats
+                            .Select(seat => seat.SeatCode)
+                            .OrderBy(code => code, StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
+                        TotalAmount = booking.TotalAmount
+                    };
+                    _context.BookingConfirmationEmailOutbox.Add(new BookingConfirmationEmailOutbox
+                    {
+                        BookingId = booking.Id,
+                        RecipientEmail = confirmation.RecipientEmail,
+                        Payload = JsonSerializer.Serialize(confirmation),
+                        Status = BookingConfirmationEmailOutbox.Pending,
+                        AttemptCount = 0,
+                        NextAttemptAt = now,
+                        CreatedAt = now
+                    });
+                }
 
                 // Finalize seats
                 foreach (var seat in booking.BookingSeats)

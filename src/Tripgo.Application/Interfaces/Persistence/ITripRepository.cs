@@ -36,6 +36,7 @@ public interface ITripRepository
     Task<Trip?> GetTripWithDetailsAsync(long tripId, CancellationToken ct = default);
     Task<List<Trip>> GetAllTripsAdminAsync(CancellationToken ct = default);
     Task<Trip?> GetTripForBookingAsync(long tripId, CancellationToken ct = default);
+    Task<bool> HasConflictingScheduledTripAsync(long busId, DateTimeOffset departureTime, DateTimeOffset arrivalTime, CancellationToken ct = default);
     Task AddTripAsync(Trip trip, CancellationToken ct = default);
     Task<bool> CancelTripAsync(long tripId, CancellationToken ct = default);
 }

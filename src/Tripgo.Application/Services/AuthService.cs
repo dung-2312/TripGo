@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
@@ -16,6 +18,8 @@ public class AuthService : IAuthService
     private readonly IUserRepository _userRepository;
     private readonly IBookingRepository _bookingRepository;
     private readonly IPasswordHasherService _passwordHasher;
+    private readonly IEmailSender? _emailSender;
+    private readonly ILogger<AuthService>? _logger;
 
     // Rate limiting / lockout: 5 failed attempts = 5 minutes lockout
     private static readonly ConcurrentDictionary<string, (int FailedCount, DateTimeOffset LockoutUntil)> _lockoutTracker = new();
@@ -26,11 +30,15 @@ public class AuthService : IAuthService
     public AuthService(
         IUserRepository userRepository,
         IBookingRepository bookingRepository,
-        IPasswordHasherService passwordHasher)
+        IPasswordHasherService passwordHasher,
+        IEmailSender? emailSender = null,
+        ILogger<AuthService>? logger = null)
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
         _passwordHasher = passwordHasher ?? throw new ArgumentNullException(nameof(passwordHasher));
+        _emailSender = emailSender;
+        _logger = logger;
     }
 
     public async Task<AuthResultDto> AuthenticateAsync(LoginViewModel model, CancellationToken ct = default)
@@ -131,16 +139,17 @@ public class AuthService : IAuthService
 
         // Get or verify "Customer" role - users can NEVER register as Admin
         var customerRole = await _userRepository.GetRoleByNameAsync("Customer", ct);
-        int roleId;
-        if (customerRole != null)
-        {
-            roleId = customerRole.Id;
-        }
-        else
+        if (customerRole == null)
         {
             var allRoles = await _userRepository.GetAllRolesAsync(ct);
-            var matched = allRoles.Find(r => string.Equals(r.Name, "Customer", StringComparison.OrdinalIgnoreCase));
-            roleId = matched?.Id ?? 2; // fallback
+            customerRole = allRoles.Find(r =>
+                string.Equals(r.Name, "Customer", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (customerRole == null)
+        {
+            return AuthResultDto.FailureResult(
+                "Không thể đăng ký tài khoản lúc này. Vui lòng liên hệ quản trị viên.");
         }
 
         var newUser = new User
@@ -149,7 +158,7 @@ public class AuthService : IAuthService
             Email = normalizedEmail,
             PhoneNumber = normalizedPhone,
             PasswordHash = _passwordHasher.HashPassword(model.Password),
-            RoleId = roleId,
+            RoleId = customerRole.Id,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -254,10 +263,31 @@ public class AuthService : IAuthService
         }
 
         var user = await _userRepository.GetByEmailAsync(email.Trim(), ct);
-        if (user != null)
+        if (user != null && _emailSender != null)
         {
+            foreach (var expiredToken in _resetTokens)
+            {
+                if (expiredToken.Value.ExpiresAt <= DateTimeOffset.UtcNow)
+                {
+                    _resetTokens.TryRemove(expiredToken.Key, out _);
+                }
+            }
+
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            _resetTokens[token] = (user.Id, DateTimeOffset.UtcNow.AddMinutes(15));
+            var tokenKey = HashResetToken(token);
+            _resetTokens[tokenKey] = (user.Id, DateTimeOffset.UtcNow.AddMinutes(15));
+            try
+            {
+                if (!await _emailSender.SendPasswordResetAsync(user.Email, token, ct))
+                {
+                    _resetTokens.TryRemove(tokenKey, out _);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _resetTokens.TryRemove(tokenKey, out _);
+                _logger?.LogError(ex, "Could not send a password reset email.");
+            }
         }
 
         // Return generic success message to prevent user enumeration
@@ -285,7 +315,8 @@ public class AuthService : IAuthService
             return AuthResultDto.FailureResult("Mật khẩu xác nhận không khớp.");
         }
 
-        if (!_resetTokens.TryRemove(request.Token, out var info) || info.ExpiresAt < DateTimeOffset.UtcNow)
+        var tokenKey = HashResetToken(request.Token);
+        if (!_resetTokens.TryRemove(tokenKey, out var info) || info.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             return AuthResultDto.FailureResult("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
         }
@@ -327,4 +358,7 @@ public class AuthService : IAuthService
                 return (newCount, DateTimeOffset.MinValue);
             });
     }
+
+    private static string HashResetToken(string token) =>
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 }

@@ -13,13 +13,7 @@ public static class DbInitializer
     public static async Task SeedAsync(AppDbContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-
-        var dbName = context.Database.GetDbConnection().Database;
-        if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "DbInitializer.SeedAsync is strictly forbidden against production database 'TripgoDb'.");
-        }
+        context.EnsureWritesTargetIsolatedTestDatabase();
 
         var locations = new Dictionary<string, Location>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in new[]
