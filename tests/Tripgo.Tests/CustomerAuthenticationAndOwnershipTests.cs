@@ -23,8 +23,7 @@ namespace Tripgo.Tests;
 [Collection("Database")]
 public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
 {
-    private const string IsolatedConnectionString =
-        "Server=localhost\\MSSQLSERVER01;Database=TripgoDb_IsolatedTest;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true;";
+    private static readonly string IsolatedConnectionString = TestDatabase.ConnectionString;
 
     private readonly string _runSuffix = Guid.NewGuid().ToString("N")[..8];
     private readonly List<long> _createdUserIds = new();
@@ -39,7 +38,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         }
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(IsolatedConnectionString, sql => sql.EnableRetryOnFailure())
+            .UseSqlServer(IsolatedConnectionString, sql => sql.EnableRetryOnFailure().CommandTimeout(120))
             .Options;
         return new AppDbContext(options);
     }
@@ -434,7 +433,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         });
 
         Assert.True(createRes.Success);
-        _createdBookingCodes.Add(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode!);
 
         // Verify in database: Booking MUST have UserId persisted and matching the authenticated customer
         var bookingInDb = await context.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.BookingCode == createRes.BookingCode);
@@ -493,7 +492,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             PassengerPhone = phone,
             PassengerEmail = email
         });
-        _createdBookingCodes.Add(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode!);
 
         // Call GetBookingsForCurrentUserAsync WITHOUT specifying any booking code or phone number
         var userTickets = await bookingService.GetBookingsForCurrentUserAsync();
@@ -564,7 +563,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             PassengerName = "Người Dùng A",
             PassengerPhone = "0900000002"
         });
-        _createdBookingCodes.Add(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode!);
 
         var dbBooking = await context.Bookings.FirstAsync(b => b.BookingCode == createRes.BookingCode);
 
@@ -572,7 +571,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var sessionB = new TestBookingSessionContext(Guid.NewGuid().ToString("N"), userBId);
         var bookingServiceB = new BookingService(bookingRepo, sessionB);
 
-        var viewAttempt = await bookingServiceB.GetBookingByCodeAsync(createRes.BookingCode);
+        var viewAttempt = await bookingServiceB.GetBookingByCodeAsync(createRes.BookingCode!);
         Assert.Null(viewAttempt); // Must return null, completely isolated
 
         var cancelAttempt = await bookingServiceB.CancelBookingAsync(dbBooking.Id, "User B cố tình hủy vé của User A");
@@ -618,7 +617,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             PassengerName = "Khách Vãng Lai",
             PassengerPhone = "0987654321"
         });
-        _createdBookingCodes.Add(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode!);
 
         // Verify booking in DB has UserId == null
         var guestBookingInDb = await context.Bookings.FirstAsync(b => b.BookingCode == createRes.BookingCode);
@@ -681,7 +680,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             PassengerName = "Người Hủy Vé",
             PassengerPhone = "0911223344"
         });
-        _createdBookingCodes.Add(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode!);
 
         var dbBooking = await context.Bookings.FirstAsync(b => b.BookingCode == createRes.BookingCode);
         Assert.Equal(BookingStatus.PendingPayment, dbBooking.Status);
@@ -702,8 +701,28 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
     public async Task Test13_VietnameseUnicodeFix_PickupDropoffPoints_AuthoritativeStringsVerified()
     {
         await using var context = CreateContext();
-        var fixture = new SandboxFixtureService(context, NullLogger<SandboxFixtureService>.Instance);
-        await fixture.RepairPickupDropoffUnicodeAsync();
+
+        // Arrange the corrupted rows this repair exists to fix, for databases without the imported
+        // data set. Rows that already exist are left alone; rows added here are removed afterwards.
+        var repairedIds = new[] { 1L, 5L, 10L, 24L, 27L, 30L };
+        var existingIds = await context.PickupDropoffPoints.Where(p => repairedIds.Contains(p.Id)).Select(p => p.Id).ToListAsync();
+        var addedIds = repairedIds.Except(existingIds).ToList();
+        var operatorId = await context.Operators.Select(o => o.Id).FirstAsync();
+        var locationId = await context.Locations.Select(l => l.Id).FirstAsync();
+        foreach (var id in addedIds)
+        {
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                SET IDENTITY_INSERT [PickupDropoffPoints] ON;
+                INSERT INTO [PickupDropoffPoints] ([Id],[OperatorId],[LocationId],[Name],[Address],[PointType],[IsActive])
+                VALUES ({id},{operatorId},{locationId},{"Báº¿n xe"},{"Ä\u0090á»‹a chá»‰"},{3},{false});
+                SET IDENTITY_INSERT [PickupDropoffPoints] OFF;
+                """);
+        }
+
+        try
+        {
+            var fixture = new SandboxFixtureService(context, NullLogger<SandboxFixtureService>.Instance);
+            await fixture.RepairPickupDropoffUnicodeAsync();
 
         // Verify key authoritative points that previously had Mojibake
         var p1 = await context.PickupDropoffPoints.FindAsync(1L);
@@ -736,6 +755,12 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         Assert.NotNull(p30);
         Assert.Equal("Bến xe Trung tâm Quy Nhơn", p30.Name);
         Assert.Contains("Ghềnh Ráng", p30.Address);
+        }
+        finally
+        {
+            context.ChangeTracker.Clear();
+            await context.PickupDropoffPoints.Where(p => addedIds.Contains(p.Id)).ExecuteDeleteAsync();
+        }
     }
 
     [Fact]
@@ -780,7 +805,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         });
         Assert.True(createRes.Success);
         Assert.NotNull(createRes.BookingCode);
-        _createdBookingCodes.Add(createRes.BookingCode);
+        _createdBookingCodes.Add(createRes.BookingCode!);
 
         // 1. User A can retrieve their own booking
         var bookingForA = await serviceA.GetBookingByCodeAsync(createRes.BookingCode);

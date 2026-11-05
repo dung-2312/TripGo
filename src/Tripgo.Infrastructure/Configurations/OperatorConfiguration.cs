@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Tripgo.Domain.Entities;
 
@@ -47,6 +47,9 @@ public class OperatorConfiguration : IEntityTypeConfiguration<Operator>
 
         builder.Property(x => x.Description)
             .HasMaxLength(2000);
+
+        builder.Property(x => x.VerificationEvidence).HasMaxLength(1000);
+        builder.Property(x => x.SourceReference).HasMaxLength(500);
 
         builder.Property(x => x.IsVerified)
             .HasDefaultValue(false);

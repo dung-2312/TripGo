@@ -11,7 +11,7 @@ namespace Tripgo.Infrastructure.Services;
 
 public sealed class SmtpEmailSender : IEmailSender
 {
-    private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan DefaultSendTimeout = TimeSpan.FromSeconds(60);
     private readonly IConfiguration _configuration;
     private readonly ILogger<SmtpEmailSender> _logger;
 
@@ -58,12 +58,15 @@ public sealed class SmtpEmailSender : IEmailSender
         }
 
         var seats = string.Join(", ", confirmation.SeatCodes);
-        var departure = confirmation.DepartureTime.ToLocalTime().ToString(
+        var departure = confirmation.DepartureTime.ToOffset(TimeSpan.FromHours(7)).ToString(
             "dddd, dd/MM/yyyy HH:mm",
             CultureInfo.GetCultureInfo("vi-VN"));
         var amount = confirmation.TotalAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
+        var template = BookingEmailTemplate.For(confirmation.MessageType, confirmation.BookingCode, confirmation.CancellationReason);
         var text = $"""
             Xin chào {confirmation.PassengerName},
+
+            {template.Lead}
 
             Mã đặt chỗ thử nghiệm: {confirmation.BookingCode}
             Tuyến tham khảo: {confirmation.RouteName}
@@ -74,7 +77,7 @@ public sealed class SmtpEmailSender : IEmailSender
             Điểm trả: {confirmation.DropoffPoint}
             Số tiền hiển thị: {amount} đ
 
-            Đây là xác nhận SANDBOX. Thanh toán được mô phỏng, không phát sinh giao dịch tiền thật. Đây không phải vé xe thương mại, không xác nhận chỗ thật và không có mã QR lên xe.
+            Đây là thông báo SANDBOX. Thanh toán được mô phỏng, không phát sinh giao dịch tiền thật. Đây không phải vé xe thương mại và không xác nhận chỗ thật.
             """;
 
         var html = $"""
@@ -82,8 +85,9 @@ public sealed class SmtpEmailSender : IEmailSender
             <html lang="vi">
             <body style="font-family:Arial,sans-serif;color:#172033;line-height:1.55">
               <main style="max-width:640px;margin:auto;padding:24px">
-                <h1 style="font-size:22px">Thông tin đặt chỗ TripGo (Sandbox)</h1>
+                <h1 style="font-size:22px">{WebUtility.HtmlEncode(template.Heading)}</h1>
                 <p>Xin chào {WebUtility.HtmlEncode(confirmation.PassengerName)},</p>
+                <p>{WebUtility.HtmlEncode(template.Lead)}</p>
                 <p>Mã đặt chỗ thử nghiệm: <strong>{WebUtility.HtmlEncode(confirmation.BookingCode)}</strong></p>
                 <table style="border-collapse:collapse;width:100%">
                   <tr><th align="left">Tuyến tham khảo</th><td>{WebUtility.HtmlEncode(confirmation.RouteName)}</td></tr>
@@ -96,7 +100,7 @@ public sealed class SmtpEmailSender : IEmailSender
                 </table>
                 <p style="margin-top:24px;padding:14px;background:#fff3cd">
                   <strong>SANDBOX:</strong> Thanh toán được mô phỏng, không phát sinh giao dịch tiền thật.
-                  Đây không phải vé xe thương mại, không xác nhận chỗ thật và không có mã QR lên xe.
+                  Đây không phải vé xe thương mại và không xác nhận chỗ thật.
                 </p>
               </main>
             </body>
@@ -105,11 +109,17 @@ public sealed class SmtpEmailSender : IEmailSender
 
         return SendAsync(
             confirmation.RecipientEmail,
-            $"Thông tin đặt chỗ TripGo Sandbox - {confirmation.BookingCode}",
+            template.Subject,
             text,
             html,
-            cancellationToken);
+            cancellationToken,
+            messageIdSeed: $"{confirmation.BookingCode}.{confirmation.MessageType}");
     }
+
+    private TimeSpan GetSendTimeout() =>
+        int.TryParse(_configuration["Email:Smtp:TimeoutSeconds"], out var seconds) && seconds is >= 5 and <= 100
+            ? TimeSpan.FromSeconds(seconds)
+            : DefaultSendTimeout;
 
     private bool TryGetSmtpSettings(
         out string host,
@@ -152,7 +162,8 @@ public sealed class SmtpEmailSender : IEmailSender
         string subject,
         string textBody,
         string htmlBody,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? messageIdSeed = null)
     {
         if (!TryGetSmtpSettings(
                 out var host,
@@ -173,6 +184,13 @@ public sealed class SmtpEmailSender : IEmailSender
             IsBodyHtml = false
         };
         message.To.Add(new MailAddress(email));
+
+        // A stable ID lets receiving systems recognize a redelivery after a crash between
+        // SMTP acceptance and our own "sent" record, which is the one duplicate risk an outbox cannot remove.
+        if (!string.IsNullOrWhiteSpace(messageIdSeed) && Uri.TryCreate(_configuration["Email:BaseUrl"], UriKind.Absolute, out var messageIdHost))
+        {
+            message.Headers.Add("Message-ID", $"<{messageIdSeed}@{messageIdHost.Host}>");
+        }
         message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
             htmlBody,
             Encoding.UTF8,
@@ -182,11 +200,14 @@ public sealed class SmtpEmailSender : IEmailSender
         using (var client = new SmtpClient(host, port)
         {
             EnableSsl = !bool.TryParse(_configuration["Email:Smtp:EnableSsl"], out var enableSsl) || enableSsl,
-            Credentials = new NetworkCredential(username, password)
+            Credentials = new NetworkCredential(username, password),
+            Timeout = (int)GetSendTimeout().TotalMilliseconds
         })
         {
+            // This one limit covers connecting, the TLS handshake and sending. SendMailAsync ignores
+            // SmtpClient.Timeout, so the cancellation token is what actually enforces it.
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(SendTimeout);
+            timeout.CancelAfter(GetSendTimeout());
             await client.SendMailAsync(message, timeout.Token);
         }
 

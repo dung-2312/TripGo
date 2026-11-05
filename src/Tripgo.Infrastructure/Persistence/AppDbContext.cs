@@ -40,6 +40,10 @@ public class AppDbContext : DbContext
     public DbSet<BookingSeat> BookingSeats => Set<BookingSeat>();
     public DbSet<BookingPassenger> BookingPassengers => Set<BookingPassenger>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
+    public DbSet<TicketCredential> TicketCredentials => Set<TicketCredential>();
+    public DbSet<TicketVerificationAttempt> TicketVerificationAttempts => Set<TicketVerificationAttempt>();
     public DbSet<BookingConfirmationEmailOutbox> BookingConfirmationEmailOutbox =>
         Set<BookingConfirmationEmailOutbox>();
 

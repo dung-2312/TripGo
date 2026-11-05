@@ -70,7 +70,8 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
 
         var migrations = (await db.Database.GetAppliedMigrationsAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
-        if (!migrations.Contains("20261105080107_BookingConfirmationEmailOutbox"))
+        if (!migrations.Contains("20261105080107_BookingConfirmationEmailOutbox") ||
+            !migrations.Any(migration => migration.EndsWith("_Stage1To4_ProductionFoundation", StringComparison.Ordinal)))
         {
             _logger.LogWarning(
                 "Booking confirmation email delivery is disabled because its database migration has not been applied.");
@@ -102,11 +103,15 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
                     continue;
                 }
 
+                // "Sent" records that the SMTP server accepted the message, not that it reached an inbox.
                 message.Status = BookingConfirmationEmailOutbox.Sent;
                 message.SentAt = DateTimeOffset.UtcNow;
                 message.LockedUntil = null;
                 message.LastError = null;
                 await db.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation(
+                    "Outbox message {OutboxId} ({MessageType}) accepted by SMTP on attempt {Attempt}.",
+                    message.Id, message.MessageType, message.AttemptCount);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -116,8 +121,8 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
             {
                 _logger.LogError(
                     exception,
-                    "Booking confirmation email outbox item {OutboxId} failed.",
-                    message.Id);
+                    "Outbox message {OutboxId} ({MessageType}) failed on attempt {Attempt}.",
+                    message.Id, message.MessageType, message.AttemptCount);
                 await MarkFailedAsync(
                     db,
                     message,
@@ -149,6 +154,18 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
 
             if (message == null)
             {
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+            }
+
+            // A worker that died mid-send has already used this attempt. A message that crashed on its
+            // last attempt stops here rather than being retried without limit.
+            if (message.AttemptCount >= MaximumAttempts)
+            {
+                message.Status = BookingConfirmationEmailOutbox.Failed;
+                message.LockedUntil = null;
+                message.LastError = "Worker stopped during the final delivery attempt; the outcome is unknown.";
+                await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return null;
             }

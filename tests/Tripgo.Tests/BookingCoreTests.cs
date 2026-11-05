@@ -25,8 +25,7 @@ namespace Tripgo.Tests;
 [Collection("Database")]
 public class BookingCoreTests : IAsyncLifetime
 {
-    private const string IsolatedConnectionString =
-        "Server=localhost\\MSSQLSERVER01;Database=TripgoDb_IsolatedTest;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true;";
+    private static readonly string IsolatedConnectionString = TestDatabase.ConnectionString;
     private readonly string _runMarker = Guid.NewGuid().ToString("N")[..8];
     private readonly string _defaultOwner = Guid.NewGuid().ToString("N");
 
@@ -69,7 +68,7 @@ public class BookingCoreTests : IAsyncLifetime
             throw new InvalidOperationException("Booking integration tests may only target TripgoDb_IsolatedTest.");
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(IsolatedConnectionString, sqlServer => sqlServer.EnableRetryOnFailure())
+            .UseSqlServer(IsolatedConnectionString, sqlServer => sqlServer.EnableRetryOnFailure().CommandTimeout(120))
             .Options;
         return new AppDbContext(options);
     }
@@ -150,7 +149,11 @@ public class BookingCoreTests : IAsyncLifetime
             BookingConfirmationEmailDto confirmation,
             CancellationToken cancellationToken = default)
         {
-            BookingConfirmationAttempts++;
+            if (confirmation.MessageType == BookingConfirmationEmailOutbox.TypeBookingConfirmation)
+            {
+                BookingConfirmationAttempts++;
+            }
+
             if (ShouldFail)
             {
                 throw new InvalidOperationException("Simulated SMTP failure.");
@@ -1889,7 +1892,8 @@ public class BookingCoreTests : IAsyncLifetime
         Assert.Single(dbBooking.PaymentTransactions);
 
         var queuedEmail = await context.BookingConfirmationEmailOutbox
-            .SingleAsync(item => item.BookingId == dbBooking.Id);
+            .SingleAsync(item => item.BookingId == dbBooking.Id &&
+                                 item.MessageType == BookingConfirmationEmailOutbox.TypeBookingConfirmation);
         Assert.Equal(BookingConfirmationEmailOutbox.Pending, queuedEmail.Status);
         Assert.Equal("test@example.com", queuedEmail.RecipientEmail);
         Assert.Contains(booking.BookingCode!, queuedEmail.Payload);

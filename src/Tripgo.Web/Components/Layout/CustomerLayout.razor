@@ -85,7 +85,7 @@
                                     @if (context.User.IsInRole("Admin"))
                                     {
                                         <div class="dropdown-divider"></div>
-                                        <a class="dropdown-item py-2 d-flex align-items-center gap-2 text-primary" href="/admin/trips" @onclick="CloseUserMenu">
+                                        <a class="dropdown-item py-2 d-flex align-items-center gap-2 text-primary" href="/admin" @onclick="CloseUserMenu">
                                             <i class="bi bi-speedometer2 text-danger fs-5"></i>
                                             <span>Trang Quản trị</span>
                                         </a>
@@ -177,7 +177,7 @@
                 <div>&copy; 2026 TripGo. Môi trường thử nghiệm đặt chỗ và lịch trình tham khảo.</div>
                 <div class="d-flex align-items-center gap-3">
                     <a href="/support" class="text-white-50 text-decoration-none hover-primary">Thông tin hỗ trợ</a>
-                    <a href="/admin/trips" class="text-white-50 text-decoration-none" title="Khu vực quản trị"><i class="bi bi-gear-fill me-1"></i> Quản trị</a>
+                    <a href="/admin" class="text-white-50 text-decoration-none" title="Khu vực quản trị"><i class="bi bi-gear-fill me-1"></i> Quản trị</a>
                 </div>
             </div>
         </div>

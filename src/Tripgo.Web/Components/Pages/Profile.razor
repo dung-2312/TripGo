@@ -1,5 +1,5 @@
 @page "/account/profile"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Tripgo.Web.Services.AccountPolicy.Name)]
 @using System.Security.Claims
 @using Tripgo.Application.DTOs
 @using Tripgo.Application.Interfaces
@@ -81,7 +81,7 @@
                             </div>
                             <div class="d-flex justify-content-between align-items-center small">
                                 <span class="text-secondary"><i class="bi bi-calendar-check-fill me-2 text-success"></i>Ngày tham gia:</span>
-                                <span class="fw-semibold text-dark">@profile.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</span>
+                                <span class="fw-semibold text-dark">@profile.CreatedAt.ToVietnam().ToString("dd/MM/yyyy")</span>
                             </div>
                             <div class="d-flex justify-content-between align-items-center small">
                                 <span class="text-secondary"><i class="bi bi-ticket-perforated-fill me-2 text-warning"></i>Vé đã đặt:</span>

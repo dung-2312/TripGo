@@ -28,11 +28,9 @@ Holds and bookings are associated through the hold token and its stored owner.
 Clearing the browser cookie intentionally loses access to that browser session's
 reservations; booking codes and phone numbers alone do not authorize access.
 
-`/admin/trips` requires the `Admin` role. No user store, admin sign-in, or role
-assignment exists yet, so the route denies access until a real authentication
-provider and controlled administrator provisioning are implemented. Cookie
-authorization failures return HTTP 401/403 rather than redirecting to the public
-home page. Before enabling administration, connect an external OIDC identity
+The `/admin` pages require the `Admin` role, and `AdminService` re-checks the
+account against the database on every call. Admin accounts are local for now.
+Before production administration, connect an external OIDC identity
 provider, require MFA, and map a provider-controlled `TripGo-Administrators` group
 to the `Admin` role. Provision and revoke membership only through the identity
 provider's authorized administrator workflow with approval and audit logging; do

@@ -22,11 +22,11 @@ namespace Tripgo.Tests;
 [Collection("Database")]
 public class AllImportedRoutesBookingTests : IAsyncLifetime
 {
-    private const string IsolatedConnectionString =
-        "Server=localhost\\MSSQLSERVER01;Database=TripgoDb_IsolatedTest;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true;";
+    private static readonly string IsolatedConnectionString = TestDatabase.ConnectionString;
 
     private readonly string _testRunId = Guid.NewGuid().ToString("N")[..8];
     private readonly List<string> _createdBookingCodes = new();
+    private readonly List<long> _createdReferenceTripIds = new();
     private readonly Xunit.Abstractions.ITestOutputHelper? _output;
 
     public AllImportedRoutesBookingTests(Xunit.Abstractions.ITestOutputHelper? output = null)
@@ -45,9 +45,14 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        await using var context = CreateIsolatedContext();
+        if (_createdReferenceTripIds.Count > 0)
+        {
+            await context.Trips.Where(t => _createdReferenceTripIds.Contains(t.Id)).ExecuteDeleteAsync();
+        }
+
         if (_createdBookingCodes.Count == 0) return;
 
-        await using var context = CreateIsolatedContext();
         var bookings = await context.Bookings
             .Include(b => b.BookingSeats)
             .Include(b => b.Passengers)
@@ -83,7 +88,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             throw new InvalidOperationException("Integration tests may ONLY target TripgoDb_IsolatedTest.");
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(IsolatedConnectionString, sql => sql.EnableRetryOnFailure())
+            .UseSqlServer(IsolatedConnectionString, sql => sql.EnableRetryOnFailure().CommandTimeout(120))
             .Options;
         return new AppDbContext(options);
     }
@@ -135,6 +140,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
     {
         await using var context = CreateIsolatedContext();
         var activeRoutes = await context.Routes
+            .AsSplitQuery()
             .Include(r => r.Stops)
                 .ThenInclude(s => s.Point)
             .Include(r => r.Trips)
@@ -295,7 +301,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             Assert.True(bookingResult.Success, $"Booking creation failed on route {route.Code}: {bookingResult.Message}");
             Assert.False(string.IsNullOrWhiteSpace(bookingResult.BookingCode));
             Assert.StartsWith("TRIPGO-", bookingResult.BookingCode);
-            _createdBookingCodes.Add(bookingResult.BookingCode);
+            _createdBookingCodes.Add(bookingResult.BookingCode!);
 
             // Verify initial booking state in DB
             var bookingEntity = await context.Bookings
@@ -488,16 +494,19 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
     public async Task DemonstrateThreeKeyRoutes_IncludingHaNoiToSaPa()
     {
         await using var context = CreateIsolatedContext();
-        var targetRouteCodes = new[] { "SAOVIET-HAN-SAP", "TRONGMINH-SGN-DLI", "FUTA-HAN-DAD" };
+        // Selected by corridor, not by operator-specific route code, so the test holds on any data set.
+        var targetCorridors = new[] { ("HAN", "SAP"), ("SGN", "DLI"), ("HAN", "DAD") };
         var testDate = DateOnly.FromDateTime(DateTime.Today.AddDays(1));
 
-        foreach (var routeCode in targetRouteCodes)
+        foreach (var (originCode, destinationCode) in targetCorridors)
         {
             var route = await context.Routes
                 .Include(r => r.Operator)
                 .Include(r => r.OriginLocation)
                 .Include(r => r.DestinationLocation)
-                .FirstAsync(r => r.Code == routeCode);
+                .FirstAsync(r => r.IsActive &&
+                                 r.OriginLocation.Code == originCode &&
+                                 r.DestinationLocation.Code == destinationCode);
 
             _output?.WriteLine($"=== DEMONSTRATING ROUTE: {route.Code} ({route.OriginLocation.Name} -> {route.DestinationLocation.Name}) by {route.Operator.Name} ===");
 
@@ -540,7 +549,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
                 DropoffPointId = dropoff.Id,
                 PassengerName = $"Khách Hàng {route.Code}",
                 PassengerPhone = phone,
-                PassengerEmail = $"customer.{routeCode.ToLower()}@test.vn",
+                PassengerEmail = $"customer.{route.Code.ToLower()}@test.vn",
                 Passengers = new List<BookingPassengerDto>
                 {
                     new() { FullName = $"Hành Khách {seat.SeatCode}", PhoneNumber = phone, SeatCode = seat.SeatCode, IsPrimaryContact = true }
@@ -554,7 +563,7 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             // Step 6 & 7: Review & Payment Simulation
             var payResult = await paymentService.ProcessPaymentAsync(new ProcessPaymentRequestDto
             {
-                BookingCode = bookingResult.BookingCode,
+                BookingCode = bookingResult.BookingCode!,
                 Amount = bookingResult.TotalAmount,
                 PaymentMethod = "SANDBOX_SIMULATED",
                 SimulateSuccess = true
@@ -582,8 +591,8 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
         var (bookingService, paymentService, tripService) = CreateServices(context, "test-owner");
 
         var locations = await tripService.GetLocationsAsync();
-        var haNoi = locations.FirstOrDefault(l => l.Code == "HAN" || l.Province.Contains("Hà Nội") || l.Name.Contains("Hà Nội"));
-        var saPa = locations.FirstOrDefault(l => l.Code == "SAP" || l.Province.Contains("Lào Cai") || l.Name.Contains("Sa Pa"));
+        var haNoi = locations.FirstOrDefault(l => l.Code == "HAN" || l.Province?.Contains("Hà Nội") == true || l.Name.Contains("Hà Nội"));
+        var saPa = locations.FirstOrDefault(l => l.Code == "SAP" || l.Province?.Contains("Lào Cai") == true || l.Name.Contains("Sa Pa"));
 
         Assert.NotNull(haNoi);
         Assert.NotNull(saPa);
@@ -599,6 +608,28 @@ public class AllImportedRoutesBookingTests : IAsyncLifetime
             DestinationLocationId = saPa.Id,
             DepartureDate = tomorrow
         };
+
+        // A reference schedule row is needed for the assertions below; databases without the imported
+        // schedules get one here, marked as a test row and removed afterwards.
+        var referenceRoute = await context.Routes.FirstAsync(r =>
+            r.IsActive && r.OriginLocationId == haNoi.Id && r.DestinationLocationId == saPa.Id);
+        var referenceBusId = await context.Buses.Where(b => b.IsActive).Select(b => b.Id).FirstAsync();
+        var referenceDeparture = new DateTimeOffset(tomorrow.ToDateTime(new TimeOnly(9, 15)), vnOffset);
+        var referenceTrip = new Trip
+        {
+            RouteId = referenceRoute.Id,
+            BusId = referenceBusId,
+            TripCode = $"REFTEST-{_testRunId}",
+            DepartureTime = referenceDeparture,
+            ExpectedArrivalTime = referenceDeparture.AddHours(6),
+            BasePrice = 100_000m,
+            Status = TripStatus.Scheduled,
+            IsDemoTrip = false,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        context.Trips.Add(referenceTrip);
+        await context.SaveChangesAsync();
+        _createdReferenceTripIds.Add(referenceTrip.Id);
 
         var results = await tripService.SearchTripsAsync(request);
         _output?.WriteLine($"Search results count: {results.Count}");

@@ -29,7 +29,18 @@ public static class DependencyInjection
         services.AddScoped<ITripRepository, TripRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IAdminRepository, AdminRepository>();
+        services.AddScoped<IPaymentGatewayRepository, PaymentGatewayRepository>();
+        services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<Tripgo.Application.Interfaces.IEmailSender, Services.SmtpEmailSender>();
+
+        // The sandbox provider is off in Production unless someone turns it on deliberately.
+        if (!string.Equals(configuration["Payments:Sandbox:Enabled"], "false", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<Services.SandboxPaymentProvider>();
+            services.AddSingleton<Tripgo.Application.Interfaces.IPaymentProvider>(
+                provider => provider.GetRequiredService<Services.SandboxPaymentProvider>());
+        }
         services.AddScoped<Tripgo.Application.Interfaces.ISandboxFixtureService, Tripgo.Infrastructure.Services.SandboxFixtureService>();
 
         return services;

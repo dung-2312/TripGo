@@ -4,6 +4,7 @@
 @using System.Security.Claims
 @inject ITripService TripService
 @inject IBookingService BookingService
+@inject IPaymentService PaymentService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
@@ -220,7 +221,7 @@
                                 </span>
                             </div>
                             <div class="text-muted small">
-                                <i class="bi bi-clock-history me-1"></i>Đặt lúc: @ticket.BookedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                <i class="bi bi-clock-history me-1"></i>Đặt lúc: @ticket.BookedAt.ToVietnam().ToString("dd/MM/yyyy HH:mm")
                             </div>
                         </div>
 
@@ -246,8 +247,8 @@
                                     <div class="row align-items-center text-center text-md-start g-2">
                                         <div class="col-md-4">
                                             <div class="text-muted text-uppercase fw-bold" style="font-size: 0.72rem; letter-spacing: 0.05em;">Khởi hành</div>
-                                            <div class="fs-3 fw-bold text-primary">@ticket.DepartureTime.ToLocalTime().ToString("HH:mm")</div>
-                                            <div class="fw-semibold text-dark small">@ticket.DepartureTime.ToLocalTime().ToString("ddd, dd/MM/yyyy")</div>
+                                            <div class="fs-3 fw-bold text-primary">@ticket.DepartureTime.ToVietnam().ToString("HH:mm")</div>
+                                            <div class="fw-semibold text-dark small">@ticket.DepartureTime.ToVietnam().ToString("ddd, dd/MM/yyyy")</div>
                                             <div class="text-truncate text-secondary small fw-bold mt-1">@GetOriginFromRoute(ticket.RouteName)</div>
                                         </div>
 
@@ -410,7 +411,7 @@
 @if (selectedDetailTicket != null)
 {
     <div class="tg-modal-backdrop" @onclick="CloseTicketModal">
-        <div class="tg-modal-dialog" @onclick:stopPropagation="true">
+        <div class="tg-modal-dialog tg-printable-ticket" role="dialog" aria-modal="true" aria-label="Chi tiết đơn @selectedDetailTicket.BookingCode" @onclick:stopPropagation="true">
             <!-- Modal Header / Airline & Bus Boarding Pass Top -->
             <div class="tg-boarding-pass-head d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div class="d-flex align-items-center gap-2">
@@ -482,7 +483,7 @@
                     <div class="col-md-6">
                         <div class="p-3 rounded-3 bg-light border">
                             <div class="text-muted small fw-bold text-uppercase">Thời gian khởi hành</div>
-                            <div class="fw-bold text-primary fs-5 mt-1">@selectedDetailTicket.DepartureTime.ToLocalTime().ToString("HH:mm - dddd, dd/MM/yyyy")</div>
+                            <div class="fw-bold text-primary fs-5 mt-1">@selectedDetailTicket.DepartureTime.ToVietnam().ToString("HH:mm - dddd, dd/MM/yyyy")</div>
                             <div class="small text-muted mt-1">
                                 <i class="bi bi-exclamation-circle text-warning me-1"></i>
                                 Quý khách vui lòng có mặt tại điểm đón trước <strong>30 phút</strong>.
@@ -594,8 +595,29 @@
                     </div>
                 </div>
 
+                @if (CanPay(selectedDetailTicket))
+                {
+                    <div class="p-3 border rounded-3 bg-light mb-3 d-print-none">
+                        <div class="fw-bold text-dark mb-1"><i class="bi bi-wallet2 text-primary me-1" aria-hidden="true"></i> Tiếp tục thanh toán (mô phỏng Sandbox)</div>
+                        <p class="small text-muted mb-2">Đơn được giữ đến @selectedDetailTicket.ExpiresAt.ToVietnam().ToString("HH:mm dd/MM/yyyy"). Không phát sinh giao dịch tiền thật.</p>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-success btn-sm fw-bold" disabled="@isPaying" @onclick="() => PayAsync(selectedDetailTicket, true)">
+                                @(isPaying ? "Đang xử lý..." : $"Thanh toán mô phỏng {selectedDetailTicket.TotalAmount:N0} đ")
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" disabled="@isPaying" @onclick="() => PayAsync(selectedDetailTicket, false)">
+                                Mô phỏng thanh toán thất bại
+                            </button>
+                        </div>
+                    </div>
+                }
+
+                @if (selectedDetailTicket.BookingStatus is "Confirmed" && selectedDetailTicket.PaymentStatus == "Paid")
+                {
+                    <TicketQr BookingCode="@selectedDetailTicket.BookingCode" />
+                }
+
                 <!-- Modal Actions -->
-                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center d-print-none">
                     <button type="button" class="btn btn-outline-primary rounded-pill px-4 fw-bold" @onclick="PrintBoardingPass">
                         <i class="bi bi-printer me-1"></i> In vé / Lưu PDF
                     </button>
@@ -842,9 +864,54 @@
         return parts.Length > 1 ? parts[1] : routeName;
     }
 
-    private static bool CanCancel(CustomerBookingInfoDto ticket)
+    private static bool CanCancel(CustomerBookingInfoDto ticket) =>
+        ticket.BookingStatus == "PendingPayment" && ticket.PaymentStatus is "Unpaid" or "Failed";
+
+    private static bool CanPay(CustomerBookingInfoDto ticket) =>
+        ticket.BookingStatus == "PendingPayment" &&
+        ticket.PaymentStatus is "Unpaid" or "Failed" &&
+        ticket.ExpiresAt > DateTimeOffset.UtcNow;
+
+    private bool isPaying;
+
+    private async Task PayAsync(CustomerBookingInfoDto ticket, bool simulateSuccess)
     {
-        return ticket.BookingStatus == "PendingPayment";
+        if (isPaying)
+        {
+            return;
+        }
+
+        isPaying = true;
+        actionAlertMessage = null;
+        try
+        {
+            var result = await PaymentService.ProcessPaymentAsync(new ProcessPaymentRequestDto
+            {
+                BookingCode = ticket.BookingCode,
+                PaymentMethod = "SANDBOX_SIMULATED",
+                Amount = ticket.TotalAmount,
+                SimulateSuccess = simulateSuccess,
+                FailureReason = simulateSuccess ? null : "Giao dịch mô phỏng bị từ chối."
+            });
+
+            actionAlertIsError = !result.Success;
+            actionAlertMessage = result.Success
+                ? $"Đã thanh toán mô phỏng đơn {ticket.BookingCode}."
+                : $"Thanh toán mô phỏng không thành công: {result.Message}";
+
+            await LoadTicketsAsync();
+            selectedDetailTicket = allTickets.FirstOrDefault(t => t.BookingId == ticket.BookingId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Resuming payment failed for booking {BookingId}.", ticket.BookingId);
+            actionAlertIsError = true;
+            actionAlertMessage = "Không thể xử lý thanh toán lúc này. Vui lòng thử lại.";
+        }
+        finally
+        {
+            isPaying = false;
+        }
     }
 
     private static string GetStatusBadgeClass(CustomerBookingInfoDto ticket)
@@ -858,10 +925,14 @@
 
     private static string GetStatusLabel(CustomerBookingInfoDto ticket)
     {
-        if (ticket.BookingStatus == "PendingPayment" && ticket.PaymentStatus == "Unpaid")
-            return "CHỜ THANH TOÁN";
+        if (ticket.BookingStatus == "PendingPayment")
+        {
+            return ticket.PaymentStatus == "Failed" ? "THANH TOÁN THẤT BẠI - CÓ THỂ THỬ LẠI" : "CHỜ THANH TOÁN";
+        }
+
         return ticket.BookingStatus switch
         {
+            "Cancelled" when ticket.PaymentStatus == "Refunded" => "ĐÃ HỦY - ĐÃ HOÀN TIỀN",
             "Confirmed" when ticket.PaymentStatus == "Paid" => "ĐÃ XÁC NHẬN (ĐÃ THANH TOÁN)",
             "Cancelled" => "ĐÃ HỦY",
             "Expired" => "HẾT HẠN",

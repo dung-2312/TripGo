@@ -42,7 +42,29 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LogoutPath = "/auth/logout";
         options.AccessDeniedPath = "/login";
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Everyone gets a guest booking-session cookie, so "authenticated" alone would admit anonymous
+    // visitors. A real account is identified by its user ID claim.
+    options.AddPolicy(AccountPolicy.Name, policy =>
+        policy.RequireClaim(System.Security.Claims.ClaimTypes.NameIdentifier));
+});
+builder.Services.AddSingleton<Tripgo.Application.Interfaces.ITicketTokenProtector, TicketTokenProtector>();
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadinessHealthCheck>("database", tags: new[] { "ready" });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("public-api", httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 builder.Services.AddSingleton<ISignInExchangeStore, SignInExchangeStore>();
 builder.Services.AddScoped<IBookingSessionContext, BookingSessionContext>();
 builder.Services.AddHostedService<BookingExpirationWorker>();
@@ -81,6 +103,20 @@ if (!string.IsNullOrWhiteSpace(keyRingPath))
 }
 
 var app = builder.Build();
+
+if (app.Environment.IsProduction())
+{
+    // Reported loudly but not fatal: an operator may be deliberately running a staging rehearsal.
+    if (string.IsNullOrWhiteSpace(keyRingPath))
+    {
+        app.Logger.LogWarning("DataProtection:KeyRingPath is not set. Sign-in cookies and ticket codes will not survive a restart on another host.");
+    }
+
+    if (app.Services.GetServices<Tripgo.Application.Interfaces.IPaymentProvider>().Any(provider => provider.IsSandbox))
+    {
+        app.Logger.LogCritical("The sandbox payment provider is enabled in Production. Set Payments:Sandbox:Enabled to false.");
+    }
+}
 
 // =========================================================================================
 // RUNTIME DATABASE SAFETY GUARD — FAIL-FAST ENFORCEMENT
@@ -124,18 +160,14 @@ if (app.Environment.IsDevelopment())
 // Startup migration and seeding are restricted to an explicit local isolated-test target.
 if (builder.Configuration.GetValue<bool>("ApplyMigrationsOnStartup", false))
 {
-    var migrationTarget = new SqlConnectionStringBuilder(
-        builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty);
-    var allowedMigrationServer =
-        string.Equals(migrationTarget.DataSource, @"Admin-PC\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(migrationTarget.DataSource, @"localhost\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase);
+    var migrationViolation = DatabaseTargetGuard.GetWriteTargetViolation(
+        builder.Configuration.GetConnectionString("DefaultConnection"));
 
-    if (!app.Environment.IsDevelopment() ||
-        !allowedMigrationServer ||
-        !string.Equals(migrationTarget.InitialCatalog, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+    if (!app.Environment.IsDevelopment() || migrationViolation != null)
     {
         app.Logger.LogCritical(
-            "Automatic migration and seeding were blocked. They are permitted only in Development against TripgoDb_IsolatedTest on the approved SQL Server instance.");
+            "Automatic migration and seeding were blocked. They are permitted only in Development against TripgoDb_IsolatedTest on an approved SQL Server instance. Reason: {Reason}",
+            migrationViolation ?? "The environment is not Development.");
     }
     else
     {
@@ -185,7 +217,46 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseMiddleware<BookingSessionMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
+
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
+
+// Signed provider callbacks. The signature, not the caller, is what gets trusted here.
+app.MapPost("/api/payments/callback/{provider}", async (
+    string provider,
+    HttpRequest request,
+    Tripgo.Application.Interfaces.IPaymentGatewayService gateway,
+    CancellationToken cancellationToken) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync(cancellationToken);
+    var outcome = await gateway.HandleCallbackAsync(
+        provider,
+        new Tripgo.Application.DTOs.Payment.PaymentCallbackRequest(body, request.Headers["X-Tripgo-Signature"].ToString()),
+        cancellationToken);
+    return outcome.Accepted ? Results.Ok(new { outcome.Outcome }) : Results.BadRequest(new { outcome.Outcome });
+}).DisableAntiforgery().RequireRateLimiting("public-api");
+
+app.MapPost("/api/tickets/verify", async (
+    TicketVerifyRequest request,
+    Tripgo.Application.Interfaces.ITicketService tickets,
+    CancellationToken cancellationToken) =>
+{
+    var result = request.Board
+        ? await tickets.BoardAsync(request.Token ?? string.Empty, cancellationToken)
+        : await tickets.VerifyAsync(request.Token ?? string.Empty, cancellationToken);
+    return Results.Ok(result);
+}).RequireAuthorization(new Microsoft.AspNetCore.Authorization.AuthorizeAttribute { Roles = "Admin,Operator" })
+  .DisableAntiforgery()
+  .RequireRateLimiting("public-api");
 
 app.MapGet("/auth/exchange", async (
     string? token,
@@ -267,3 +338,8 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+internal sealed record TicketVerifyRequest(string? Token, bool Board);
+
+/// <summary>Exposed for the integration tests' WebApplicationFactory.</summary>
+public partial class Program;

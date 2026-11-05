@@ -1,0 +1,143 @@
+@page "/admin/operators"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Nhà xe | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Nhà xe</h1>
+<p class="adm-subtitle">Trạng thái "đã xác minh" chỉ được ghi nhận khi quản trị viên nhập bằng chứng cụ thể.</p>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+<section class="adm-card">
+    <h2>@(form.Id > 0 ? $"Sửa nhà xe {form.Code}" : "Thêm nhà xe")</h2>
+    <div class="adm-form">
+        <label>Tên nhà xe *<input @bind="form.Name" maxlength="200" /></label>
+        <label>Mã nhà xe *<input @bind="form.Code" maxlength="30" /></label>
+        <label>Tên pháp lý<input @bind="form.LegalName" maxlength="250" /></label>
+        <label>Mã số thuế<input @bind="form.TaxCode" maxlength="30" /></label>
+        <label>Điện thoại<input @bind="form.Phone" type="tel" maxlength="20" /></label>
+        <label>Email<input @bind="form.Email" type="email" maxlength="254" /></label>
+        <label class="wide">Địa chỉ<input @bind="form.Address" maxlength="500" /></label>
+        <label class="wide">Nguồn dữ liệu (đường dẫn hoặc tài liệu)<input @bind="form.SourceReference" maxlength="500" /></label>
+    </div>
+    <div class="adm-actions">
+        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveAsync">@(form.Id > 0 ? "Lưu thay đổi" : "Thêm nhà xe")</button>
+        @if (form.Id > 0)
+        {
+            <button type="button" class="adm-btn" @onclick="() => form = new()">Hủy sửa</button>
+        }
+    </div>
+</section>
+
+<section class="adm-card">
+    <div class="adm-toolbar">
+        <h2>Danh sách (@operators.Count)</h2>
+        <input aria-label="Tìm nhà xe" placeholder="Tìm theo tên hoặc mã..." @bind="search" @bind:after="ReloadAsync" />
+    </div>
+    @if (operators.Count == 0)
+    {
+        <div class="adm-empty">Chưa có nhà xe nào phù hợp.</div>
+    }
+    else
+    {
+        <div class="adm-table-wrap">
+            <table class="adm-table">
+                <thead><tr><th>Nhà xe</th><th>Liên hệ</th><th>Nguồn</th><th>Tuyến / Xe</th><th>Hoạt động</th><th>Xác minh</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var op in operators)
+                    {
+                        <tr>
+                            <td><strong>@op.Name</strong><small>@op.Code</small></td>
+                            <td>@(op.Phone ?? "—")<small>@op.Email</small></td>
+                            <td>@DataSourceLabel(op.DataSource)</td>
+                            <td>@op.RouteCount / @op.BusCount</td>
+                            <td><span class="adm-pill @(op.IsActive ? "good" : "muted")">@(op.IsActive ? "Hoạt động" : "Ngưng")</span></td>
+                            <td>
+                                <span class="adm-pill @(op.IsVerified ? "good" : "warn")">@(op.IsVerified ? "Đã xác minh" : "Chưa xác minh")</span>
+                                @if (op.IsVerified)
+                                {
+                                    <small>@op.VerificationEvidence</small>
+                                }
+                            </td>
+                            <td class="adm-row-actions">
+                                <button type="button" class="adm-btn small" @onclick="() => Edit(op)">Sửa</button>
+                                <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => ToggleActiveAsync(op)">@(op.IsActive ? "Ngưng" : "Kích hoạt")</button>
+                                <button type="button" class="adm-btn small" @onclick="() => BeginVerify(op)">@(op.IsVerified ? "Gỡ xác minh" : "Xác minh")</button>
+                            </td>
+                        </tr>
+                        @if (verifyingId == op.Id)
+                        {
+                            <tr class="adm-subrow">
+                                <td colspan="7">
+                                    @if (op.IsVerified)
+                                    {
+                                        <p>Gỡ trạng thái đã xác minh của <strong>@op.Name</strong>?</p>
+                                        <button type="button" class="adm-btn danger" disabled="@IsBusy" @onclick="() => SetVerifiedAsync(op, false)">Gỡ xác minh</button>
+                                    }
+                                    else
+                                    {
+                                        <label class="wide">Bằng chứng xác minh (giấy phép, nguồn công bố, người xác nhận) *
+                                            <textarea rows="2" maxlength="1000" @bind="evidence" @bind:event="oninput"></textarea>
+                                        </label>
+                                        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="() => SetVerifiedAsync(op, true)">Ghi nhận đã xác minh</button>
+                                    }
+                                    <button type="button" class="adm-btn" @onclick="() => verifyingId = null">Đóng</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private List<AdminOperatorDto> operators = new();
+    private AdminOperatorInput form = new();
+    private string? search;
+    private long? verifyingId;
+    private string? evidence;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private Task ReloadAsync() => LoadAsync(async () => operators = await Admin.GetOperatorsAsync(search));
+
+    private Task SaveAsync() => RunAsync(() => Admin.SaveOperatorAsync(form), async () =>
+    {
+        form = new();
+        await ReloadAsync();
+    });
+
+    private void Edit(AdminOperatorDto op) => form = new AdminOperatorInput
+    {
+        Id = op.Id,
+        Code = op.Code,
+        Name = op.Name,
+        LegalName = op.LegalName,
+        TaxCode = op.TaxCode,
+        Phone = op.Phone,
+        Email = op.Email,
+        Address = op.Address,
+        Description = op.Description,
+        SourceReference = op.SourceReference
+    };
+
+    private Task ToggleActiveAsync(AdminOperatorDto op) =>
+        RunAsync(() => Admin.SetOperatorActiveAsync(op.Id, !op.IsActive), ReloadAsync);
+
+    private void BeginVerify(AdminOperatorDto op)
+    {
+        verifyingId = op.Id;
+        evidence = null;
+    }
+
+    private Task SetVerifiedAsync(AdminOperatorDto op, bool verified) =>
+        RunAsync(() => Admin.SetOperatorVerificationAsync(op.Id, verified, evidence), async () =>
+        {
+            verifyingId = null;
+            await ReloadAsync();
+        });
+}

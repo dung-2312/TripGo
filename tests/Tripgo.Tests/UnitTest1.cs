@@ -768,6 +768,7 @@ public class ReferenceTripBookingRestrictionTests
                     TripCode = "DEMO-ADMIN-2",
                     IsDemoTrip = true,
                     Status = TripStatus.Scheduled,
+                    DepartureTime = DateTimeOffset.UtcNow.AddDays(1),
                     Bus = new Bus { SeatLayout = new SeatLayout { TotalSeats = 8 } },
                     Seats = new List<TripSeat>
                     {

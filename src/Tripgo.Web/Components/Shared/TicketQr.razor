@@ -1,0 +1,72 @@
+@using QRCoder
+@inject ITicketService Tickets
+@inject ILogger<TicketQr> Logger
+
+<div class="tg-ticket-qr mb-3" aria-live="polite">
+    @if (isLoading)
+    {
+        <div class="small text-muted"><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Đang tạo mã kiểm tra...</div>
+    }
+    else if (ticket is { Available: true, Token: not null })
+    {
+        <div class="tg-ticket-qr-image" role="img" aria-label="Mã QR kiểm tra thử nghiệm của đơn @BookingCode">
+            @((MarkupString)svg)
+            @if (ticket.IsSandbox)
+            {
+                <span class="tg-ticket-qr-stamp" aria-hidden="true">SANDBOX</span>
+            }
+        </div>
+        <div>
+            @if (ticket.IsSandbox)
+            {
+                <div class="fw-bold text-dark">Mã kiểm tra SANDBOX — không có giá trị lên xe</div>
+                <p class="small text-muted mb-1">Mã này chỉ dùng để thử quy trình kiểm tra vé. Đây không phải vé thương mại.</p>
+            }
+            else
+            {
+                <div class="fw-bold text-dark">Mã lên xe</div>
+            }
+            <p class="small text-muted mb-0">Mã không chứa thông tin cá nhân. Có hiệu lực đến @ticket.ExpiresAt?.ToVietnam().ToString("HH:mm dd/MM/yyyy").</p>
+            @if (ticket.BoardedAt.HasValue)
+            {
+                <p class="small fw-bold text-success mb-0 mt-1">Đã kiểm tra lúc @ticket.BoardedAt.Value.ToVietnam().ToString("HH:mm dd/MM/yyyy").</p>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="small text-muted">@(ticket?.Message ?? "Không có mã kiểm tra cho đơn này.")</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string BookingCode { get; set; } = string.Empty;
+
+    private MyTicketDto? ticket;
+    private string svg = string.Empty;
+    private bool isLoading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoading = true;
+        try
+        {
+            ticket = await Tickets.GetMyTicketAsync(BookingCode);
+            if (ticket is { Available: true, Token: not null })
+            {
+                using var generator = new QRCodeGenerator();
+                using var data = generator.CreateQrCode(ticket.Token, QRCodeGenerator.ECCLevel.M);
+                svg = new SvgQRCode(data).GetGraphic(4);
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Loading the ticket code failed.");
+            ticket = new MyTicketDto { Message = "Không thể tạo mã kiểm tra lúc này." };
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

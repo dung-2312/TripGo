@@ -1,4 +1,4 @@
-﻿namespace Tripgo.Domain.Entities;
+namespace Tripgo.Domain.Entities;
 
 public class Route
 {
@@ -17,6 +17,8 @@ public class Route
     public decimal? DistanceKm { get; set; }
 
     public int? EstimatedDurationMinutes { get; set; }
+    public Enums.TransportDataSource DataSource { get; set; } = Enums.TransportDataSource.Unverified;
+    public string? SourceReference { get; set; }
 
     public bool IsActive { get; set; } = true;
 

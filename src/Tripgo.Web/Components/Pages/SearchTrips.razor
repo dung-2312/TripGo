@@ -41,7 +41,7 @@
                 <div class="row g-2 align-items-center">
                     <!-- Nơi xuất phát -->
                     <div class="col-lg-3 col-md-6 position-relative">
-                        <div class="tg-input-wrapper" @onclick="() => ToggleDropdown(true)">
+                        <div class="tg-input-wrapper" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="@showOriginDropdown" @onclick="() => ToggleDropdown(true)" @onkeydown="e => OnPickerKey(e, true)">
                             <label class="tg-label small text-muted d-block fw-semibold mb-1">
                                 <i class="bi bi-geo-alt-fill text-primary me-1"></i> Nơi xuất phát
                             </label>
@@ -61,7 +61,7 @@
                                     @foreach (var loc in FilteredOriginLocations)
                                     {
                                         <div class="p-2 rounded cursor-pointer tg-drop-item @(searchModel.OriginLocationId == loc.Id ? "bg-primary-subtle text-primary fw-bold" : "")"
-                                             @onclick="() => SelectOrigin(loc)">
+                                             role="option" tabindex="0" @onclick="() => SelectOrigin(loc)" @onkeydown="e => OnOptionKey(e, () => SelectOrigin(loc))">
                                             <i class="bi bi-geo-alt me-1 text-primary"></i> @loc.Name <span class="text-muted small">(@loc.Province)</span>
                                         </div>
                                     }
@@ -72,14 +72,14 @@
 
                     <!-- Nút Swap Đảo chiều -->
                     <div class="col-auto d-none d-lg-flex justify-content-center px-0">
-                        <button type="button" class="tg-swap-btn" @onclick="SwapLocations" title="Đổi nơi đi và nơi đến">
+                        <button type="button" class="tg-swap-btn" @onclick="SwapLocations" title="Đổi nơi đi và nơi đến" aria-label="Đổi nơi đi và nơi đến">
                             <i class="bi bi-arrow-left-right fs-6"></i>
                         </button>
                     </div>
 
                     <!-- Nơi đến -->
                     <div class="col-lg-3 col-md-6 position-relative">
-                        <div class="tg-input-wrapper" @onclick="() => ToggleDropdown(false)">
+                        <div class="tg-input-wrapper" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="@showDestDropdown" @onclick="() => ToggleDropdown(false)" @onkeydown="e => OnPickerKey(e, false)">
                             <label class="tg-label small text-muted d-block fw-semibold mb-1">
                                 <i class="bi bi-geo-alt-fill text-danger me-1"></i> Nơi đến
                             </label>
@@ -99,7 +99,7 @@
                                     @foreach (var loc in FilteredDestLocations)
                                     {
                                         <div class="p-2 rounded cursor-pointer tg-drop-item @(searchModel.DestinationLocationId == loc.Id ? "bg-primary-subtle text-danger fw-bold" : "")"
-                                             @onclick="() => SelectDestination(loc)">
+                                             role="option" tabindex="0" @onclick="() => SelectDestination(loc)" @onkeydown="e => OnOptionKey(e, () => SelectDestination(loc))">
                                             <i class="bi bi-geo-alt me-1 text-danger"></i> @loc.Name <span class="text-muted small">(@loc.Province)</span>
                                         </div>
                                     }
@@ -116,9 +116,9 @@
                                     <i class="bi bi-calendar3 text-primary me-1"></i> Ngày đi
                                 </label>
                                 <div class="d-flex gap-1">
-                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip @(searchModel.DepartureDate == DateOnly.FromDateTime(DateTime.Today) ? "active" : "")" @onclick="() => SelectQuickDate(0)">Hôm nay</button>
-                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip @(searchModel.DepartureDate == DateOnly.FromDateTime(DateTime.Today.AddDays(1)) ? "active" : "")" @onclick="() => SelectQuickDate(1)">Ngày mai</button>
-                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip d-none d-xl-inline @(searchModel.DepartureDate == DateOnly.FromDateTime(DateTime.Today.AddDays(2)) ? "active" : "")" @onclick="() => SelectQuickDate(2)">+2 ngày</button>
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip @(searchModel.DepartureDate == VietnamTime.Today() ? "active" : "")" @onclick="() => SelectQuickDate(0)">Hôm nay</button>
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip @(searchModel.DepartureDate == VietnamTime.Today().AddDays(1) ? "active" : "")" @onclick="() => SelectQuickDate(1)">Ngày mai</button>
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none tg-date-chip d-none d-xl-inline @(searchModel.DepartureDate == VietnamTime.Today().AddDays(2) ? "active" : "")" @onclick="() => SelectQuickDate(2)">+2 ngày</button>
                                 </div>
                             </div>
                             <InputDate @bind-Value="searchModel.DepartureDate" class="form-control form-control-sm border-0 p-0 fw-bold fs-6 text-dark" />
@@ -187,7 +187,7 @@
 
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <div class="btn-group btn-group-sm" role="group" aria-label="Đổi ngày">
-                            <button type="button" class="btn btn-outline-primary px-3 py-2 fw-semibold" @onclick="TryPreviousDay" disabled="@(searchModel.DepartureDate <= DateOnly.FromDateTime(DateTime.Today))" title="Ngày trước">
+                            <button type="button" class="btn btn-outline-primary px-3 py-2 fw-semibold" @onclick="TryPreviousDay" disabled="@(searchModel.DepartureDate <= VietnamTime.Today())" title="Ngày trước">
                                 <i class="bi bi-chevron-left me-1"></i> Ngày trước
                             </button>
                             <button type="button" class="btn btn-outline-primary px-3 py-2 fw-semibold" @onclick="TryNextDay" title="Ngày sau">
@@ -324,7 +324,7 @@
                                     <div class="col-md-8">
                                         <div class="d-flex align-items-center gap-3 mb-2">
                                             <div class="rounded-3 bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-xs" style="width: 44px; height: 44px; font-size: 1.15rem; flex-shrink: 0;">
-                                                @(string.IsNullOrWhiteSpace(trip.OperatorName) ? "T" : trip.OperatorName.Substring(0, 1))
+                                                @OperatorInitial(trip.OperatorName)
                                             </div>
                                             <div>
                                                 <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -350,7 +350,7 @@
 
                                         <div class="d-flex align-items-center gap-3 my-3">
                                             <div>
-                                                <span class="fs-4 fw-bold text-primary">@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</span>
+                                                <span class="fs-4 fw-bold text-primary">@trip.DepartureTime.ToVietnam().ToString("HH:mm")</span>
                                                 <div class="small text-dark fw-semibold">@(originLocation?.Name ?? "Điểm đi")</div>
                                             </div>
                                             <div class="text-center px-2 flex-grow-1">
@@ -364,7 +364,7 @@
                                                 <small class="text-muted fw-bold"><i class="bi bi-info-circle me-1"></i>Thời gian tham khảo</small>
                                             </div>
                                             <div>
-                                                <span class="fs-4 fw-bold text-navy">@trip.ArrivalTime.ToLocalTime().ToString("HH:mm")</span>
+                                                <span class="fs-4 fw-bold text-navy">@trip.ArrivalTime.ToVietnam().ToString("HH:mm")</span>
                                                 <div class="small text-dark fw-semibold">@(destLocation?.Name ?? "Điểm đến")</div>
                                             </div>
                                         </div>
@@ -679,8 +679,17 @@
                                                     <div class="tg-seat-berth seat-booked" style="width: 28px; height: 32px; padding: 2px; cursor: default;">
                                                         <div class="tg-berth-pillow" style="width: 14px; height: 4px;"></div>
                                                     </div>
-                                                    <span class="text-secondary fw-semibold">Đã bán / Đang giữ</span>
+                                                    <span class="text-secondary fw-semibold">Đã bán</span>
                                                 </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="tg-seat-berth seat-held" style="width: 28px; height: 32px; padding: 2px; cursor: default;">
+                                                        <div class="tg-berth-pillow" style="width: 14px; height: 4px;"></div>
+                                                    </div>
+                                                    <span class="text-secondary fw-semibold">Đang được giữ</span>
+                                                </div>
+                                                <button type="button" class="btn btn-sm btn-link text-decoration-none ms-auto p-0" disabled="@isRefreshingSeats" @onclick="RefreshSeatsAsync">
+                                                    <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>@(isRefreshingSeats ? "Đang cập nhật..." : "Cập nhật sơ đồ")
+                                                </button>
                                             </div>
 
                                             <div class="row g-3">
@@ -703,17 +712,20 @@
                                                             </div>
 
                                                             <div class="d-flex flex-column gap-2">
+                                                                @{ var splitColumn = (int)Math.Ceiling(floor.Max(s => s.Column) / 2d); }
                                                                 @foreach (var rowGroup in floor.GroupBy(s => s.Row).OrderBy(g => g.Key))
                                                                 {
                                                                     <div class="d-flex justify-content-between align-items-center gap-2">
                                                                         <!-- Dãy bên trái (Column 1) -->
                                                                         <div class="d-flex gap-2">
-                                                                            @foreach (var seat in rowGroup.Where(s => s.Column == 1))
+                                                                            @foreach (var seat in rowGroup.Where(s => s.Column <= splitColumn).OrderBy(s => s.Column))
                                                                             {
                                                                                 <button type="button" class="tg-seat-berth @(GetSeatClass(seat))"
                                                                                         disabled="@(!seat.IsAvailable)"
+                                                                                        aria-pressed="@(selectedSeats.Contains(seat.SeatCode) ? "true" : "false")"
+                                                                                        aria-label="Ghế @seat.SeatCode, @GetSeatStatusText(seat)"
                                                                                         @onclick="() => ToggleSeat(seat.SeatCode)"
-                                                                                        title="Ghế @seat.SeatCode - @(seat.IsAvailable ? "Còn trống" : "Đã bán")">
+                                                                                        title="Ghế @seat.SeatCode - @GetSeatStatusText(seat)">
                                                                                     <div class="tg-berth-pillow"></div>
                                                                                     <span class="tg-berth-code">@seat.SeatCode</span>
                                                                                     <span class="tg-berth-price">@((seat.Price > 0 ? seat.Price : selectedTripDetail.BasePrice).ToString("N0"))đ</span>
@@ -728,12 +740,14 @@
 
                                                                         <!-- Dãy bên phải (Column 2) -->
                                                                         <div class="d-flex gap-2">
-                                                                            @foreach (var seat in rowGroup.Where(s => s.Column == 2))
+                                                                            @foreach (var seat in rowGroup.Where(s => s.Column > splitColumn).OrderBy(s => s.Column))
                                                                             {
                                                                                 <button type="button" class="tg-seat-berth @(GetSeatClass(seat))"
                                                                                         disabled="@(!seat.IsAvailable)"
+                                                                                        aria-pressed="@(selectedSeats.Contains(seat.SeatCode) ? "true" : "false")"
+                                                                                        aria-label="Ghế @seat.SeatCode, @GetSeatStatusText(seat)"
                                                                                         @onclick="() => ToggleSeat(seat.SeatCode)"
-                                                                                        title="Ghế @seat.SeatCode - @(seat.IsAvailable ? "Còn trống" : "Đã bán")">
+                                                                                        title="Ghế @seat.SeatCode - @GetSeatStatusText(seat)">
                                                                                     <div class="tg-berth-pillow"></div>
                                                                                     <span class="tg-berth-code">@seat.SeatCode</span>
                                                                                     <span class="tg-berth-price">@((seat.Price > 0 ? seat.Price : selectedTripDetail.BasePrice).ToString("N0"))đ</span>
@@ -1021,7 +1035,14 @@
                                             </div>
 
                                             <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top flex-wrap gap-2">
-                                                <BackButton Label="Quay lại điểm đón/trả" OnClick="() => bookingStep = 1" />
+                                                @if (string.IsNullOrEmpty(confirmedBookingCode))
+                                                {
+                                                    <BackButton Label="Quay lại điểm đón/trả" OnClick="() => bookingStep = 1" />
+                                                }
+                                                else
+                                                {
+                                                    <span></span>
+                                                }
                                                 <button type="button" class="btn btn-primary fw-bold px-4 py-2"
                                                         disabled="@(string.IsNullOrWhiteSpace(booker.Name) || string.IsNullOrWhiteSpace(booker.Phone))"
                                                         @onclick="PrepareStep3">
@@ -1043,7 +1064,7 @@
                                                         <ul class="list-unstyled small mb-0 d-flex flex-column gap-1">
                                                             <li><span class="text-muted">Người liên hệ:</span> <strong class="text-dark">@booker.Name</strong> • SĐT: <strong class="text-dark">@booker.Phone</strong></li>
                                                             <li><span class="text-muted">Email:</span> <strong>@(string.IsNullOrWhiteSpace(booker.Email) ? "Không cung cấp" : booker.Email)</strong></li>
-                                                            <li><span class="text-muted">Thời gian khởi hành:</span> <strong>@selectedTripDetail.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong></li>
+                                                            <li><span class="text-muted">Thời gian khởi hành:</span> <strong>@selectedTripDetail.DepartureTime.ToVietnam().ToString("dd/MM/yyyy HH:mm")</strong></li>
                                                             <li><span class="text-muted">Điểm đón:</span> <strong>@(selectedPickupPoint?.Time) - @(selectedPickupPoint?.Name)</strong> (@(selectedPickupPoint?.Address))</li>
                                                             <li><span class="text-muted">Điểm trả:</span> <strong>@(selectedDropoffPoint?.Time) - @(selectedDropoffPoint?.Name)</strong> (@(selectedDropoffPoint?.Address))</li>
                                                             <li><span class="text-muted">Ghế đã chọn:</span> <strong class="badge bg-primary text-white">@string.Join(", ", selectedSeats.OrderBy(s => s))</strong></li>
@@ -1086,8 +1107,8 @@
                                                                     <i class="bi bi-credit-card-2-front"></i>
                                                                 </div>
                                                                 <div class="flex-grow-1">
-                                                                    <div class="fw-bold text-dark">Thẻ ATM / Chuyển khoản VietQR (Mô phỏng Sandbox)</div>
-                                                                    <small class="text-muted d-block">Mô phỏng cổng thanh toán trực tuyến NAPAS / VNPAY / VietQR</small>
+                                                                    <div class="fw-bold text-dark">Thẻ / chuyển khoản (mô phỏng)</div>
+                                                                    <small class="text-muted d-block">Không kết nối ngân hàng hay cổng thanh toán thật nào.</small>
                                                                 </div>
                                                             </label>
                                                             <label class="tg-paymethod-card @(selectedPaymentMethod == "SANDBOX_EWALLET" ? "selected-payment" : "")">
@@ -1096,8 +1117,8 @@
                                                                     <i class="bi bi-phone"></i>
                                                                 </div>
                                                                 <div class="flex-grow-1">
-                                                                    <div class="fw-bold text-dark">Ví điện tử MoMo / ZaloPay / PayOS (Mô phỏng Sandbox)</div>
-                                                                    <small class="text-muted d-block">Mô phỏng quét mã QR thanh toán ví điện tử nhanh chóng</small>
+                                                                    <div class="fw-bold text-dark">Ví điện tử (mô phỏng)</div>
+                                                                    <small class="text-muted d-block">Không kết nối ví điện tử thật nào.</small>
                                                                 </div>
                                                             </label>
                                                         </div>
@@ -1167,7 +1188,17 @@
                                             </div>
 
                                             <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top flex-wrap gap-2">
-                                                <BackButton Label="Quay lại thông tin khách" OnClick="() => bookingStep = 2" />
+                                                @if (string.IsNullOrEmpty(confirmedBookingCode))
+                                                {
+                                                    <BackButton Label="Quay lại thông tin khách" OnClick="() => bookingStep = 2" />
+                                                }
+                                                else
+                                                {
+                                                    @* The order already exists with these seats and passengers; changing them means a new order. *@
+                                                    <button type="button" class="btn btn-outline-danger px-3 py-2" disabled="@isBooking" @onclick="CancelPendingBookingAsync">
+                                                        <i class="bi bi-x-circle me-1" aria-hidden="true"></i> Hủy đơn @confirmedBookingCode và chọn lại
+                                                    </button>
+                                                }
                                                 <button type="button" class="btn btn-success fw-bold px-4 py-2" disabled="@isBooking" @onclick="ExecutePaymentAndConfirm">
                                                     @if (isBooking)
                                                     {
@@ -1226,7 +1257,7 @@
                                                             <div class="col-md-5 text-md-end">
                                                                 <div class="text-muted small fw-bold text-uppercase">Thời gian khởi hành</div>
                                                                 <div class="fw-bold text-primary fs-5 mt-1">
-                                                                    @(selectedTripDetail?.DepartureTime.ToLocalTime().ToString("HH:mm - dd/MM/yyyy") ?? DepartureDateLabel)
+                                                                    @(selectedTripDetail?.DepartureTime.ToVietnam().ToString("HH:mm - dd/MM/yyyy") ?? DepartureDateLabel)
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1402,7 +1433,7 @@
 
                 <div class="row g-3">
                     <div class="col-lg-4 col-md-6">
-                        <div class="tg-dest-card" @onclick='() => QuickSearchDestination("HAN")' title="Tìm chuyến đi Hà Nội">
+                        <div class="tg-dest-card @(HasRouteTo("HAN") ? "" : "d-none")" role="button" tabindex="0" @onclick='() => QuickSearchDestination("HAN")' @onkeydown='e => OnCardKey(e, "HAN")' title="Tìm chuyến đi Hà Nội">
                             <img src="/images/destinations/hanoi.jpg" alt="Hà Nội" class="w-100 h-100 object-fit-cover d-block" />
                             <div class="tg-dest-overlay">
                                 <div class="tg-dest-title">Hà Nội</div>
@@ -1411,7 +1442,7 @@
                         </div>
                     </div>
                     <div class="col-lg-4 col-md-6">
-                        <div class="tg-dest-card" @onclick='() => QuickSearchDestination("SAP")' title="Tìm chuyến đi Sa Pa">
+                        <div class="tg-dest-card @(HasRouteTo("SAP") ? "" : "d-none")" role="button" tabindex="0" @onclick='() => QuickSearchDestination("SAP")' @onkeydown='e => OnCardKey(e, "SAP")' title="Tìm chuyến đi Sa Pa">
                             <img src="https://images.unsplash.com/photo-1528127269322-539801943592?w=600&auto=format&fit=crop&q=80" alt="Sa Pa" class="w-100 h-100 object-fit-cover d-block" />
                             <div class="tg-dest-overlay">
                                 <div class="tg-dest-title">Sa Pa (Lào Cai)</div>
@@ -1420,7 +1451,7 @@
                         </div>
                     </div>
                     <div class="col-lg-4 col-md-6">
-                        <div class="tg-dest-card" @onclick='() => QuickSearchDestination("DAN")' title="Tìm chuyến đi Đà Nẵng">
+                        <div class="tg-dest-card @(HasRouteTo("DAD") ? "" : "d-none")" role="button" tabindex="0" @onclick='() => QuickSearchDestination("DAD")' @onkeydown='e => OnCardKey(e, "DAD")' title="Tìm chuyến đi Đà Nẵng">
                             <img src="https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=600&auto=format&fit=crop&q=80" alt="Đà Nẵng" class="w-100 h-100 object-fit-cover d-block" />
                             <div class="tg-dest-overlay">
                                 <div class="tg-dest-title">Đà Nẵng</div>
@@ -1429,7 +1460,7 @@
                         </div>
                     </div>
                     <div class="col-lg-4 col-md-6">
-                        <div class="tg-dest-card" @onclick='() => QuickSearchDestination("SGN")' title="Tìm chuyến đi TP. Hồ Chí Minh">
+                        <div class="tg-dest-card @(HasRouteTo("SGN") ? "" : "d-none")" role="button" tabindex="0" @onclick='() => QuickSearchDestination("SGN")' @onkeydown='e => OnCardKey(e, "SGN")' title="Tìm chuyến đi TP. Hồ Chí Minh">
                             <img src="https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=600&auto=format&fit=crop&q=80" alt="TP. Hồ Chí Minh" class="w-100 h-100 object-fit-cover d-block" />
                             <div class="tg-dest-overlay">
                                 <div class="tg-dest-title">TP. Hồ Chí Minh</div>
@@ -1438,7 +1469,7 @@
                         </div>
                     </div>
                     <div class="col-lg-4 col-md-6">
-                        <div class="tg-dest-card" @onclick='() => QuickSearchDestination("DLA")' title="Tìm chuyến đi Đà Lạt">
+                        <div class="tg-dest-card @(HasRouteTo("DLI") ? "" : "d-none")" role="button" tabindex="0" @onclick='() => QuickSearchDestination("DLI")' @onkeydown='e => OnCardKey(e, "DLI")' title="Tìm chuyến đi Đà Lạt">
                             <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80" alt="Đà Lạt" class="w-100 h-100 object-fit-cover d-block" />
                             <div class="tg-dest-overlay">
                                 <div class="tg-dest-title">Đà Lạt (Lâm Đồng)</div>
@@ -1447,7 +1478,7 @@
                         </div>
                     </div>
                     <div class="col-lg-4 col-md-6">
-                        <div class="tg-dest-card" @onclick='() => QuickSearchDestination("NHA")' title="Tìm chuyến đi Nha Trang">
+                        <div class="tg-dest-card @(HasRouteTo("NHA") ? "" : "d-none")" role="button" tabindex="0" @onclick='() => QuickSearchDestination("NHA")' @onkeydown='e => OnCardKey(e, "NHA")' title="Tìm chuyến đi Nha Trang">
                             <img src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop&q=80" alt="Nha Trang" class="w-100 h-100 object-fit-cover d-block" />
                             <div class="tg-dest-overlay">
                                 <div class="tg-dest-title">Nha Trang (Khánh Hòa)</div>
@@ -1588,7 +1619,7 @@
     private List<TripSearchResultDto> searchResults = new();
     private TripSearchRequestDto searchModel = new()
     {
-        DepartureDate = DateOnly.FromDateTime(DateTime.Today)
+        DepartureDate = VietnamTime.Today()
     };
 
     private LocationDto? originLocation;
@@ -1622,6 +1653,7 @@
     private CancellationTokenSource? countdownCts;
     private string countdownText = "10:00";
     private bool isHoldingSeats;
+    private bool isRefreshingSeats;
     private string selectedPaymentMethod = "SANDBOX_ATM";
     private bool simulatePaymentSuccess = true;
     private string? confirmedTransactionCode;
@@ -1758,7 +1790,7 @@
                             destLocation = qDest;
                             searchModel.OriginLocationId = qOrigin.Id;
                             searchModel.DestinationLocationId = qDest.Id;
-                            searchModel.DepartureDate = DateOnly.FromDateTime(tripDetails.DepartureTime.ToLocalTime().Date);
+                            searchModel.DepartureDate = DateOnly.FromDateTime(tripDetails.DepartureTime.ToVietnam().Date);
                             await HandleSearch();
                         }
                     }
@@ -1769,7 +1801,119 @@
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Trip search page initialization failed.");
+            errorMessage = "Không thể tải dữ liệu tuyến đường lúc này. Vui lòng tải lại trang.";
         }
+    }
+
+    private static string OperatorInitial(string? name)
+    {
+        var clean = (name ?? string.Empty).Replace("[SANDBOX]", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+        return clean.Length == 0 ? "T" : clean[..1].ToUpperInvariant();
+    }
+
+    private bool HasRouteTo(string locationCode)
+    {
+        var location = locations.FirstOrDefault(l => l.Code.Equals(locationCode, StringComparison.OrdinalIgnoreCase));
+        return location != null && popularRoutes.Any(r => r.DestinationLocationId == location.Id);
+    }
+
+    private static string GetSeatStatusText(SeatLayoutItemDto seat) => seat.Status switch
+    {
+        "Available" => "còn trống",
+        "Held" => "đang được giữ",
+        "Booked" => "đã bán",
+        "Blocked" => "không mở bán",
+        _ => seat.IsAvailable ? "còn trống" : "không khả dụng"
+    };
+
+    private async Task RefreshSeatsAsync()
+    {
+        if (selectedTripDetail == null || isRefreshingSeats)
+        {
+            return;
+        }
+
+        isRefreshingSeats = true;
+        try
+        {
+            selectedTripDetail = await TripService.GetTripDetailsAsync(selectedTripDetail.Id);
+            var stillAvailable = selectedTripDetail?.Seats.Where(s => s.IsAvailable).Select(s => s.SeatCode).ToHashSet()
+                ?? new HashSet<string>();
+            if (selectedSeats.RemoveWhere(code => !stillAvailable.Contains(code)) > 0)
+            {
+                bookingError = "Một số ghế bạn chọn vừa được người khác giữ hoặc mua và đã được bỏ chọn.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Seat map refresh failed.");
+            bookingError = "Không thể cập nhật sơ đồ ghế. Vui lòng thử lại.";
+        }
+        finally
+        {
+            isRefreshingSeats = false;
+        }
+    }
+
+    private async Task CancelPendingBookingAsync()
+    {
+        var code = confirmedBookingCode;
+        if (string.IsNullOrEmpty(code) || isBooking)
+        {
+            return;
+        }
+
+        isBooking = true;
+        bookingError = null;
+        try
+        {
+            var booking = await BookingService.GetBookingByCodeAsync(code);
+            var cancelled = booking != null && await BookingService.CancelBookingAsync(booking.Id, "Khách hàng hủy để chọn lại khi thanh toán");
+            if (!cancelled)
+            {
+                bookingError = "Không thể hủy đơn lúc này. Bạn có thể quản lý đơn trong mục Vé của tôi.";
+                return;
+            }
+
+            StopHoldCountdown();
+            activeHoldToken = null;
+            holdExpiresAt = null;
+            confirmedBookingCode = null;
+            selectedSeats.Clear();
+            companionMap.Clear();
+            bookingStep = 0;
+            bookingError = $"Đã hủy đơn {code}. Vui lòng chọn lại ghế.";
+            if (selectedTripDetail != null)
+            {
+                selectedTripDetail = await TripService.GetTripDetailsAsync(selectedTripDetail.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Cancelling the pending booking failed.");
+            bookingError = "Không thể hủy đơn lúc này. Vui lòng thử lại.";
+        }
+        finally
+        {
+            isBooking = false;
+        }
+    }
+
+    private static bool IsActivationKey(KeyboardEventArgs e) => e.Key is "Enter" or " ";
+
+    private void OnPickerKey(KeyboardEventArgs e, bool isOrigin)
+    {
+        if (IsActivationKey(e)) ToggleDropdown(isOrigin);
+    }
+
+    private static void OnOptionKey(KeyboardEventArgs e, Action select)
+    {
+        if (IsActivationKey(e)) select();
+    }
+
+    private async Task OnCardKey(KeyboardEventArgs e, string code)
+    {
+        if (IsActivationKey(e)) await QuickSearchDestination(code);
     }
 
     private void ToggleDropdown(bool isOrigin)
@@ -1833,6 +1977,7 @@
             searchResults = await TripService.SearchTripsAsync(searchModel);
             ApplySort();
             hasSearched = true;
+            await InvokeAsync(StateHasChanged);
             try
             {
                 await JSRuntime.InvokeVoidAsync("tripgo.scrollToResults");
@@ -1841,6 +1986,13 @@
             {
                 // JSRuntime is not available during initial static prerendering
             }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Trip search failed.");
+            searchResults = new();
+            hasSearched = false;
+            errorMessage = "Không thể tìm chuyến lúc này. Vui lòng thử lại sau ít phút.";
         }
         finally
         {
@@ -1856,7 +2008,7 @@
         {
             searchModel.OriginLocationId = originLocation.Id;
             searchModel.DestinationLocationId = destLocation.Id;
-            searchModel.DepartureDate = DateOnly.FromDateTime(DateTime.Today);
+            searchModel.DepartureDate = VietnamTime.Today();
             await HandleSearch();
         }
     }
@@ -1877,7 +2029,7 @@
                     searchModel.OriginLocationId = originLocation.Id;
                 }
             }
-            searchModel.DepartureDate = DateOnly.FromDateTime(DateTime.Today);
+            searchModel.DepartureDate = VietnamTime.Today();
             await HandleSearch();
         }
     }
@@ -1890,7 +2042,7 @@
 
     private async Task TryPreviousDay()
     {
-        if (searchModel.DepartureDate > DateOnly.FromDateTime(DateTime.Today))
+        if (searchModel.DepartureDate > VietnamTime.Today())
         {
             searchModel.DepartureDate = searchModel.DepartureDate.AddDays(-1);
             await HandleSearch();
@@ -1933,7 +2085,7 @@
 
     private bool IsWithinSelectedDeparturePeriod(DateTimeOffset departureTime)
     {
-        var hour = departureTime.ToLocalTime().Hour;
+        var hour = departureTime.ToVietnam().Hour;
         return (filterMorning && hour < 12) ||
                (filterAfternoon && hour >= 12 && hour < 18) ||
                (filterEvening && hour >= 18);
@@ -1966,7 +2118,7 @@
 
     private void SelectQuickDate(int daysOffset)
     {
-        searchModel.DepartureDate = DateOnly.FromDateTime(DateTime.Today.AddDays(daysOffset));
+        searchModel.DepartureDate = VietnamTime.Today().AddDays(daysOffset);
     }
 
     private string GetSeatClass(SeatLayoutItemDto seat)
@@ -1996,7 +2148,18 @@
         bookingStep = 0;
         bookingError = null;
         booker = new CustomerBookingInfoDto();
-        selectedTripDetail = await TripService.GetTripDetailsAsync(tripId);
+        try
+        {
+            selectedTripDetail = await TripService.GetTripDetailsAsync(tripId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading trip {TripId} failed.", tripId);
+            selectedTripId = null;
+            errorMessage = "Không thể mở chi tiết chuyến xe. Vui lòng thử lại.";
+            return;
+        }
+
         if (selectedTripDetail != null)
         {
             selectedPickupPoint = selectedTripDetail.PickupPoints.FirstOrDefault();
@@ -2007,20 +2170,34 @@
     private void ToggleSeat(string seatCode)
     {
         if (selectedSeats.Contains(seatCode))
+        {
             selectedSeats.Remove(seatCode);
+            bookingError = null;
+        }
+        else if (selectedSeats.Count >= BookingRules.MaxSeatsPerBooking)
+        {
+            bookingError = $"Mỗi đơn chỉ được đặt tối đa {BookingRules.MaxSeatsPerBooking} ghế.";
+        }
         else
+        {
             selectedSeats.Add(seatCode);
+        }
     }
 
-    private void CloseTripDetail()
+    private async Task CloseTripDetail()
     {
-        if (!string.IsNullOrEmpty(activeHoldToken) && bookingStep < 4)
+        // Awaited on the component's own context: the scoped DbContext must not be used from a background thread.
+        if (!string.IsNullOrEmpty(activeHoldToken) && bookingStep < 4 && string.IsNullOrEmpty(confirmedBookingCode))
         {
-            var tokenToRelease = activeHoldToken;
-            _ = Task.Run(async () =>
+            try
             {
-                try { await BookingService.ReleaseHoldAsync(tokenToRelease); } catch { }
-            });
+                await BookingService.ReleaseHoldAsync(activeHoldToken);
+            }
+            catch (Exception ex)
+            {
+                // The expiry worker still releases the hold when it times out.
+                Logger.LogWarning(ex, "Releasing the seat hold failed.");
+            }
         }
 
         StopHoldCountdown();
@@ -2045,11 +2222,11 @@
         previewStopsTripId = previewStopsTripId == tripId ? null : tripId;
     }
 
-    private void ResetToHome()
+    private async Task ResetToHome()
     {
         hasSearched = false;
         searchResults.Clear();
-        CloseTripDetail();
+        await CloseTripDetail();
         NavigationManager.NavigateTo("/");
     }
 
@@ -2166,9 +2343,16 @@
 
     private async Task HandleHoldExpired()
     {
+        // A payment in progress decides the outcome itself; never pull state out from under it.
+        if (isBooking)
+        {
+            return;
+        }
+
         StopHoldCountdown();
         activeHoldToken = null;
         holdExpiresAt = null;
+        confirmedBookingCode = null;
         bookingStep = 0;
         bookingError = "Thời gian giữ chỗ 10 phút của bạn đã hết hạn. Hệ thống đã tự động giải phóng ghế, vui lòng chọn lại ghế.";
         if (selectedTripDetail != null)
@@ -2200,6 +2384,16 @@
             return;
         }
 
+        var seatsNeedingNames = selectedSeats.OrderBy(s => s).Skip(1)
+            .Where(code => GetCompanionPassenger(code).FullName.Trim().Length < 2)
+            .ToList();
+        if (seatsNeedingNames.Count > 0)
+        {
+            bookingError = $"Vui lòng nhập họ tên hành khách cho ghế {string.Join(", ", seatsNeedingNames)}.";
+            bookingStep = 2;
+            return;
+        }
+
         bookingError = null;
         var sortedSeats = selectedSeats.OrderBy(s => s).ToList();
         booker.Passengers.Clear();
@@ -2219,7 +2413,7 @@
         {
             var seatCode = sortedSeats[i];
             var comp = GetCompanionPassenger(seatCode);
-            var name = !string.IsNullOrWhiteSpace(comp.FullName) ? comp.FullName.Trim() : $"{booker.Name.Trim()} (Khách {i + 1})";
+            var name = comp.FullName.Trim();
             var phone = !string.IsNullOrWhiteSpace(comp.PhoneNumber) ? comp.PhoneNumber.Trim() : booker.Phone.Trim();
 
             booker.Passengers.Add(new BookingPassengerDto
@@ -2319,6 +2513,9 @@
 
                 confirmedBookingCode = createResult.BookingCode;
                 confirmedTotalAmount = createResult.TotalAmount;
+
+                // The hold has become an order, so the countdown now follows the order's payment window.
+                holdExpiresAt = createResult.ExpiresAt ?? holdExpiresAt;
             }
 
             // 2. Process Sandbox Payment
@@ -2338,8 +2535,8 @@
                 confirmedTransactionCode = payResult.TransactionCode;
                 confirmedPaymentMethod = selectedPaymentMethod switch
                 {
-                    "SANDBOX_ATM" => "Thẻ ATM nội địa (Sandbox)",
-                    "SANDBOX_EWALLET" => "Ví điện tử MoMo/PayOS (Sandbox)",
+                    "SANDBOX_ATM" => "Thẻ / chuyển khoản (mô phỏng)",
+                    "SANDBOX_EWALLET" => "Ví điện tử (mô phỏng)",
                     _ => "Mô phỏng Sandbox"
                 };
                 confirmedSeatList = string.Join(", ", seatsToBook.OrderBy(s => s));
@@ -2357,7 +2554,7 @@
             else
             {
                 bookingError = "Thanh toán mô phỏng không thành công: " + payResult.Message +
-                               $" (Đơn đặt chỗ {confirmedBookingCode} vẫn được giữ. Bạn có thể chọn lại kịch bản thành công và thử lại trước khi hết thời gian giữ chỗ).";
+                               $" (Đơn {confirmedBookingCode} vẫn được giữ và chưa có khoản tiền nào được ghi nhận. Bạn có thể thử lại trước khi hết thời gian, hoặc hủy đơn để chọn lại).";
             }
         }
         catch (Exception ex)

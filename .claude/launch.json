@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tripgo-https",
+      "runtimeExecutable": "C:/Program Files/Git/bin/bash.exe",
+      "runtimeArgs": [
+        "C:/Users/tuan1/AppData/Local/Temp/claude/1fd66ea5dfda8833/838ac7fc-7b42-4f13-aa0f-deb7efc44427/scratchpad/run-app.sh"
+      ],
+      "port": 5065,
+      "url": "http://localhost:5065"
+    }
+  ]
+}

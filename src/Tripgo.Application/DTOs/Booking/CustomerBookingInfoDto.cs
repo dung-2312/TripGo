@@ -7,6 +7,7 @@ public class CustomerBookingInfoDto
 {
     public long BookingId { get; set; }
     public long TripId { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
     public string BookingCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string FullName { get => Name; set => Name = value; }
