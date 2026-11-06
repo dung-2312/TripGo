@@ -102,6 +102,19 @@ public sealed class TicketAndEmailTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ticket_HasUniqueTicketCode_WhenIssued()
+    {
+        var (context, _, bookingId, code, _) = await PaidTicketAsync();
+        await using var _ = context;
+
+        var ticket = await _stage.Tickets(context).GetMyTicketAsync(code);
+
+        Assert.True(ticket.Available);
+        Assert.NotNull(ticket.TicketCode);
+        Assert.StartsWith("TKT-", ticket.TicketCode);
+    }
+
+    [Fact]
     public async Task Ticket_RepeatedRequests_ReuseOneCredential()
     {
         var (context, token, bookingId, code, _) = await PaidTicketAsync();
@@ -395,6 +408,26 @@ public sealed class TicketAndEmailTests : IAsyncLifetime
         duplicate.Id = 0;
         context.BookingConfirmationEmailOutbox.Add(duplicate);
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmationEmail_IncludesTicketCode_InPayload()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        await _stage.Payments(context).ProcessPaymentAsync(new ProcessPaymentRequestDto
+        {
+            BookingCode = booking.BookingCode,
+            Amount = booking.TotalAmount,
+            SimulateSuccess = true
+        });
+
+        var email = await context.BookingConfirmationEmailOutbox.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.BookingId == booking.Id && e.MessageType == BookingConfirmationEmailOutbox.TypeBookingConfirmation);
+
+        Assert.NotNull(email);
+        Assert.Contains("TicketCode", email.Payload);
+        Assert.Contains("TKT-", email.Payload);
     }
 
     [Fact]

@@ -63,46 +63,161 @@ public sealed class SmtpEmailSender : IEmailSender
             CultureInfo.GetCultureInfo("vi-VN"));
         var amount = confirmation.TotalAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
         var template = BookingEmailTemplate.For(confirmation.MessageType, confirmation.BookingCode, confirmation.CancellationReason);
+        var ticketCode = string.IsNullOrWhiteSpace(confirmation.TicketCode)
+            ? $"TKT-{confirmation.BookingCode}"
+            : confirmation.TicketCode;
+
+        const string qrContentId = "ticket-qr";
+        byte[]? qrBytes = null;
+        try
+        {
+            using var generator = new QRCoder.QRCodeGenerator();
+            using var qrData = generator.CreateQrCode($"TRIPGO:{confirmation.BookingCode}:{ticketCode}", QRCoder.QRCodeGenerator.ECCLevel.M);
+            var pngByteQr = new QRCoder.PngByteQRCode(qrData);
+            qrBytes = pngByteQr.GetGraphic(5);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to render QR code for email confirmation {BookingCode}.", confirmation.BookingCode);
+        }
+
         var text = $"""
             Xin chào {confirmation.PassengerName},
 
             {template.Lead}
 
-            Mã đặt chỗ thử nghiệm: {confirmation.BookingCode}
-            Tuyến tham khảo: {confirmation.RouteName}
-            Nhà xe: {confirmation.OperatorName}
-            Khởi hành tham khảo: {departure}
-            Ghế mô phỏng: {seats}
+            THÔNG TIN VÉ ĐIỆN TỬ:
+            Mã đặt chỗ (Booking Code): {confirmation.BookingCode}
+            Mã vé điện tử (Ticket Code): {ticketCode}
+            Tuyến đường: {confirmation.RouteName}
+            Nhà xe đối tác: {confirmation.OperatorName}
+            Thời gian khởi hành: {departure}
+            Vị trí ghế: {seats}
             Điểm đón: {confirmation.PickupPoint}
             Điểm trả: {confirmation.DropoffPoint}
-            Số tiền hiển thị: {amount} đ
+            Tổng tiền: {amount} đ
 
-            Đây là thông báo SANDBOX. Thanh toán được mô phỏng, không phát sinh giao dịch tiền thật. Đây không phải vé xe thương mại và không xác nhận chỗ thật.
+            HƯỚNG DẪN XUẤT TRÌNH VÉ:
+            Quý khách vui lòng có mặt tại điểm đón trước giờ khởi hành ít nhất 30 phút và xuất trình email này hoặc mã vé cho nhân viên nhà xe để soát vé lên xe.
+
+            LƯU Ý SANDBOX: Đây là thông báo trong môi trường thử nghiệm (Sandbox). Thanh toán được mô phỏng, không phát sinh giao dịch tiền thật.
             """;
+
+        var qrHtml = qrBytes is { Length: > 0 }
+            ? $"""
+                <div style="text-align:center;margin:24px 0 16px 0;padding:16px;background:#f8fafc;border-radius:12px;border:1px dashed #cbd5e1">
+                  <div style="font-size:12px;font-weight:bold;color:#475569;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Mã QR Vé điện tử</div>
+                  <img src="cid:{qrContentId}" width="160" height="160" alt="Mã QR Vé điện tử" style="border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#ffffff;display:inline-block"/>
+                  <div style="font-size:13px;font-family:monospace;font-weight:bold;color:#0f172a;margin-top:8px">{WebUtility.HtmlEncode(ticketCode)}</div>
+                </div>
+              """
+            : string.Empty;
 
         var html = $"""
             <!doctype html>
             <html lang="vi">
-            <body style="font-family:Arial,sans-serif;color:#172033;line-height:1.55">
-              <main style="max-width:640px;margin:auto;padding:24px">
-                <h1 style="font-size:22px">{WebUtility.HtmlEncode(template.Heading)}</h1>
-                <p>Xin chào {WebUtility.HtmlEncode(confirmation.PassengerName)},</p>
-                <p>{WebUtility.HtmlEncode(template.Lead)}</p>
-                <p>Mã đặt chỗ thử nghiệm: <strong>{WebUtility.HtmlEncode(confirmation.BookingCode)}</strong></p>
-                <table style="border-collapse:collapse;width:100%">
-                  <tr><th align="left">Tuyến tham khảo</th><td>{WebUtility.HtmlEncode(confirmation.RouteName)}</td></tr>
-                  <tr><th align="left">Nhà xe</th><td>{WebUtility.HtmlEncode(confirmation.OperatorName)}</td></tr>
-                  <tr><th align="left">Khởi hành tham khảo</th><td>{WebUtility.HtmlEncode(departure)}</td></tr>
-                  <tr><th align="left">Ghế mô phỏng</th><td>{WebUtility.HtmlEncode(seats)}</td></tr>
-                  <tr><th align="left">Điểm đón</th><td>{WebUtility.HtmlEncode(confirmation.PickupPoint)}</td></tr>
-                  <tr><th align="left">Điểm trả</th><td>{WebUtility.HtmlEncode(confirmation.DropoffPoint)}</td></tr>
-                  <tr><th align="left">Số tiền hiển thị</th><td>{WebUtility.HtmlEncode(amount)} đ</td></tr>
-                </table>
-                <p style="margin-top:24px;padding:14px;background:#fff3cd">
-                  <strong>SANDBOX:</strong> Thanh toán được mô phỏng, không phát sinh giao dịch tiền thật.
-                  Đây không phải vé xe thương mại và không xác nhận chỗ thật.
-                </p>
-              </main>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            </head>
+            <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.6">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9;padding:24px 12px">
+                <tr>
+                  <td align="center">
+                    <table role="presentation" width="100%" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -2px rgba(0,0,0,0.1)">
+                      <!-- Header -->
+                      <tr>
+                        <td style="background-color:#071F49;padding:24px;text-align:center">
+                          <div style="font-size:24px;font-weight:bold;color:#ffffff;letter-spacing:0.05em">
+                            <span style="color:#FFCA28">TRIP</span>GO
+                          </div>
+                          <div style="color:#94a3b8;font-size:13px;margin-top:4px">Nền tảng đặt vé xe khách trực tuyến</div>
+                        </td>
+                      </tr>
+                      <!-- Title & Greeting -->
+                      <tr>
+                        <td style="padding:28px 28px 12px 28px">
+                          <h1 style="font-size:20px;font-weight:bold;color:#071F49;margin:0 0 12px 0">{WebUtility.HtmlEncode(template.Heading)}</h1>
+                          <p style="margin:0 0 8px 0;font-size:15px">Xin chào <strong>{WebUtility.HtmlEncode(confirmation.PassengerName)}</strong>,</p>
+                          <p style="margin:0;font-size:14px;color:#475569">{WebUtility.HtmlEncode(template.Lead)}</p>
+                        </td>
+                      </tr>
+                      <!-- Ticket Details Card -->
+                      <tr>
+                        <td style="padding:12px 28px">
+                          <table role="presentation" width="100%" style="border-collapse:collapse;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden">
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b;width:40%">Mã đặt chỗ (Booking)</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:bold;color:#0284c7;font-family:monospace">{WebUtility.HtmlEncode(confirmation.BookingCode)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Mã vé điện tử</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:bold;color:#0f172a;font-family:monospace">{WebUtility.HtmlEncode(ticketCode)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Tuyến đường</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:bold;color:#0f172a">{WebUtility.HtmlEncode(confirmation.RouteName)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Nhà xe</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#0f172a">{WebUtility.HtmlEncode(confirmation.OperatorName)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Thời gian khởi hành</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:bold;color:#071F49">{WebUtility.HtmlEncode(departure)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Vị trí ghế</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:bold;color:#0284c7">{WebUtility.HtmlEncode(seats)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Điểm đón</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a">{WebUtility.HtmlEncode(confirmation.PickupPoint)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#64748b">Điểm trả</td>
+                              <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a">{WebUtility.HtmlEncode(confirmation.DropoffPoint)}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:12px 16px;font-size:14px;font-weight:bold;color:#0f172a">Tổng tiền</td>
+                              <td style="padding:12px 16px;font-size:16px;font-weight:bold;color:#dc2626">{WebUtility.HtmlEncode(amount)} đ</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <!-- QR Code Section -->
+                      <tr>
+                        <td style="padding:0 28px">
+                          {qrHtml}
+                        </td>
+                      </tr>
+                      <!-- Boarding Instructions -->
+                      <tr>
+                        <td style="padding:8px 28px 16px 28px">
+                          <div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:12px 16px;border-radius:4px;font-size:13px;color:#1e3a8a">
+                            <strong>Hướng dẫn xuất trình vé:</strong> Quý khách vui lòng có mặt tại điểm đón trước giờ khởi hành ít nhất <strong>30 phút</strong> và xuất trình email này hoặc mã QR vé điện tử cho nhân viên nhà xe để soát vé lên xe.
+                          </div>
+                        </td>
+                      </tr>
+                      <!-- Sandbox Disclaimer -->
+                      <tr>
+                        <td style="padding:0 28px 24px 28px">
+                          <div style="background:#fffbeb;border:1px solid #fef3c7;padding:10px 14px;border-radius:6px;font-size:12px;color:#92400e">
+                            <strong>LƯU Ý THỬ NGHIỆM (SANDBOX):</strong> Email và mã vé này được tạo trong môi trường mô phỏng thử nghiệm của TripGo. Giao dịch không phát sinh chi phí tiền thật và không thay thế vé xe khách thật.
+                          </div>
+                        </td>
+                      </tr>
+                      <!-- Footer -->
+                      <tr>
+                        <td style="background:#f8fafc;padding:20px;text-align:center;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b">
+                          <div>Cảm ơn quý khách đã tin tưởng và đồng hành cùng <strong>TripGo</strong>.</div>
+                          <div style="margin-top:4px">Hotline hỗ trợ: 1900 6868 | Email: hotro@tripgo.vn</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
             </body>
             </html>
             """;
@@ -113,7 +228,9 @@ public sealed class SmtpEmailSender : IEmailSender
             text,
             html,
             cancellationToken,
-            messageIdSeed: $"{confirmation.BookingCode}.{confirmation.MessageType}");
+            messageIdSeed: $"{confirmation.BookingCode}.{confirmation.MessageType}",
+            inlineImageBytes: qrBytes,
+            inlineImageContentId: qrBytes is { Length: > 0 } ? qrContentId : null);
     }
 
     private TimeSpan GetSendTimeout() =>
@@ -163,7 +280,9 @@ public sealed class SmtpEmailSender : IEmailSender
         string textBody,
         string htmlBody,
         CancellationToken cancellationToken,
-        string? messageIdSeed = null)
+        string? messageIdSeed = null,
+        byte[]? inlineImageBytes = null,
+        string? inlineImageContentId = null)
     {
         if (!TryGetSmtpSettings(
                 out var host,
@@ -191,12 +310,28 @@ public sealed class SmtpEmailSender : IEmailSender
         {
             message.Headers.Add("Message-ID", $"<{messageIdSeed}@{messageIdHost.Host}>");
         }
-        message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
+
+        var htmlView = AlternateView.CreateAlternateViewFromString(
             htmlBody,
             Encoding.UTF8,
-            "text/html"));
+            "text/html");
+
+        MemoryStream? imageStream = null;
+        if (inlineImageBytes is { Length: > 0 } && !string.IsNullOrWhiteSpace(inlineImageContentId))
+        {
+            imageStream = new MemoryStream(inlineImageBytes);
+            var resource = new LinkedResource(imageStream, "image/png")
+            {
+                ContentId = inlineImageContentId,
+                TransferEncoding = System.Net.Mime.TransferEncoding.Base64
+            };
+            htmlView.LinkedResources.Add(resource);
+        }
+
+        message.AlternateViews.Add(htmlView);
 
         using (message)
+        using (imageStream)
         using (var client = new SmtpClient(host, port)
         {
             EnableSsl = !bool.TryParse(_configuration["Email:Smtp:EnableSsl"], out var enableSsl) || enableSsl,

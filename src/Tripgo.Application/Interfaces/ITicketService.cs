@@ -18,6 +18,7 @@ public sealed class MyTicketDto
 {
     public bool Available { get; init; }
     public string Message { get; init; } = string.Empty;
+    public string? TicketCode { get; init; }
     public string? Token { get; init; }
     public bool IsSandbox { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }

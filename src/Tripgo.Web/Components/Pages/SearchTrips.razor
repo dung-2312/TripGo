@@ -9,6 +9,7 @@
 @inject ITripService TripService
 @inject IBookingService BookingService
 @inject IPaymentGatewayService PaymentGatewayService
+@inject ITicketService TicketService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<SearchTrips> Logger
@@ -1087,63 +1088,150 @@
                                                         </ul>
                                                     </div>
 
-                                                    <!-- CỔNG THANH TOÁN MÔ PHỎNG (SANDBOX ENVIRONMENT) -->
-                                                    <div class="p-3 border rounded-3 bg-light mb-3">
-                                                        <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
-                                                            <div class="d-flex align-items-center gap-2">
-                                                                <span class="badge bg-primary text-white"><i class="bi bi-wallet2 me-1"></i> Cổng Sandbox</span>
-                                                                <strong class="small text-dark">Phương thức thanh toán thử nghiệm</strong>
+                                                    <!-- CỔNG THANH TOÁN & LỰA CHỌN PHƯƠNG THỨC -->
+                                                    <div class="p-3 border rounded-3 bg-white mb-3 shadow-sm">
+                                                        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2 border-bottom pb-2">
+                                                            <div>
+                                                                <h6 class="fw-bold text-navy mb-0 d-flex align-items-center gap-2">
+                                                                    <i class="bi bi-credit-card text-primary"></i> Phương thức thanh toán
+                                                                </h6>
+                                                                <span class="small text-muted">Lựa chọn cổng thanh toán để hoàn tất đơn đặt chỗ</span>
                                                             </div>
-                                                            <span class="badge bg-warning text-dark border border-warning-subtle fw-bold"><i class="bi bi-cpu me-1"></i> Môi trường Sandbox</span>
-                                                        </div>
-                                                        <p class="small text-muted mb-3">
-                                                            Hệ thống đang hoạt động trong chế độ thử nghiệm (Sandbox). Bạn có thể lựa chọn phương thức thanh toán và kịch bản thử nghiệm bên dưới để kiểm tra toàn trình:
-                                                        </p>
-
-                                                        <!-- Chọn phương thức thanh toán -->
-                                                        <div class="d-flex flex-column gap-2 mb-3">
-                                                            <label class="tg-paymethod-card @(selectedPaymentMethod == "SANDBOX_ATM" ? "selected-payment" : "")">
-                                                                <input type="radio" name="paymethod" class="form-check-input mt-0" checked="@(selectedPaymentMethod == "SANDBOX_ATM")" @onchange='() => selectedPaymentMethod = "SANDBOX_ATM"' />
-                                                                <div class="tg-pay-icon bg-primary-subtle text-primary">
-                                                                    <i class="bi bi-credit-card-2-front"></i>
-                                                                </div>
-                                                                <div class="flex-grow-1">
-                                                                    <div class="fw-bold text-dark">Thẻ / chuyển khoản (mô phỏng)</div>
-                                                                    <small class="text-muted d-block">Không kết nối ngân hàng hay cổng thanh toán thật nào.</small>
-                                                                </div>
-                                                            </label>
-                                                            <label class="tg-paymethod-card @(selectedPaymentMethod == "SANDBOX_EWALLET" ? "selected-payment" : "")">
-                                                                <input type="radio" name="paymethod" class="form-check-input mt-0" checked="@(selectedPaymentMethod == "SANDBOX_EWALLET")" @onchange='() => selectedPaymentMethod = "SANDBOX_EWALLET"' />
-                                                                <div class="tg-pay-icon bg-success-subtle text-success">
-                                                                    <i class="bi bi-phone"></i>
-                                                                </div>
-                                                                <div class="flex-grow-1">
-                                                                    <div class="fw-bold text-dark">Ví điện tử (mô phỏng)</div>
-                                                                    <small class="text-muted d-block">Không kết nối ví điện tử thật nào.</small>
-                                                                </div>
-                                                            </label>
+                                                            <span class="badge bg-warning text-dark border border-warning-subtle fw-bold">
+                                                                <i class="bi bi-cpu me-1"></i> Môi trường Demo
+                                                            </span>
                                                         </div>
 
-                                                        <!-- Kịch bản thử nghiệm kết quả -->
-                                                        <div class="p-3 rounded-3 border bg-white">
-                                                            <span class="small fw-bold text-secondary d-block mb-2"><i class="bi bi-sliders me-1"></i> Kịch bản kiểm thử giao dịch:</span>
-                                                            <div class="d-flex gap-3 flex-wrap">
-                                                                <label class="cursor-pointer small d-flex align-items-center gap-2 text-success fw-bold">
-                                                                    <input type="radio" name="paysim" class="form-check-input mt-0" checked="@(simulatePaymentSuccess)" @onchange="() => simulatePaymentSuccess = true" />
-                                                                    <span>Thanh toán thành công (Mô phỏng)</span>
-                                                                </label>
-                                                                <label class="cursor-pointer small d-flex align-items-center gap-2 text-danger fw-bold">
-                                                                    <input type="radio" name="paysim" class="form-check-input mt-0" checked="@(!simulatePaymentSuccess)" @onchange="() => simulatePaymentSuccess = false" />
-                                                                    <span>Thanh toán thất bại (Mô phỏng từ chối thẻ)</span>
-                                                                </label>
+                                                        <!-- Danh sách phương thức thanh toán -->
+                                                        <div class="d-flex flex-column gap-3 mb-3">
+                                                            <!-- 1. PHƯƠNG THỨC HOẠT ĐỘNG: SANDBOX PAYMENT (DEMO) -->
+                                                            <div class="tg-paymethod-card border-2 selected-payment position-relative" style="cursor: pointer;">
+                                                                <div class="d-flex align-items-start gap-3 w-100">
+                                                                    <input type="radio" name="paymethod_group" class="form-check-input mt-1" checked aria-label="Thanh toán mô phỏng – Demo" />
+                                                                    <div class="tg-pay-icon bg-primary text-white">
+                                                                        <i class="bi bi-wallet2"></i>
+                                                                    </div>
+                                                                    <div class="flex-grow-1">
+                                                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                                                                            <span class="fw-bold text-dark fs-6">Thanh toán mô phỏng – Demo</span>
+                                                                            <span class="badge bg-success text-white px-2 py-1">
+                                                                                <i class="bi bi-check-circle-fill me-1"></i> Đang hoạt động
+                                                                            </span>
+                                                                        </div>
+                                                                        <p class="small text-muted mb-2">
+                                                                            Cổng thử nghiệm an toàn của TripGo. Cho phép kiểm thử quy trình thanh toán, xác nhận đơn hàng và tạo vé điện tử mà không phát sinh chi phí tiền thật.
+                                                                        </p>
+
+                                                                        <!-- Chọn kênh thử nghiệm -->
+                                                                        <div class="p-2 px-3 bg-white border rounded-2 mb-2">
+                                                                            <span class="small fw-bold text-secondary d-block mb-1">Kênh giao dịch thử nghiệm:</span>
+                                                                            <div class="d-flex gap-3 flex-wrap">
+                                                                                <label class="cursor-pointer small d-flex align-items-center gap-2 text-dark">
+                                                                                    <input type="radio" name="paymethod_type" class="form-check-input mt-0" checked="@(selectedPaymentMethod == "SANDBOX_ATM")" @onchange='() => selectedPaymentMethod = "SANDBOX_ATM"' />
+                                                                                    <span>Thẻ ATM / Tài khoản ngân hàng</span>
+                                                                                </label>
+                                                                                <label class="cursor-pointer small d-flex align-items-center gap-2 text-dark">
+                                                                                    <input type="radio" name="paymethod_type" class="form-check-input mt-0" checked="@(selectedPaymentMethod == "SANDBOX_EWALLET")" @onchange='() => selectedPaymentMethod = "SANDBOX_EWALLET"' />
+                                                                                    <span>Ví điện tử mô phỏng</span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <!-- Kịch bản thử nghiệm kết quả -->
+                                                                        <div class="p-2 px-3 bg-light border rounded-2">
+                                                                            <span class="small fw-bold text-secondary d-block mb-1">
+                                                                                <i class="bi bi-sliders me-1"></i> Kịch bản thử nghiệm kết quả:
+                                                                            </span>
+                                                                            <div class="d-flex gap-3 flex-wrap">
+                                                                                <label class="cursor-pointer small d-flex align-items-center gap-2 text-success fw-bold">
+                                                                                    <input type="radio" name="paysim" class="form-check-input mt-0" checked="@(simulatePaymentSuccess)" @onchange="() => simulatePaymentSuccess = true" />
+                                                                                    <span>Thành công (Xác nhận đơn & cấp vé)</span>
+                                                                                </label>
+                                                                                <label class="cursor-pointer small d-flex align-items-center gap-2 text-danger fw-bold">
+                                                                                    <input type="radio" name="paysim" class="form-check-input mt-0" checked="@(!simulatePaymentSuccess)" @onchange="() => simulatePaymentSuccess = false" />
+                                                                                    <span>Thất bại (Từ chối thẻ / Hết hạn)</span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <!-- 2. VNPAY (CHƯA KHẢ DỤNG) -->
+                                                            <div class="tg-paymethod-card" style="opacity: 0.65; cursor: not-allowed; background-color: #f8fafc; border-style: dashed;">
+                                                                <div class="d-flex align-items-start gap-3 w-100">
+                                                                    <input type="radio" name="paymethod_group" class="form-check-input mt-1" disabled aria-label="VNPay (Chưa khả dụng)" />
+                                                                    <div class="tg-pay-icon bg-light text-secondary border">
+                                                                        <i class="bi bi-qr-code"></i>
+                                                                    </div>
+                                                                    <div class="flex-grow-1">
+                                                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                                                                            <span class="fw-bold text-secondary">VNPay (VNPAY-QR / Thẻ nội địa)</span>
+                                                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                                                                Chưa tích hợp – Chưa khả dụng
+                                                                            </span>
+                                                                        </div>
+                                                                        <p class="small text-muted mb-0">
+                                                                            Thanh toán quét mã QR qua ứng dụng ngân hàng hoặc thẻ ATM / Visa nội địa. Đang chờ kết nối API chính thức.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <!-- 3. MOMO (CHƯA KHẢ DỤNG) -->
+                                                            <div class="tg-paymethod-card" style="opacity: 0.65; cursor: not-allowed; background-color: #f8fafc; border-style: dashed;">
+                                                                <div class="d-flex align-items-start gap-3 w-100">
+                                                                    <input type="radio" name="paymethod_group" class="form-check-input mt-1" disabled aria-label="MoMo (Chưa khả dụng)" />
+                                                                    <div class="tg-pay-icon bg-light text-secondary border">
+                                                                        <i class="bi bi-phone"></i>
+                                                                    </div>
+                                                                    <div class="flex-grow-1">
+                                                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                                                                            <span class="fw-bold text-secondary">Ví điện tử MoMo</span>
+                                                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                                                                Chưa tích hợp – Chưa khả dụng
+                                                                            </span>
+                                                                        </div>
+                                                                        <p class="small text-muted mb-0">
+                                                                            Thanh toán một chạm qua ví điện tử MoMo. Đang chờ tích hợp API Merchant chính thức.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <!-- 4. CHUYỂN KHOẢN NGÂN HÀNG (CHƯA KHẢ DỤNG) -->
+                                                            <div class="tg-paymethod-card" style="opacity: 0.65; cursor: not-allowed; background-color: #f8fafc; border-style: dashed;">
+                                                                <div class="d-flex align-items-start gap-3 w-100">
+                                                                    <input type="radio" name="paymethod_group" class="form-check-input mt-1" disabled aria-label="Chuyển khoản ngân hàng (Chưa khả dụng)" />
+                                                                    <div class="tg-pay-icon bg-light text-secondary border">
+                                                                        <i class="bi bi-bank"></i>
+                                                                    </div>
+                                                                    <div class="flex-grow-1">
+                                                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                                                                            <span class="fw-bold text-secondary">Chuyển khoản ngân hàng (VietQR)</span>
+                                                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                                                                Chưa khả dụng
+                                                                            </span>
+                                                                        </div>
+                                                                        <p class="small text-muted mb-0">
+                                                                            Chuyển khoản nhanh qua tài khoản ngân hàng hoặc quét mã VietQR. Hệ thống chưa hỗ trợ đối soát tự động cho phương thức này.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
 
                                                     @if (!string.IsNullOrWhiteSpace(bookingError))
                                                     {
-                                                        <div class="alert alert-danger py-2 small mt-3 mb-0 rounded-3">
-                                                            <i class="bi bi-exclamation-triangle-fill me-1"></i> @bookingError
+                                                        <div class="alert alert-warning py-3 px-3 small mt-3 mb-0 rounded-3 border border-warning shadow-sm">
+                                                            <div class="d-flex align-items-start gap-2">
+                                                                <i class="bi bi-exclamation-triangle-fill text-warning fs-5 flex-shrink-0 mt-1"></i>
+                                                                <div>
+                                                                    <strong class="text-dark d-block mb-1">Kết quả xử lý thanh toán:</strong>
+                                                                    <div class="text-secondary">@bookingError</div>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     }
                                                 </div>
@@ -1235,6 +1323,13 @@
                                                             <span class="text-muted small d-block">Mã đặt chỗ (Booking Code):</span>
                                                             <strong class="fs-4 text-primary font-monospace">@confirmedBookingCode</strong>
                                                         </div>
+                                                        @if (!string.IsNullOrWhiteSpace(confirmedTicketCode))
+                                                        {
+                                                            <div>
+                                                                <span class="text-muted small d-block">Mã vé điện tử (Ticket Code):</span>
+                                                                <strong class="fs-5 text-dark font-monospace">@confirmedTicketCode</strong>
+                                                            </div>
+                                                        }
                                                         <div class="d-flex align-items-center gap-2">
                                                             <span class="badge bg-success px-3 py-2 rounded-pill fw-bold">
                                                                 <i class="bi bi-check-circle-fill me-1"></i> Đã thanh toán
@@ -1342,7 +1437,13 @@
                                                         </div>
                                                     </div>
 
-                                                    <!-- 7. Sandbox Disclaimer -->
+                                                    <!-- 7. Live E-Ticket QR Code -->
+                                                    <div class="mb-3 text-center p-3 bg-white rounded-3 border">
+                                                        <div class="text-muted small fw-bold text-uppercase mb-2">Mã QR Vé điện tử lên xe</div>
+                                                        <TicketQr BookingCode="@confirmedBookingCode" />
+                                                    </div>
+
+                                                    <!-- 8. Sandbox Disclaimer -->
                                                     <div class="alert alert-warning py-2 px-3 small rounded-3 mb-0 d-flex align-items-center gap-2">
                                                         <i class="bi bi-cpu text-dark fs-5 flex-shrink-0"></i>
                                                         <div>
@@ -1659,6 +1760,7 @@
     private bool simulatePaymentSuccess = true;
     private string? confirmedTransactionCode;
     private string? confirmedPaymentMethod;
+    private string? confirmedTicketCode;
     private string? sandboxProviderName;
 
     private string sortOrder = "departure_asc";
@@ -2540,6 +2642,18 @@
                 };
                 confirmedSeatList = string.Join(", ", seatsToBook.OrderBy(s => s));
                 confirmedTripName = selectedTripDetail.RouteName;
+
+                try
+                {
+                    var myTicket = await TicketService.GetMyTicketAsync(confirmedBookingCode);
+                    confirmedTicketCode = myTicket?.TicketCode ?? $"TKT-{confirmedBookingCode}";
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Could not fetch ticket code immediately after payment.");
+                    confirmedTicketCode = $"TKT-{confirmedBookingCode}";
+                }
+
                 bookingStep = 4; // Advance to confirmation card
 
                 // Refresh search results

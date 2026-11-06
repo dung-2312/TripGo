@@ -26,6 +26,10 @@
             {
                 <div class="fw-bold text-dark">Mã lên xe</div>
             }
+            @if (!string.IsNullOrWhiteSpace(ticket.TicketCode))
+            {
+                <p class="small mb-1"><span class="text-muted">Mã vé điện tử:</span> <strong class="font-monospace text-primary">@ticket.TicketCode</strong></p>
+            }
             <p class="small text-muted mb-0">Mã không chứa thông tin cá nhân. Có hiệu lực đến @ticket.ExpiresAt?.ToVietnam().ToString("HH:mm dd/MM/yyyy").</p>
             @if (ticket.BoardedAt.HasValue)
             {

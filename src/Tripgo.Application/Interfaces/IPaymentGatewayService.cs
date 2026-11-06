@@ -24,7 +24,9 @@ public interface ISandboxPaymentProvider : IPaymentProvider
 public interface IPaymentProvider
 {
     string Name { get; }
+    string DisplayName => Name;
     bool IsSandbox { get; }
+    bool IsAvailable => true;
     bool SupportsRefund { get; }
     Task<ProviderInitiation> InitiateAsync(ProviderInitiationRequest request, CancellationToken ct = default);
     VerifiedPaymentCallback VerifyCallback(PaymentCallbackRequest request);
