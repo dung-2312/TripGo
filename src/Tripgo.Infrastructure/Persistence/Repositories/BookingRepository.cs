@@ -1149,9 +1149,14 @@ public class BookingRepository : IBookingRepository
         }
 
         trip ??= booking.Trip;
+        var credential = _context.TicketCredentials.Local.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null)
+            ?? _context.TicketCredentials.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null);
+        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : $"TKT-{booking.Id:D6}";
+
         var payload = new BookingConfirmationEmailDto
         {
             BookingCode = booking.BookingCode,
+            TicketCode = ticketCode,
             PassengerName = booking.PassengerName,
             RecipientEmail = booking.PassengerEmail,
             RouteName = trip?.Route?.Name ?? string.Empty,

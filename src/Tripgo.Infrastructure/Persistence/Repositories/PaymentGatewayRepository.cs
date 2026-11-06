@@ -338,6 +338,10 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
             return;
         }
 
+        var credential = _context.TicketCredentials.Local.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null)
+            ?? _context.TicketCredentials.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null);
+        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : $"TKT-{booking.Id:D6}";
+
         _context.BookingConfirmationEmailOutbox.Add(new BookingConfirmationEmailOutbox
         {
             BookingId = booking.Id,
@@ -347,6 +351,7 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
             Payload = JsonSerializer.Serialize(new BookingConfirmationEmailDto
             {
                 BookingCode = booking.BookingCode,
+                TicketCode = ticketCode,
                 PassengerName = booking.PassengerName,
                 RecipientEmail = booking.PassengerEmail,
                 RouteName = booking.Trip?.Route?.Name ?? string.Empty,

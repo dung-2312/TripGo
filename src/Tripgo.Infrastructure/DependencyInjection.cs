@@ -42,6 +42,20 @@ public static class DependencyInjection
             services.AddSingleton<Tripgo.Application.Interfaces.IPaymentProvider>(
                 provider => provider.GetRequiredService<Services.SandboxPaymentProvider>());
         }
+
+        services.AddTransient<Services.VnPayPaymentProvider>();
+        if (bool.TryParse(configuration["Payments:VnPay:Enabled"], out var vnpayEnabled) && vnpayEnabled)
+        {
+            services.AddSingleton<Tripgo.Application.Interfaces.IPaymentProvider>(
+                provider => provider.GetRequiredService<Services.VnPayPaymentProvider>());
+        }
+
+        services.AddTransient<Services.MomoPaymentProvider>();
+        if (bool.TryParse(configuration["Payments:Momo:Enabled"], out var momoEnabled) && momoEnabled)
+        {
+            services.AddSingleton<Tripgo.Application.Interfaces.IPaymentProvider>(
+                provider => provider.GetRequiredService<Services.MomoPaymentProvider>());
+        }
         services.AddScoped<Tripgo.Application.Interfaces.ISandboxFixtureService, Tripgo.Infrastructure.Services.SandboxFixtureService>();
 
         return services;

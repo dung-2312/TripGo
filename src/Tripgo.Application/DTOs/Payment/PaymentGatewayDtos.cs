@@ -1,6 +1,6 @@
 namespace Tripgo.Application.DTOs.Payment;
 
-public sealed record PaymentProviderInfo(string Name, bool IsSandbox, bool SupportsRefund);
+public sealed record PaymentProviderInfo(string Name, bool IsSandbox, bool SupportsRefund, bool IsAvailable = true, string DisplayName = "");
 
 public sealed class PaymentInitiationResult
 {

@@ -33,7 +33,7 @@ public sealed class PaymentGatewayService : IPaymentGatewayService
     }
 
     public IReadOnlyList<PaymentProviderInfo> GetProviders() =>
-        _providers.Values.Select(p => new PaymentProviderInfo(p.Name, p.IsSandbox, p.SupportsRefund)).ToList();
+        _providers.Values.Select(p => new PaymentProviderInfo(p.Name, p.IsSandbox, p.SupportsRefund, p.IsAvailable, p.DisplayName)).ToList();
 
     public async Task<SandboxPaymentResult> SimulateSandboxPaymentAsync(string bookingCode, bool succeeded, CancellationToken ct = default)
     {
@@ -80,6 +80,11 @@ public sealed class PaymentGatewayService : IPaymentGatewayService
         if (provider == null)
         {
             return new PaymentInitiationResult { Message = "Chưa có cổng thanh toán nào được cấu hình." };
+        }
+
+        if (!provider.IsAvailable)
+        {
+            return new PaymentInitiationResult { Message = $"Cổng thanh toán {provider.DisplayName} đang trong quá trình tích hợp và chưa khả dụng." };
         }
 
         var ownerIdentifier = await _session.GetOwnerIdentifierAsync();
@@ -192,6 +197,11 @@ public sealed class PaymentGatewayService : IPaymentGatewayService
         if (!_providers.TryGetValue(providerName ?? string.Empty, out var provider))
         {
             return new PaymentCallbackOutcome { Outcome = "UnknownProvider" };
+        }
+
+        if (!provider.IsAvailable)
+        {
+            return new PaymentCallbackOutcome { Outcome = "ProviderUnavailable" };
         }
 
         var verified = provider.VerifyCallback(request);

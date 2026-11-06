@@ -66,6 +66,7 @@ public sealed class TicketService : ITicketService
         {
             Available = booking.IsConfirmedAndPaid,
             Message = booking.IsConfirmedAndPaid ? string.Empty : "Đơn đặt chỗ không còn hiệu lực.",
+            TicketCode = $"TKT-{credential.Id:D6}",
             Token = booking.IsConfirmedAndPaid ? token : null,
             IsSandbox = credential.IsSandbox,
             ExpiresAt = credential.ExpiresAt,

@@ -471,6 +471,97 @@ public sealed class PaymentGatewayTests : IAsyncLifetime
         Assert.False(result.Success);
     }
 
+    [Fact]
+    public async Task UnavailableProvider_VnPay_CannotInitiatePayment()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var vnpay = new Tripgo.Infrastructure.Services.VnPayPaymentProvider(config);
+        var gateway = _stage.PaymentGateway(context, providers: new IPaymentProvider[] { Stage.Gateway, vnpay });
+
+        var result = await gateway.InitiatePaymentAsync(booking.BookingCode, "VNPAY");
+
+        Assert.False(result.Success);
+        Assert.Contains("chưa khả dụng", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UnavailableProvider_MoMo_CannotInitiatePayment()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var momo = new Tripgo.Infrastructure.Services.MomoPaymentProvider(config);
+        var gateway = _stage.PaymentGateway(context, providers: new IPaymentProvider[] { Stage.Gateway, momo });
+
+        var result = await gateway.InitiatePaymentAsync(booking.BookingCode, "MOMO");
+
+        Assert.False(result.Success);
+        Assert.Contains("chưa khả dụng", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UnavailableProvider_CannotConfirmBookingViaCallback()
+    {
+        await using var context = Stage.NewContext();
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var vnpay = new Tripgo.Infrastructure.Services.VnPayPaymentProvider(config);
+        var gateway = _stage.PaymentGateway(context, providers: new IPaymentProvider[] { Stage.Gateway, vnpay });
+
+        var outcome = await gateway.HandleCallbackAsync("VNPAY", new PaymentCallbackRequest("{}", "fake-sig"));
+
+        Assert.False(outcome.Accepted);
+        Assert.Equal("ProviderUnavailable", outcome.Outcome);
+    }
+
+    [Fact]
+    public async Task SandboxPayment_SimulateSuccess_ConfirmsBooking()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var gateway = _stage.PaymentGateway(context);
+
+        var result = await gateway.SimulateSandboxPaymentAsync(booking.BookingCode, true);
+
+        Assert.True(result.Success);
+        Assert.True(result.PaymentSucceeded);
+
+        var stored = await context.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id);
+        Assert.Equal(BookingStatus.Confirmed, stored.Status);
+        Assert.Equal(PaymentStatus.Paid, stored.PaymentStatus);
+    }
+
+    [Fact]
+    public async Task SandboxPayment_SimulateFailure_LeavesBookingUnpaid()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var gateway = _stage.PaymentGateway(context);
+
+        var result = await gateway.SimulateSandboxPaymentAsync(booking.BookingCode, false);
+
+        Assert.False(result.PaymentSucceeded);
+
+        var stored = await context.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id);
+        Assert.Equal(BookingStatus.PendingPayment, stored.Status);
+        Assert.Equal(PaymentStatus.Failed, stored.PaymentStatus);
+    }
+
+    [Fact]
+    public async Task SandboxPayment_Cancellation_CancelsPendingBookingAndReleasesSeats()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+
+        var cancelResult = await _stage.Bookings(context).CancelBookingAsync(booking.Id, "Khách đổi kế hoạch");
+        Assert.True(cancelResult);
+
+        var stored = await context.Bookings.Include(b => b.BookingSeats).AsNoTracking().SingleAsync(b => b.Id == booking.Id);
+        Assert.Equal(BookingStatus.Cancelled, stored.Status);
+        Assert.All(stored.BookingSeats, s => Assert.False(s.IsActive));
+    }
+
     private sealed class ScriptedProvider : IPaymentProvider
     {
         private readonly Func<ProviderInitiationRequest, CancellationToken, Task<ProviderInitiation>> _initiate;

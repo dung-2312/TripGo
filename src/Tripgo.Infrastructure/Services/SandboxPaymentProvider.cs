@@ -25,7 +25,9 @@ public sealed class SandboxPaymentProvider : ISandboxPaymentProvider
     }
 
     public string Name => ProviderName;
+    public string DisplayName => "Thanh toán mô phỏng – Demo";
     public bool IsSandbox => true;
+    public bool IsAvailable => true;
     public bool SupportsRefund => true;
 
     public Task<ProviderInitiation> InitiateAsync(ProviderInitiationRequest request, CancellationToken ct = default) =>
