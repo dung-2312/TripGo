@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Tripgo.Application.Configuration;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
@@ -554,12 +555,14 @@ public class ReferenceTripBookingRestrictionTests
             }
         };
         var emailSender = new CapturingPasswordResetEmailSender();
+        var resetTokenRepository = new FakePasswordResetTokenRepository(userRepository);
         using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().Options);
         var service = new AuthService(
             userRepository,
             new BookingRepository(context),
             passwordHasher,
-            emailSender);
+            emailSender,
+            passwordResetTokenRepository: resetTokenRepository);
 
         var requestResult = await service.RequestPasswordResetAsync("customer@example.com");
         var resetResult = await service.ResetPasswordAsync(new ResetPasswordRequestDto
@@ -580,6 +583,140 @@ public class ReferenceTripBookingRestrictionTests
             NewPassword = "another-password",
             ConfirmNewPassword = "another-password"
         })).Success);
+    }
+
+    [Fact]
+    public async Task LoginFailures_AreGenericAndLockedOutAtTheConfiguredThreshold()
+    {
+        var userRepository = new UserRepositoryWithoutCustomerRole();
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().Options);
+        var service = new AuthService(
+            userRepository,
+            new BookingRepository(context),
+            new PasswordHasherService(),
+            securityOptions: new AuthSecurityOptions { LoginFailureLimit = 2, LoginLockoutMinutes = 1 });
+        var model = new LoginViewModel { EmailOrPhone = $"unknown-{Guid.NewGuid():N}@tripgo.test", Password = "bad-password" };
+
+        var first = await service.AuthenticateAsync(model);
+        var second = await service.AuthenticateAsync(model);
+        var locked = await service.AuthenticateAsync(model);
+
+        Assert.False(first.Success);
+        Assert.Equal(first.ErrorMessage, second.ErrorMessage);
+        Assert.Equal(first.ErrorMessage, locked.ErrorMessage);
+        Assert.DoesNotContain("khóa", locked.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("không tồn tại", locked.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LoginRequests_AreLimitedAcrossDifferentIdentifiersFromOneClientAddress()
+    {
+        var users = new UserRepositoryWithoutCustomerRole();
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().Options);
+        var service = new AuthService(
+            users,
+            new BookingRepository(context),
+            new PasswordHasherService(),
+            securityOptions: new AuthSecurityOptions
+            {
+                LoginRequestLimit = 10,
+                LoginIpRequestLimit = 1
+            },
+            clientAddressProvider: new FixedAuthClientAddressProvider("198.51.100.10"));
+
+        var first = await service.AuthenticateAsync(new LoginViewModel
+        {
+            AccountIdentifier = "first-user@tripgo.test",
+            Password = "bad-password"
+        });
+        var second = await service.AuthenticateAsync(new LoginViewModel
+        {
+            AccountIdentifier = "second-user@tripgo.test",
+            Password = "bad-password"
+        });
+
+        Assert.False(first.Success);
+        Assert.False(second.Success);
+        Assert.Equal(1, users.LoginLookupCount);
+        Assert.Equal(first.ErrorMessage, second.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task PasswordResetRequests_AreRateLimitedWithoutDisclosingAccountExistence()
+    {
+        var passwordHasher = new PasswordHasherService();
+        var userRepository = new UserRepositoryWithoutCustomerRole
+        {
+            ExistingUser = new User
+            {
+                Id = 18,
+                FullName = "Test Customer",
+                Email = $"reset-{Guid.NewGuid():N}@tripgo.test",
+                PasswordHash = passwordHasher.HashPassword("old-password"),
+                IsActive = true
+            }
+        };
+        var emailSender = new CapturingPasswordResetEmailSender();
+        var resetTokenRepository = new FakePasswordResetTokenRepository(userRepository);
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().Options);
+        var service = new AuthService(
+            userRepository,
+            new BookingRepository(context),
+            passwordHasher,
+            emailSender,
+            passwordResetTokenRepository: resetTokenRepository,
+            securityOptions: new AuthSecurityOptions { PasswordResetRequestLimit = 1 });
+
+        var foundAccount = await service.RequestPasswordResetAsync(userRepository.ExistingUser.Email);
+        var throttled = await service.RequestPasswordResetAsync(userRepository.ExistingUser.Email);
+        var unknownAccount = await service.RequestPasswordResetAsync($"missing-{Guid.NewGuid():N}@tripgo.test");
+
+        Assert.True(foundAccount.Success);
+        Assert.True(throttled.Success);
+        Assert.True(unknownAccount.Success);
+        Assert.Equal(foundAccount.ErrorMessage, throttled.ErrorMessage);
+        Assert.Equal(foundAccount.ErrorMessage, unknownAccount.ErrorMessage);
+        Assert.Equal(1, emailSender.SendCount);
+    }
+
+    [Fact]
+    public async Task PasswordResetRequests_AreLimitedAcrossAccountsFromOneClientAddress()
+    {
+        var passwordHasher = new PasswordHasherService();
+        var userRepository = new UserRepositoryWithoutCustomerRole
+        {
+            ExistingUser = new User
+            {
+                Id = 19,
+                FullName = "Test Customer",
+                Email = $"reset-ip-{Guid.NewGuid():N}@tripgo.test",
+                PasswordHash = passwordHasher.HashPassword("old-password"),
+                IsActive = true
+            }
+        };
+        var emailSender = new CapturingPasswordResetEmailSender();
+        var resetTokenRepository = new FakePasswordResetTokenRepository(userRepository);
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().Options);
+        var service = new AuthService(
+            userRepository,
+            new BookingRepository(context),
+            passwordHasher,
+            emailSender,
+            passwordResetTokenRepository: resetTokenRepository,
+            securityOptions: new AuthSecurityOptions
+            {
+                PasswordResetRequestLimit = 10,
+                PasswordResetIpRequestLimit = 1
+            },
+            clientAddressProvider: new FixedAuthClientAddressProvider("2001:db8::1"));
+
+        var accepted = await service.RequestPasswordResetAsync(userRepository.ExistingUser.Email);
+        var throttled = await service.RequestPasswordResetAsync($"other-{Guid.NewGuid():N}@tripgo.test");
+
+        Assert.True(accepted.Success);
+        Assert.True(throttled.Success);
+        Assert.Equal(1, userRepository.EmailLookupCount);
+        Assert.Equal(1, emailSender.SendCount);
     }
 
     [Fact]
@@ -1256,23 +1393,31 @@ public class ReferenceTripBookingRestrictionTests
     private sealed class UserRepositoryWithoutCustomerRole : IUserRepository
     {
         public int CreatedUserCount { get; private set; }
+        public int LoginLookupCount { get; private set; }
+        public int EmailLookupCount { get; private set; }
         public User? ExistingUser { get; set; }
 
         public Task<User?> GetByIdAsync(long id, CancellationToken ct = default) =>
             Task.FromResult(ExistingUser?.Id == id ? ExistingUser : null);
 
-        public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
-            Task.FromResult(
+        public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
+        {
+            EmailLookupCount++;
+            return Task.FromResult(
                 ExistingUser != null &&
                 string.Equals(ExistingUser.Email, email, StringComparison.OrdinalIgnoreCase)
                     ? ExistingUser
                     : null);
+        }
 
         public Task<User?> GetByPhoneAsync(string phone, CancellationToken ct = default) =>
             Task.FromResult<User?>(null);
 
-        public Task<User?> GetByEmailOrPhoneAsync(string identifier, CancellationToken ct = default) =>
-            Task.FromResult<User?>(null);
+        public Task<User?> GetByEmailOrPhoneAsync(string identifier, CancellationToken ct = default)
+        {
+            LoginLookupCount++;
+            return Task.FromResult<User?>(null);
+        }
 
         public Task<bool> ExistsByEmailAsync(string email, long? excludeUserId = null, CancellationToken ct = default) =>
             Task.FromResult(false);
@@ -1296,10 +1441,20 @@ public class ReferenceTripBookingRestrictionTests
             Task.FromResult(new List<Role> { new() { Id = 2, Name = "Admin" } });
     }
 
+    private sealed class FixedAuthClientAddressProvider : IAuthClientAddressProvider
+    {
+        private readonly string _address;
+
+        public FixedAuthClientAddressProvider(string address) => _address = address;
+
+        public string? GetClientAddress() => _address;
+    }
+
     private sealed class CapturingPasswordResetEmailSender : IEmailSender
     {
         public string? Recipient { get; private set; }
         public string? Token { get; private set; }
+        public int SendCount { get; private set; }
 
         public Task<bool> SendPasswordResetAsync(
             string email,
@@ -1308,6 +1463,7 @@ public class ReferenceTripBookingRestrictionTests
         {
             Recipient = email;
             Token = token;
+            SendCount++;
             return Task.FromResult(true);
         }
 
@@ -1315,6 +1471,45 @@ public class ReferenceTripBookingRestrictionTests
             BookingConfirmationEmailDto confirmation,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
+    }
+
+    private sealed class FakePasswordResetTokenRepository : IPasswordResetTokenRepository
+    {
+        private readonly UserRepositoryWithoutCustomerRole _users;
+        private string? _tokenHash;
+        private DateTimeOffset _expiresAt;
+
+        public FakePasswordResetTokenRepository(UserRepositoryWithoutCustomerRole users) => _users = users;
+
+        public Task IssueAsync(long userId, string tokenHash, DateTimeOffset createdAt, DateTimeOffset expiresAt, CancellationToken ct = default)
+        {
+            _tokenHash = tokenHash;
+            _expiresAt = expiresAt;
+            return Task.CompletedTask;
+        }
+
+        public Task InvalidateAsync(string tokenHash, DateTimeOffset invalidatedAt, CancellationToken ct = default)
+        {
+            if (string.Equals(_tokenHash, tokenHash, StringComparison.Ordinal))
+            {
+                _tokenHash = null;
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task<User?> ConsumeAsync(string tokenHash, string newPasswordHash, DateTimeOffset usedAt, CancellationToken ct = default)
+        {
+            if (!string.Equals(_tokenHash, tokenHash, StringComparison.Ordinal) ||
+                _expiresAt <= usedAt ||
+                _users.ExistingUser == null)
+            {
+                return Task.FromResult<User?>(null);
+            }
+
+            _tokenHash = null;
+            _users.ExistingUser.PasswordHash = newPasswordHash;
+            return Task.FromResult<User?>(_users.ExistingUser);
+        }
     }
 
     private class DummyBookingStore : Tripgo.Application.Services.Temporary.ITemporaryBookingStore

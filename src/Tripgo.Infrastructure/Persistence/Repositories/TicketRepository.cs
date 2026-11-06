@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Tripgo.Application.Interfaces.Persistence;
@@ -35,24 +36,51 @@ public sealed class TicketRepository : ITicketRepository
     }
 
     public Task<TicketCredential?> GetLiveCredentialAsync(long bookingId, CancellationToken ct = default) =>
-        _context.TicketCredentials.AsNoTracking().FirstOrDefaultAsync(c => c.BookingId == bookingId && c.RevokedAt == null, ct);
+        _context.TicketCredentials.AsNoTracking().FirstOrDefaultAsync(
+            c => c.BookingId == bookingId && c.RevokedAt == null && c.ExpiresAt > DateTimeOffset.UtcNow,
+            ct);
 
-    public async Task<bool> TryAddCredentialAsync(TicketCredential credential, CancellationToken ct = default)
+    public async Task<TicketCredential?> GetOrIssueCredentialAsync(
+        TicketCredential credential,
+        DateTimeOffset now,
+        CancellationToken ct = default)
     {
-        _context.TicketCredentials.Add(credential);
-        try
+        _context.EnsureWritesTargetIsolatedTestDatabase();
+        var strategy = _context.Database.CreateExecutionStrategy();
+        TicketCredential? result = null;
+        await strategy.ExecuteAsync(async () =>
         {
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var existing = await _context.TicketCredentials
+                .FirstOrDefaultAsync(item => item.BookingId == credential.BookingId && item.RevokedAt == null, ct);
+
+            if (existing != null && existing.ExpiresAt > now)
+            {
+                result = existing;
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            if (existing != null)
+            {
+                existing.RevokedAt = now;
+                existing.RevokedReason = "Expired; replaced by a new credential.";
+            }
+
+            if (credential.ExpiresAt <= now)
+            {
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            _context.TicketCredentials.Add(credential);
             await _context.SaveChangesAsync(ct);
-            return true;
-        }
-        catch (DbUpdateException exception) when (exception.InnerException is SqlException { Number: 2601 or 2627 })
-        {
-            return false;
-        }
-        finally
-        {
-            _context.Entry(credential).State = EntityState.Detached;
-        }
+            await transaction.CommitAsync(ct);
+            result = credential;
+        });
+
+        return result;
     }
 
     public async Task<TicketContext?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default)

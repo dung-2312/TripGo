@@ -276,7 +276,6 @@ public class TripService : ITripService
 
         if (isDemo && _bookingService != null)
         {
-            await _bookingService.EnsureDemoTripInventoryAsync(tripId, cancellationToken);
             var tripSeats = await _bookingService.GetSeatsForTripAsync(tripId, cancellationToken);
             seatItems = tripSeats.Select(s => new SeatLayoutItemDto
             {
@@ -594,6 +593,7 @@ public class TripService : ITripService
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
+                    IsDemoBooking = persistent.IsDemoBooking,
                     ConfirmedAt = persistent.ConfirmedAt,
                     TransactionCode = persistent.TransactionCode,
                     PaymentMethod = persistent.PaymentMethod,
@@ -639,6 +639,7 @@ public class TripService : ITripService
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
+                    IsDemoBooking = persistent.IsDemoBooking,
                     ConfirmedAt = persistent.ConfirmedAt,
                     TransactionCode = persistent.TransactionCode,
                     PaymentMethod = persistent.PaymentMethod,
@@ -683,6 +684,7 @@ public class TripService : ITripService
                 TotalAmount = persistent.TotalAmount,
                 BookingStatus = persistent.Status,
                 PaymentStatus = persistent.PaymentStatus,
+                IsDemoBooking = persistent.IsDemoBooking,
                 ConfirmedAt = persistent.ConfirmedAt,
                 TransactionCode = persistent.TransactionCode,
                 PaymentMethod = persistent.PaymentMethod,

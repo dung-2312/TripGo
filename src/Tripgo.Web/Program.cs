@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Security.Cryptography.X509Certificates;
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using System.IO;
 using Microsoft.Data.SqlClient;
 using Tripgo.Application;
+using Tripgo.Application.Configuration;
 using Tripgo.Application.Interfaces;
 using Tripgo.Infrastructure;
 using Tripgo.Infrastructure.Persistence;
@@ -23,6 +26,10 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. Clean Architecture Modules.
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<AuthSecurityOptions>(
+    builder.Configuration.GetSection("Auth:Security").Get<AuthSecurityOptions>() ?? new AuthSecurityOptions());
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthClientAddressProvider, HttpContextAuthClientAddressProvider>();
 
 // 2. Add UI & Razor Components
 builder.Services.AddRazorComponents()
@@ -103,6 +110,27 @@ if (!string.IsNullOrWhiteSpace(keyRingPath))
 }
 
 var app = builder.Build();
+
+app.Logger.LogWarning(
+    "Authentication throttling is process-local (in-memory); limits reset on restart and are not shared across instances. Configure a verified distributed limiter before multi-instance production.");
+
+var trustedProxyAddresses = builder.Configuration.GetSection("Auth:TrustedProxies").Get<string[]>() ?? [];
+var trustedProxies = new List<IPAddress>();
+foreach (var value in trustedProxyAddresses.Where(value => !string.IsNullOrWhiteSpace(value)))
+{
+    if (!IPAddress.TryParse(value, out var address))
+    {
+        throw new InvalidOperationException($"Auth:TrustedProxies contains an invalid IP address: '{value}'.");
+    }
+
+    trustedProxies.Add(address);
+}
+
+if (trustedProxies.Count == 0)
+{
+    app.Logger.LogWarning(
+        "No trusted authentication proxy is configured. Forwarded client addresses will not be trusted; direct connection addresses are used when available.");
+}
 
 if (app.Environment.IsProduction())
 {
@@ -205,6 +233,23 @@ if (app.Environment.IsDevelopment())
 }
 
 // Configure the HTTP request pipeline.
+if (trustedProxies.Count > 0)
+{
+    var forwardedHeaders = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = 1,
+        RequireHeaderSymmetry = true
+    };
+    forwardedHeaders.KnownProxies.Clear();
+    forwardedHeaders.KnownNetworks.Clear();
+    foreach (var trustedProxy in trustedProxies)
+    {
+        forwardedHeaders.KnownProxies.Add(trustedProxy);
+    }
+    app.UseForwardedHeaders(forwardedHeaders);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);

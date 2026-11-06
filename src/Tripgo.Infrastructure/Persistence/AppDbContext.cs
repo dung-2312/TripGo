@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     // 1. Phân quyền & Người dùng
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     // 2. Nhà xe & Phương tiện
     public DbSet<Operator> Operators => Set<Operator>();

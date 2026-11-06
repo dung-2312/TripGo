@@ -129,9 +129,23 @@ public class BookingCoreTests : IAsyncLifetime
         await using var provider = services.BuildServiceProvider();
         var worker = new BookingConfirmationEmailWorker(
             provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<BookingConfirmationEmailWorker>.Instance);
+            NullLogger<BookingConfirmationEmailWorker>.Instance,
+            Tripgo.Tests.Stage1To4.Stage.WorkerConfig,
+            new Tripgo.Tests.Stage1To4.TestHostEnvironment());
 
         await worker.ProcessBatchAsync(CancellationToken.None);
+    }
+
+    private static Task DeferOtherOutboxMessagesAsync(AppDbContext context, long outboxId)
+    {
+        var deferredUntil = DateTimeOffset.UtcNow.AddDays(1);
+        return context.BookingConfirmationEmailOutbox
+            .Where(item => item.Id != outboxId &&
+                           (item.Status == BookingConfirmationEmailOutbox.Pending ||
+                            item.Status == BookingConfirmationEmailOutbox.Processing))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.NextAttemptAt, deferredUntil)
+                .SetProperty(item => item.LockedUntil, deferredUntil));
     }
 
     private sealed class RetryingEmailSender : IEmailSender
@@ -1899,6 +1913,7 @@ public class BookingCoreTests : IAsyncLifetime
         Assert.Contains(booking.BookingCode!, queuedEmail.Payload);
 
         var emailSender = new RetryingEmailSender();
+        await DeferOtherOutboxMessagesAsync(context, queuedEmail.Id);
         await RunConfirmationEmailWorkerAsync(emailSender);
         await context.Entry(queuedEmail).ReloadAsync();
         Assert.Equal(BookingConfirmationEmailOutbox.Pending, queuedEmail.Status);
@@ -1978,6 +1993,7 @@ public class BookingCoreTests : IAsyncLifetime
         await context.SaveChangesAsync();
 
         var emailSender = new RetryingEmailSender();
+        await DeferOtherOutboxMessagesAsync(context, outbox.Id);
         await RunConfirmationEmailWorkerAsync(emailSender);
         await context.Entry(outbox).ReloadAsync();
         Assert.Equal(BookingConfirmationEmailOutbox.Pending, outbox.Status);

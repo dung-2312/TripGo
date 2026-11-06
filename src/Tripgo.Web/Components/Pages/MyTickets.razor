@@ -4,7 +4,7 @@
 @using System.Security.Claims
 @inject ITripService TripService
 @inject IBookingService BookingService
-@inject IPaymentService PaymentService
+@inject IPaymentGatewayService PaymentGatewayService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
@@ -601,13 +601,25 @@
                         <div class="fw-bold text-dark mb-1"><i class="bi bi-wallet2 text-primary me-1" aria-hidden="true"></i> Tiếp tục thanh toán (mô phỏng Sandbox)</div>
                         <p class="small text-muted mb-2">Đơn được giữ đến @selectedDetailTicket.ExpiresAt.ToVietnam().ToString("HH:mm dd/MM/yyyy"). Không phát sinh giao dịch tiền thật.</p>
                         <div class="d-flex flex-wrap gap-2">
-                            <button type="button" class="btn btn-success btn-sm fw-bold" disabled="@isPaying" @onclick="() => PayAsync(selectedDetailTicket, true)">
+                            <button type="button" class="btn btn-success btn-sm fw-bold" disabled="@(isPaying || !sandboxPaymentAvailable)" @onclick="() => PayAsync(selectedDetailTicket, true)">
                                 @(isPaying ? "Đang xử lý..." : $"Thanh toán mô phỏng {selectedDetailTicket.TotalAmount:N0} đ")
                             </button>
-                            <button type="button" class="btn btn-outline-danger btn-sm" disabled="@isPaying" @onclick="() => PayAsync(selectedDetailTicket, false)">
+                            <button type="button" class="btn btn-outline-danger btn-sm" disabled="@(isPaying || !sandboxPaymentAvailable)" @onclick="() => PayAsync(selectedDetailTicket, false)">
                                 Mô phỏng thanh toán thất bại
                             </button>
                         </div>
+                    </div>
+                }
+                else if (HasPendingPayment(selectedDetailTicket) && !selectedDetailTicket.IsDemoBooking)
+                {
+                    <div class="alert alert-warning small mb-3">
+                        Chưa có cổng thanh toán thương mại được cấu hình cho đơn này. Không thể xác nhận thanh toán thực tế từ giao diện sandbox.
+                    </div>
+                }
+                else if (HasPendingPayment(selectedDetailTicket) && !sandboxPaymentAvailable)
+                {
+                    <div class="alert alert-warning small mb-3">
+                        Cổng thanh toán sandbox chưa được bật trong môi trường này; đơn vẫn chưa được thanh toán.
                     </div>
                 }
 
@@ -665,9 +677,11 @@
     private int upcomingCount = 0;
     private int completedCount = 0;
     private int cancelledCount = 0;
+    private bool sandboxPaymentAvailable;
 
     protected override async Task OnInitializedAsync()
     {
+        sandboxPaymentAvailable = PaymentGatewayService.GetProviders().Any(provider => provider.IsSandbox);
         await LoadTicketsAsync();
 
         if (!string.IsNullOrWhiteSpace(QueryCode) || !string.IsNullOrWhiteSpace(QueryPhone))
@@ -867,10 +881,13 @@
     private static bool CanCancel(CustomerBookingInfoDto ticket) =>
         ticket.BookingStatus == "PendingPayment" && ticket.PaymentStatus is "Unpaid" or "Failed";
 
-    private static bool CanPay(CustomerBookingInfoDto ticket) =>
+    private static bool HasPendingPayment(CustomerBookingInfoDto ticket) =>
         ticket.BookingStatus == "PendingPayment" &&
         ticket.PaymentStatus is "Unpaid" or "Failed" &&
         ticket.ExpiresAt > DateTimeOffset.UtcNow;
+
+    private bool CanPay(CustomerBookingInfoDto ticket) =>
+        sandboxPaymentAvailable && ticket.IsDemoBooking && HasPendingPayment(ticket);
 
     private bool isPaying;
 
@@ -885,22 +902,15 @@
         actionAlertMessage = null;
         try
         {
-            var result = await PaymentService.ProcessPaymentAsync(new ProcessPaymentRequestDto
-            {
-                BookingCode = ticket.BookingCode,
-                PaymentMethod = "SANDBOX_SIMULATED",
-                Amount = ticket.TotalAmount,
-                SimulateSuccess = simulateSuccess,
-                FailureReason = simulateSuccess ? null : "Giao dịch mô phỏng bị từ chối."
-            });
-
-            actionAlertIsError = !result.Success;
-            actionAlertMessage = result.Success
-                ? $"Đã thanh toán mô phỏng đơn {ticket.BookingCode}."
-                : $"Thanh toán mô phỏng không thành công: {result.Message}";
-
+            var result = await PaymentGatewayService.SimulateSandboxPaymentAsync(ticket.BookingCode, simulateSuccess);
             await LoadTicketsAsync();
-            selectedDetailTicket = allTickets.FirstOrDefault(t => t.BookingId == ticket.BookingId);
+            selectedDetailTicket = allTickets.FirstOrDefault(t => t.BookingId == ticket.BookingId)
+                ?? await TripService.GetBookingByCodeAsync(ticket.BookingCode);
+            var paid = selectedDetailTicket?.BookingStatus == "Confirmed" && selectedDetailTicket.PaymentStatus == "Paid";
+            actionAlertIsError = !paid;
+            actionAlertMessage = paid
+                ? $"Đã thanh toán sandbox đơn {ticket.BookingCode}."
+                : $"Thanh toán sandbox chưa được xác nhận: {result.Message}";
         }
         catch (Exception ex)
         {

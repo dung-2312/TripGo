@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Tripgo.Application.DTOs.Admin;
 using Tripgo.Application.DTOs.Payment;
 using Tripgo.Application.Interfaces;
+using Tripgo.Application.Services;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
 
@@ -65,6 +67,121 @@ public sealed class PaymentGatewayTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DefinitiveInitiationRejection_FailsTransactionAndRetryCreatesANewOne()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var rejected = new ScriptedProvider((_, _) =>
+            Task.FromResult(new ProviderInitiation(false, null, null, "private provider detail")));
+        var gateway = _stage.PaymentGateway(context, providers: new[] { rejected });
+
+        var first = await gateway.InitiatePaymentAsync(booking.BookingCode);
+        var firstStatus = await context.PaymentTransactions
+            .Where(item => item.TransactionCode == first.TransactionCode)
+            .Select(item => item.Status)
+            .SingleAsync();
+        var retry = await gateway.InitiatePaymentAsync(booking.BookingCode);
+
+        Assert.False(first.Success);
+        Assert.DoesNotContain("private provider detail", first.Message, StringComparison.Ordinal);
+        Assert.Equal(PaymentStatus.Failed, firstStatus);
+        Assert.False(string.Equals(first.TransactionCode, retry.TransactionCode, StringComparison.Ordinal));
+        Assert.Equal(2, await context.PaymentTransactions.CountAsync(item => item.BookingId == booking.Id));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AmbiguousInitiationFailure_KeepsPendingAndRetryUsesSameIdempotencyKey(bool timeout)
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var calls = 0;
+        var provider = new ScriptedProvider((request, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return calls == 1
+                ? Task.FromException<ProviderInitiation>(
+                    timeout ? new TimeoutException("private timeout detail") : new InvalidOperationException("private network detail"))
+                : Task.FromResult(new ProviderInitiation(true, "provider-reference", "https://sandbox.invalid/pay", null));
+        });
+        var gateway = _stage.PaymentGateway(context, providers: new[] { provider });
+
+        var first = await gateway.InitiatePaymentAsync(booking.BookingCode);
+        var pendingStatus = await context.PaymentTransactions
+            .Where(item => item.TransactionCode == first.TransactionCode)
+            .Select(item => item.Status)
+            .SingleAsync();
+        var retry = await gateway.InitiatePaymentAsync(booking.BookingCode);
+
+        Assert.False(first.Success);
+        Assert.Equal(PaymentStatus.Pending, pendingStatus);
+        Assert.True(retry.Success, retry.Message);
+        Assert.Equal(first.TransactionCode, retry.TransactionCode);
+        Assert.Equal(1, await context.PaymentTransactions.CountAsync(item => item.BookingId == booking.Id));
+        Assert.Equal(2, provider.TransactionCodes.Count);
+        Assert.All(provider.TransactionCodes, code => Assert.Equal(first.TransactionCode, code));
+    }
+
+    [Fact]
+    public async Task LateCallbackAfterDefinitiveInitiationRejection_CannotConfirmBooking()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+        var provider = new ScriptedProvider((_, _) =>
+            Task.FromResult(new ProviderInitiation(false, null, null, null)));
+        var gateway = _stage.PaymentGateway(context, providers: new[] { provider });
+        var initiation = await gateway.InitiatePaymentAsync(booking.BookingCode);
+        var callback = Stage.Gateway.CreateSignedCallback(NewEvent(), initiation.TransactionCode!, booking.TotalAmount, "VND", "succeeded");
+
+        var outcome = await gateway.HandleCallbackAsync(Stage.Gateway.Name, callback);
+
+        Assert.Equal(PaymentWebhookEvent.OutcomeDuplicate, outcome.Outcome);
+        Assert.Equal(PaymentStatus.Failed, await context.PaymentTransactions
+            .Where(item => item.TransactionCode == initiation.TransactionCode)
+            .Select(item => item.Status)
+            .SingleAsync());
+        Assert.NotEqual(BookingStatus.Confirmed, await context.Bookings
+            .Where(item => item.Id == booking.Id)
+            .Select(item => item.Status)
+            .SingleAsync());
+    }
+
+    [Fact]
+    public async Task CallbackCannotReverseCompletedPayment()
+    {
+        var (context, gateway, payment, bookingId, amount) = await StartAsync();
+        await using var _ = context;
+        Assert.Equal(PaymentWebhookEvent.OutcomeApplied, (await SendAsync(gateway, NewEvent(), payment.TransactionCode!, amount)).Outcome);
+
+        var failedCallback = await SendAsync(gateway, NewEvent(), payment.TransactionCode!, amount, status: "failed");
+
+        Assert.Equal(PaymentWebhookEvent.OutcomeDuplicate, failedCallback.Outcome);
+        Assert.Equal(PaymentStatus.Paid, await context.Bookings
+            .Where(item => item.Id == bookingId)
+            .Select(item => item.PaymentStatus)
+            .SingleAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentInitiation_CreatesOnlyOneOpenTransaction()
+    {
+        await using var context = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(context);
+
+        var attempts = Enumerable.Range(0, 4).Select(async _ =>
+        {
+            await using var attemptContext = Stage.NewContext();
+            return await _stage.PaymentGateway(attemptContext).InitiatePaymentAsync(booking.BookingCode);
+        });
+        var results = await Task.WhenAll(attempts);
+
+        Assert.All(results, result => Assert.True(result.Success, result.Message));
+        Assert.Single(results.Select(result => result.TransactionCode).Distinct());
+        Assert.Equal(1, await context.PaymentTransactions.CountAsync(t => t.BookingId == booking.Id && t.Status == PaymentStatus.Pending));
+    }
+
+    [Fact]
     public async Task TransactionCodes_AreUnique_AcrossBookings()
     {
         var (first, _, firstPayment, _, _) = await StartAsync();
@@ -88,6 +205,42 @@ public sealed class PaymentGatewayTests : IAsyncLifetime
         Assert.Equal(BookingStatus.Confirmed, stored.Status);
         Assert.Equal(PaymentStatus.Paid, stored.PaymentStatus);
         Assert.Equal(TripSeatStatus.Booked, await context.BookingSeats.Where(s => s.BookingId == bookingId).Select(s => s.TripSeat.Status).FirstAsync());
+    }
+
+    [Fact]
+    public async Task SandboxSimulation_UsesVerifiedCallback_AndConfirmsTheBooking()
+    {
+        var (context, gateway, _, bookingId, _) = await StartAsync();
+        await using var _ = context;
+        var bookingCode = await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.BookingCode).SingleAsync();
+
+        var result = await gateway.SimulateSandboxPaymentAsync(bookingCode, succeeded: true);
+
+        Assert.True(result.Success, result.Message);
+        Assert.True(result.PaymentSucceeded);
+        Assert.Equal(PaymentWebhookEvent.OutcomeApplied, result.Outcome);
+        Assert.NotNull(result.TransactionCode);
+        Assert.Equal(BookingStatus.Confirmed, await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.Status).SingleAsync());
+        Assert.Equal(PaymentStatus.Paid, await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.PaymentStatus).SingleAsync());
+        Assert.True(await context.PaymentWebhookEvents.AnyAsync(e =>
+            e.TransactionCode == result.TransactionCode && e.SignatureValid && e.Outcome == PaymentWebhookEvent.OutcomeApplied));
+    }
+
+    [Fact]
+    public async Task SandboxSimulation_FailureLeavesBookingUnpaidAndRetryable()
+    {
+        var (context, gateway, _, bookingId, _) = await StartAsync();
+        await using var _ = context;
+        var bookingCode = await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.BookingCode).SingleAsync();
+
+        var result = await gateway.SimulateSandboxPaymentAsync(bookingCode, succeeded: false);
+
+        Assert.True(result.Success, result.Message);
+        Assert.False(result.PaymentSucceeded);
+        Assert.Equal(PaymentWebhookEvent.OutcomeApplied, result.Outcome);
+        Assert.Equal(BookingStatus.PendingPayment, await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.Status).SingleAsync());
+        Assert.Equal(PaymentStatus.Failed, await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.PaymentStatus).SingleAsync());
+        Assert.True((await gateway.InitiatePaymentAsync(bookingCode)).Success);
     }
 
     [Fact]
@@ -197,6 +350,35 @@ public sealed class PaymentGatewayTests : IAsyncLifetime
         Assert.NotEqual(PaymentStatus.Paid, await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.PaymentStatus).SingleAsync());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FailedCallbackWithMismatchedAmountOrCurrency_DoesNotChangePaymentState(bool mismatchAmount)
+    {
+        var (context, gateway, payment, bookingId, amount) = await StartAsync();
+        await using var _ = context;
+
+        var outcome = await SendAsync(
+            gateway,
+            NewEvent(),
+            payment.TransactionCode!,
+            mismatchAmount ? amount + 1m : amount,
+            currency: mismatchAmount ? "VND" : "USD",
+            status: "failed");
+
+        Assert.Equal(
+            mismatchAmount ? PaymentWebhookEvent.OutcomeAmountMismatch : PaymentWebhookEvent.OutcomeCurrencyMismatch,
+            outcome.Outcome);
+        Assert.Equal(PaymentStatus.Pending, await context.PaymentTransactions
+            .Where(item => item.TransactionCode == payment.TransactionCode)
+            .Select(item => item.Status)
+            .SingleAsync());
+        Assert.Equal(BookingStatus.PendingPayment, await context.Bookings
+            .Where(item => item.Id == bookingId)
+            .Select(item => item.Status)
+            .SingleAsync());
+    }
+
     [Fact]
     public async Task FailedCallback_LeavesTheBookingRetryable_AndNotifiesTheCustomer()
     {
@@ -287,5 +469,31 @@ public sealed class PaymentGatewayTests : IAsyncLifetime
         var result = await _stage.PaymentGateway(context).InitiatePaymentAsync(booking.BookingCode);
 
         Assert.False(result.Success);
+    }
+
+    private sealed class ScriptedProvider : IPaymentProvider
+    {
+        private readonly Func<ProviderInitiationRequest, CancellationToken, Task<ProviderInitiation>> _initiate;
+        private readonly System.Collections.Concurrent.ConcurrentBag<string> _transactionCodes = new();
+
+        public ScriptedProvider(Func<ProviderInitiationRequest, CancellationToken, Task<ProviderInitiation>> initiate) =>
+            _initiate = initiate;
+
+        public string Name => Stage.Gateway.Name;
+        public bool IsSandbox => true;
+        public bool SupportsRefund => false;
+        public IReadOnlyCollection<string> TransactionCodes => _transactionCodes;
+
+        public Task<ProviderInitiation> InitiateAsync(ProviderInitiationRequest request, CancellationToken ct = default)
+        {
+            _transactionCodes.Add(request.TransactionCode);
+            return _initiate(request, ct);
+        }
+
+        public VerifiedPaymentCallback VerifyCallback(PaymentCallbackRequest request) =>
+            Stage.Gateway.VerifyCallback(request);
+
+        public Task<ProviderRefund> RefundAsync(ProviderRefundRequest request, CancellationToken ct = default) =>
+            Task.FromResult(new ProviderRefund(false, null, "Refund is not supported."));
     }
 }

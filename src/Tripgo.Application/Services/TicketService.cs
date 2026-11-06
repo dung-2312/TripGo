@@ -40,17 +40,22 @@ public sealed class TicketService : ITicketService
             return new MyTicketDto { Message = "Không tìm thấy đơn đặt chỗ hoặc bạn không có quyền xem." };
         }
 
-        var credential = await _repository.GetLiveCredentialAsync(booking.BookingId, ct);
-        if (credential == null)
+        if (!booking.IsConfirmedAndPaid)
         {
-            if (!booking.IsConfirmedAndPaid)
-            {
-                return new MyTicketDto { Message = "Mã kiểm tra chỉ được tạo sau khi đơn đã thanh toán và xác nhận." };
-            }
-
-            credential = await IssueAsync(booking, ct);
+            return new MyTicketDto { Message = "Mã kiểm tra chỉ được tạo sau khi đơn đã thanh toán và xác nhận." };
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var expiresAt = booking.ExpectedArrival.Add(ValidityAfterArrival);
+        if (expiresAt <= now)
+        {
+            return new MyTicketDto
+            {
+                Message = "Vé đã hết hạn và không thể cấp lại sau thời gian hiệu lực của chuyến."
+            };
+        }
+
+        var credential = await IssueAsync(booking, expiresAt, now, ct);
         var token = _protector.Unprotect(credential.ProtectedToken);
         if (token == null)
         {
@@ -69,7 +74,11 @@ public sealed class TicketService : ITicketService
         };
     }
 
-    private async Task<TicketCredential> IssueAsync(OwnedBookingForTicket booking, CancellationToken ct)
+    private async Task<TicketCredential> IssueAsync(
+        OwnedBookingForTicket booking,
+        DateTimeOffset expiresAt,
+        DateTimeOffset now,
+        CancellationToken ct)
     {
         var token = TokenPrefix + Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var credential = new TicketCredential
@@ -78,16 +87,11 @@ public sealed class TicketService : ITicketService
             TokenHash = HashToken(token),
             ProtectedToken = _protector.Protect(token),
             IsSandbox = booking.IsSandbox,
-            IssuedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = booking.ExpectedArrival.Add(ValidityAfterArrival)
+            IssuedAt = now,
+            ExpiresAt = expiresAt
         };
 
-        if (await _repository.TryAddCredentialAsync(credential, ct))
-        {
-            return credential;
-        }
-
-        return await _repository.GetLiveCredentialAsync(booking.BookingId, ct)
+        return await _repository.GetOrIssueCredentialAsync(credential, now, ct)
             ?? throw new InvalidOperationException("The ticket credential could not be issued.");
     }
 

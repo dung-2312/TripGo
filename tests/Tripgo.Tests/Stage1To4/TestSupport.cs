@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Application.Services;
@@ -55,6 +57,16 @@ internal sealed class Stage
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Payments:Sandbox:CallbackSecret"] = "test-only-callback-secret" })
         .Build();
 
+    public static IConfiguration WorkerConfig { get; } = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Workers:BookingExpiration:Enabled"] = "true",
+            ["Workers:BookingExpiration:TargetDatabase"] = "TripgoDb_IsolatedTest",
+            ["Workers:BookingConfirmationEmail:Enabled"] = "true",
+            ["Workers:BookingConfirmationEmail:TargetDatabase"] = "TripgoDb_IsolatedTest"
+        })
+        .Build();
+
     public static SandboxPaymentProvider Gateway { get; } = new(SandboxConfig);
 
     public BookingService Bookings(AppDbContext context, string? owner = null, long? userId = null) =>
@@ -63,11 +75,19 @@ internal sealed class Stage
     public PaymentService Payments(AppDbContext context, string? owner = null) =>
         new(new BookingRepository(context), new FixedSession(owner ?? Owner));
 
-    public PaymentGatewayService PaymentGateway(AppDbContext context, string? owner = null, long? userId = null)
+    public PaymentGatewayService PaymentGateway(
+        AppDbContext context,
+        string? owner = null,
+        long? userId = null,
+        IEnumerable<IPaymentProvider>? providers = null)
     {
         var session = new FixedSession(owner ?? Owner, userId);
         var repository = new AdminRepository(context);
-        return new PaymentGatewayService(new PaymentGatewayRepository(context), session, new AdminAccessGuard(session, repository), new[] { Gateway });
+        return new PaymentGatewayService(
+            new PaymentGatewayRepository(context),
+            session,
+            new AdminAccessGuard(session, repository),
+            providers ?? new[] { Gateway });
     }
 
     public AdminService Admin(AppDbContext context, long? userId)
@@ -195,4 +215,12 @@ internal sealed class Stage
         await context.PickupDropoffPoints.Where(p => p.Name.Contains(Marker)).ExecuteDeleteAsync();
         await context.Operators.Where(o => o.Code.Contains(Marker)).ExecuteDeleteAsync();
     }
+}
+
+internal sealed class TestHostEnvironment : IHostEnvironment
+{
+    public string EnvironmentName { get; set; } = Environments.Development;
+    public string ApplicationName { get; set; } = "Tripgo.Tests";
+    public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+    public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
 }

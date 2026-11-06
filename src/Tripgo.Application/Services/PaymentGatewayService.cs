@@ -4,6 +4,7 @@ using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
+using Microsoft.Extensions.Logging;
 
 namespace Tripgo.Application.Services;
 
@@ -15,21 +16,63 @@ public sealed class PaymentGatewayService : IPaymentGatewayService
     private readonly IBookingSessionContext _session;
     private readonly IAdminAccessGuard _guard;
     private readonly Dictionary<string, IPaymentProvider> _providers;
+    private readonly ILogger<PaymentGatewayService>? _logger;
 
     public PaymentGatewayService(
         IPaymentGatewayRepository repository,
         IBookingSessionContext session,
         IAdminAccessGuard guard,
-        IEnumerable<IPaymentProvider> providers)
+        IEnumerable<IPaymentProvider> providers,
+        ILogger<PaymentGatewayService>? logger = null)
     {
         _repository = repository;
         _session = session;
         _guard = guard;
         _providers = providers.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        _logger = logger;
     }
 
     public IReadOnlyList<PaymentProviderInfo> GetProviders() =>
         _providers.Values.Select(p => new PaymentProviderInfo(p.Name, p.IsSandbox, p.SupportsRefund)).ToList();
+
+    public async Task<SandboxPaymentResult> SimulateSandboxPaymentAsync(string bookingCode, bool succeeded, CancellationToken ct = default)
+    {
+        var provider = _providers.Values.OfType<ISandboxPaymentProvider>().FirstOrDefault(p => p.IsSandbox);
+        if (provider == null)
+        {
+            return new SandboxPaymentResult { Message = "Thanh toán sandbox chưa được cấu hình." };
+        }
+
+        var initiation = await InitiatePaymentAsync(bookingCode, provider.Name, ct);
+        if (!initiation.Success || string.IsNullOrWhiteSpace(initiation.TransactionCode))
+        {
+            return new SandboxPaymentResult
+            {
+                Message = initiation.Message,
+                BookingCode = bookingCode
+            };
+        }
+
+        var callback = provider.CreateSimulationCallback(
+            initiation.TransactionCode,
+            initiation.Amount,
+            initiation.Currency,
+            succeeded);
+        var outcome = await HandleCallbackAsync(provider.Name, callback, ct);
+        var applied = outcome.Accepted && outcome.Outcome == PaymentWebhookEvent.OutcomeApplied;
+
+        return new SandboxPaymentResult
+        {
+            Success = applied,
+            PaymentSucceeded = applied && succeeded,
+            Message = applied
+                ? succeeded ? "Thanh toán sandbox đã được xác nhận." : "Giao dịch sandbox đã bị từ chối."
+                : $"Không thể áp dụng kết quả thanh toán sandbox ({outcome.Outcome}).",
+            BookingCode = outcome.BookingCode ?? bookingCode,
+            TransactionCode = initiation.TransactionCode,
+            Outcome = outcome.Outcome
+        };
+    }
 
     public async Task<PaymentInitiationResult> InitiatePaymentAsync(string bookingCode, string? providerName = null, CancellationToken ct = default)
     {
@@ -60,47 +103,82 @@ public sealed class PaymentGatewayService : IPaymentGatewayService
         }
 
         var open = await _repository.GetOpenTransactionAsync(booking.BookingId, provider.Name, ct);
-        if (open != null)
+        var pending = open == null
+            ? await _repository.AddPendingTransactionAsync(new PaymentTransaction
+            {
+                BookingId = booking.BookingId,
+                TransactionCode = $"TXN-{provider.Name}-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}",
+                Provider = provider.Name,
+                PaymentMethod = provider.Name,
+                Amount = booking.TotalAmount,
+                Currency = Currency,
+                Status = PaymentStatus.Pending,
+                IsSandbox = provider.IsSandbox,
+                CreatedAt = now,
+                ExpiresAt = booking.ExpiresAt
+            }, ct)
+            : new PendingPaymentTransactionResult(open, Created: false);
+
+        ProviderInitiation initiation;
+        try
         {
+            // TransactionCode is the provider idempotency key. Retrying an uncertain initiation
+            // must reuse it so a provider cannot create a second charge.
+            initiation = await provider.InitiateAsync(
+                new ProviderInitiationRequest(
+                    pending.Transaction.TransactionCode,
+                    booking.BookingCode,
+                    booking.TotalAmount,
+                    Currency,
+                    booking.ExpiresAt),
+                ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // A timeout or transport exception cannot establish whether the provider accepted
+            // the request. Keep the transaction pending; a retry uses the same idempotency key.
+            _logger?.LogWarning(
+                "Payment provider {Provider} initiation outcome is unknown for transaction {TransactionCode} ({ExceptionType}); transaction remains pending for idempotent retry.",
+                provider.Name,
+                pending.Transaction.TransactionCode,
+                exception.GetType().Name);
             return new PaymentInitiationResult
             {
-                Success = true,
-                Message = "Tiếp tục giao dịch đang mở.",
-                TransactionCode = open.TransactionCode,
-                Amount = open.Amount,
-                Currency = open.Currency,
-                IsSandbox = open.IsSandbox
+                Message = "Chưa xác định được kết quả khởi tạo thanh toán. Vui lòng thử lại để kiểm tra giao dịch.",
+                TransactionCode = pending.Transaction.TransactionCode,
+                Amount = pending.Transaction.Amount,
+                Currency = pending.Transaction.Currency,
+                IsSandbox = pending.Transaction.IsSandbox
             };
         }
 
-        var transactionCode = $"TXN-{provider.Name}-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
-        await _repository.AddPendingTransactionAsync(new PaymentTransaction
-        {
-            BookingId = booking.BookingId,
-            TransactionCode = transactionCode,
-            Provider = provider.Name,
-            PaymentMethod = provider.Name,
-            Amount = booking.TotalAmount,
-            Currency = Currency,
-            Status = PaymentStatus.Pending,
-            IsSandbox = provider.IsSandbox,
-            CreatedAt = now,
-            ExpiresAt = booking.ExpiresAt
-        }, ct);
-
-        var initiation = await provider.InitiateAsync(
-            new ProviderInitiationRequest(transactionCode, booking.BookingCode, booking.TotalAmount, Currency, booking.ExpiresAt), ct);
         if (!initiation.Accepted)
         {
-            return new PaymentInitiationResult { Message = initiation.Error ?? "Cổng thanh toán từ chối yêu cầu." };
+            await _repository.FailInitiationAsync(
+                pending.Transaction.TransactionCode,
+                "Provider definitively rejected payment initiation.",
+                DateTimeOffset.UtcNow,
+                ct);
+            return new PaymentInitiationResult
+            {
+                Message = "Cổng thanh toán đã từ chối khởi tạo giao dịch.",
+                TransactionCode = pending.Transaction.TransactionCode,
+                Amount = pending.Transaction.Amount,
+                Currency = pending.Transaction.Currency,
+                IsSandbox = pending.Transaction.IsSandbox
+            };
         }
 
-        await _repository.SetProviderReferenceAsync(transactionCode, initiation.ProviderReference, ct);
+        await _repository.SetProviderReferenceAsync(pending.Transaction.TransactionCode, initiation.ProviderReference, ct);
         return new PaymentInitiationResult
         {
             Success = true,
             Message = "Đã khởi tạo giao dịch.",
-            TransactionCode = transactionCode,
+            TransactionCode = pending.Transaction.TransactionCode,
             RedirectUrl = initiation.RedirectUrl,
             Amount = booking.TotalAmount,
             Currency = Currency,

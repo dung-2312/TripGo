@@ -11,7 +11,7 @@ namespace Tripgo.Infrastructure.Services;
 /// An in-process stand-in for a payment gateway. No money moves. It exercises the same signed-callback
 /// path a real provider would, and it can only ever settle bookings flagged as sandbox.
 /// </summary>
-public sealed class SandboxPaymentProvider : IPaymentProvider
+public sealed class SandboxPaymentProvider : ISandboxPaymentProvider
 {
     public const string ProviderName = "SANDBOX";
     private static readonly byte[] ProcessKey = RandomNumberGenerator.GetBytes(32);
@@ -89,6 +89,14 @@ public sealed class SandboxPaymentProvider : IPaymentProvider
         }, JsonOptions);
         return new PaymentCallbackRequest(body, Sign(body));
     }
+
+    public PaymentCallbackRequest CreateSimulationCallback(string transactionCode, decimal amount, string currency, bool succeeded) =>
+        CreateSignedCallback(
+            $"evt-sandbox-{Guid.NewGuid():N}",
+            transactionCode,
+            amount,
+            currency,
+            succeeded ? "succeeded" : "failed");
 
     private bool IsSignatureValid(string body, string? signature)
     {

@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Tripgo.Application.Interfaces.Persistence;
 using Tripgo.Infrastructure.Persistence;
 
@@ -10,13 +12,20 @@ public sealed class BookingExpirationWorker : BackgroundService
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromSeconds(30);
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingExpirationWorker> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
+    private bool _statusLogged;
 
     public BookingExpirationWorker(
         IServiceScopeFactory scopeFactory,
-        ILogger<BookingExpirationWorker> logger)
+        ILogger<BookingExpirationWorker> logger,
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _configuration = configuration;
+        _environment = environment;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -45,11 +54,27 @@ public sealed class BookingExpirationWorker : BackgroundService
             await using var scope = _scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var dbName = dbContext.Database.GetDbConnection().Database;
-            if (!string.Equals(dbName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+            var enabled = BackgroundWorkerPolicy.IsEnabled(
+                _configuration,
+                _environment,
+                "BookingExpiration",
+                dbName,
+                out var reason);
+            if (!_statusLogged)
             {
-                _logger.LogWarning(
-                    "Booking expiration is disabled for database {Database}; only TripgoDb_IsolatedTest is permitted.",
-                    dbName);
+                if (enabled)
+                {
+                    _logger.LogInformation("Booking expiration worker is active: {Reason}.", reason);
+                }
+                else
+                {
+                    _logger.LogWarning("Booking expiration worker is disabled: {Reason}.", reason);
+                }
+                _statusLogged = true;
+            }
+
+            if (!enabled)
+            {
                 return false;
             }
 

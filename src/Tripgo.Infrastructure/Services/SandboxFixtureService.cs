@@ -776,8 +776,24 @@ public class SandboxFixtureService : ISandboxFixtureService
     private async Task EnsureSandboxUserAsync(
         string email, string fullName, string phone, int roleId, string? password, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(password) ||
-            await _context.Users.AnyAsync(u => u.Email.ToLower() == email || u.PhoneNumber == phone, ct))
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            return;
+        }
+
+        var existingUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(), ct);
+        if (existingUser != null)
+        {
+            if (string.Equals(email, "admin@tripgo.test", StringComparison.OrdinalIgnoreCase))
+            {
+                existingUser.PasswordHash = _passwordHasher.HashPassword(password);
+            }
+
+            return;
+        }
+
+        if (await _context.Users.AnyAsync(u => u.PhoneNumber == phone, ct))
         {
             return;
         }
@@ -858,4 +874,3 @@ public class SandboxFixtureService : ISandboxFixtureService
         [30] = ("Bến xe Trung tâm Quy Nhơn", "71 Tây Sơn, Phường Ghềnh Ráng, TP. Quy Nhơn, Bình Định")
     };
 }
-

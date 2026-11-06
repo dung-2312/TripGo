@@ -11,8 +11,14 @@ public interface IPaymentGatewayService
 {
     Task<PaymentInitiationResult> InitiatePaymentAsync(string bookingCode, string? providerName = null, CancellationToken ct = default);
     Task<PaymentCallbackOutcome> HandleCallbackAsync(string providerName, PaymentCallbackRequest request, CancellationToken ct = default);
+    Task<SandboxPaymentResult> SimulateSandboxPaymentAsync(string bookingCode, bool succeeded, CancellationToken ct = default);
     Task<AdminResult> RefundBookingAsync(long bookingId, string reason, CancellationToken ct = default);
     IReadOnlyList<PaymentProviderInfo> GetProviders();
+}
+
+public interface ISandboxPaymentProvider : IPaymentProvider
+{
+    PaymentCallbackRequest CreateSimulationCallback(string transactionCode, decimal amount, string currency, bool succeeded);
 }
 
 public interface IPaymentProvider

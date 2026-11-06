@@ -61,6 +61,7 @@ public class BookingRepository : IBookingRepository
     {
         return await _context.Trips
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
             .Include(t => t.Route)

@@ -1,4 +1,6 @@
 using Microsoft.Playwright;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Tripgo.Tests.E2E;
 
@@ -77,10 +79,65 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
     private static async Task OpenTripAsync(IPage page)
     {
         await GotoInteractiveAsync(page, "/");
-        await page.Locator(".tg-search-box").GetByRole(AriaRole.Button, new() { Name = "Ngày mai", Exact = true }).ClickAsync();
-        await page.Locator(".tg-search-box").GetByRole(AriaRole.Button, new() { Name = "Tìm vé" }).ClickAsync();
-        await page.GetByRole(AriaRole.Button, new() { Name = "Chọn chuyến này" }).First.ClickAsync();
-        await page.Locator("button.tg-seat-berth.seat-available").First.WaitForAsync();
+        var departureDate = page.Locator(".tg-search-box input[type='date']");
+        var searchBox = page.Locator(".tg-search-box");
+        var initialDate = await departureDate.InputValueAsync();
+        await searchBox.GetByRole(AriaRole.Button, new() { Name = "Ngày mai", Exact = true }).ClickAsync();
+        await page.WaitForFunctionAsync(
+            "previousDate => document.querySelector(\".tg-search-box input[type='date']\")?.value !== previousDate",
+            initialDate);
+        await searchBox.GetByRole(AriaRole.Button, new() { Name = "Tìm vé" }).ClickAsync();
+        var firstDepartureDate = DateOnly.ParseExact(
+            await departureDate.InputValueAsync(),
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture);
+
+        for (var dayOffset = 1; dayOffset <= 14; dayOffset++)
+        {
+            if (dayOffset > 1)
+            {
+                await departureDate.FillAsync(firstDepartureDate.AddDays(dayOffset - 1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                await searchBox.GetByRole(AriaRole.Button, new() { Name = "Tìm vé" }).ClickAsync();
+            }
+
+            await page.Locator("#trip-results").GetByText("KẾT QUẢ TÌM KIẾM").WaitForAsync();
+            var cards = page.Locator(".trip-card");
+            ILocator? selectedTrip = null;
+            for (var index = 0; index < await cards.CountAsync(); index++)
+            {
+                var card = cards.Nth(index);
+                var summary = await card.InnerTextAsync();
+                var capacity = Regex.Match(summary, @"Còn\s+(\d+)\s*/");
+                if (!summary.Contains("[SANDBOX]-", StringComparison.Ordinal) ||
+                    !capacity.Success ||
+                    !int.TryParse(capacity.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var availableSeats) ||
+                    availableSeats < 2)
+                {
+                    continue;
+                }
+
+                selectedTrip = card;
+                break;
+            }
+
+            if (selectedTrip == null)
+            {
+                continue;
+            }
+
+            await selectedTrip.GetByRole(AriaRole.Button, new() { Name = "Chọn chuyến này" }).ClickAsync();
+            try
+            {
+                await page.Locator("button.tg-seat-berth.seat-available").First.WaitForAsync();
+                return;
+            }
+            catch (TimeoutException)
+            {
+                await page.GetByRole(AriaRole.Button, new() { Name = "Quay lại danh sách chuyến" }).ClickAsync();
+            }
+        }
+
+        throw new InvalidOperationException("No sandbox trip with at least two available seats was found in the next 14 days.");
     }
 
     private static async Task<string> SelectFreeSeatAsync(IPage page, int index = 0)
@@ -93,7 +150,10 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
 
     private static async Task ContinueToPassengerAsync(IPage page)
     {
-        await page.GetByRole(AriaRole.Button, new() { Name = "Tiếp tục: Điểm đón/trả" }).ClickAsync();
+        var continueButton = page.GetByRole(AriaRole.Button, new() { Name = "Tiếp tục: Điểm đón/trả" });
+        await page.WaitForFunctionAsync(
+            "() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Tiếp tục: Điểm đón/trả') && !button.disabled)");
+        await continueButton.ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Tiếp tục: Thông tin khách" }).ClickAsync();
     }
 
@@ -152,6 +212,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await OpenTripAsync(page);
         await SelectFreeSeatAsync(page, 0);
         await SelectFreeSeatAsync(page, 0);
+        await page.GetByText("Ghế đã chọn (2):").WaitForAsync();
         await ContinueToPassengerAsync(page);
         await FillPassengerAsync(page);
         await ContinueToPaymentAsync(page);
@@ -171,7 +232,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
 
-        await page.GetByText("Thanh toán mô phỏng không thành công").WaitForAsync();
+        await page.GetByText("Thanh toán sandbox chưa được xác nhận").WaitForAsync();
 
         // The order exists now: going back to change seats would pay for the wrong thing, so that path is gone.
         Assert.Equal(0, await page.GetByRole(AriaRole.Button, new() { Name = "Quay lại thông tin khách" }).CountAsync());
@@ -230,7 +291,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await ContinueToPaymentAsync(page);
         await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
-        await page.GetByText("Thanh toán mô phỏng không thành công").WaitForAsync();
+        await page.GetByText("Thanh toán sandbox chưa được xác nhận").WaitForAsync();
 
         await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.NetworkIdle });
         await GotoInteractiveAsync(page, "/my-tickets");
@@ -238,7 +299,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
 
         await page.GetByRole(AriaRole.Button, new() { Name = "Xem thông tin đặt chỗ" }).First.ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán mô phỏng" }).First.ClickAsync();
-        await page.GetByText("Đã thanh toán mô phỏng đơn").WaitForAsync();
+        await page.GetByText("Đã thanh toán sandbox đơn").WaitForAsync();
     }
 
     [E2EFact]
@@ -252,7 +313,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await ContinueToPaymentAsync(page);
         await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
-        await page.GetByText("Thanh toán mô phỏng không thành công").WaitForAsync();
+        await page.GetByText("Thanh toán sandbox chưa được xác nhận").WaitForAsync();
 
         await GotoInteractiveAsync(page, "/my-tickets");
         await page.GetByRole(AriaRole.Button, new() { Name = "Hủy đặt chỗ" }).First.ClickAsync();

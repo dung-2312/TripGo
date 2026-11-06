@@ -35,6 +35,7 @@ public class CustomerBookingInfoDto
     public decimal TotalAmount { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
+    public bool IsDemoBooking { get; set; }
     public DateTimeOffset? ConfirmedAt { get; set; }
     public string? TransactionCode { get; set; }
     public string? PaymentMethod { get; set; }

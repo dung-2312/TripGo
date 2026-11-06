@@ -64,6 +64,24 @@ public sealed class TicketAndEmailTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CancelledBooking_DoesNotExposeOrVerifyItsTicket()
+    {
+        var (context, token, bookingId, code, staff) = await PaidTicketAsync();
+        await using var _ = context;
+        await context.Bookings.Where(item => item.Id == bookingId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Status, BookingStatus.Cancelled)
+                .SetProperty(item => item.PaymentStatus, PaymentStatus.Failed));
+
+        var ticket = await _stage.Tickets(context).GetMyTicketAsync(code);
+        var verification = await _stage.Tickets(context, userId: staff).VerifyAsync(token);
+
+        Assert.False(ticket.Available);
+        Assert.Null(ticket.Token);
+        Assert.Equal(TicketVerificationResult.BookingNotConfirmed, verification.Result);
+    }
+
+    [Fact]
     public async Task Ticket_IsSandboxFlagged_AndItsTokenCarriesNoPersonalData()
     {
         var (context, token, bookingId, code, _) = await PaidTicketAsync();
@@ -93,6 +111,75 @@ public sealed class TicketAndEmailTests : IAsyncLifetime
 
         Assert.Equal(token, again.Token);
         Assert.Equal(1, await context.TicketCredentials.CountAsync(c => c.BookingId == bookingId));
+    }
+
+    [Fact]
+    public async Task Ticket_ExpiredCredentialIsRevokedAndReissuedOnlyWhileJourneyIsInValidityWindow()
+    {
+        var (context, oldToken, bookingId, code, _) = await PaidTicketAsync();
+        await using var _ = context;
+        await context.TicketCredentials.Where(c => c.BookingId == bookingId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+
+        var replacement = await _stage.Tickets(context).GetMyTicketAsync(code);
+
+        Assert.True(replacement.Available, replacement.Message);
+        Assert.NotEqual(oldToken, replacement.Token);
+        var credentials = await context.TicketCredentials.AsNoTracking()
+            .Where(item => item.BookingId == bookingId)
+            .OrderBy(item => item.Id)
+            .ToListAsync();
+        Assert.Equal(2, credentials.Count);
+        Assert.NotNull(credentials[0].RevokedAt);
+        Assert.Null(credentials[1].RevokedAt);
+    }
+
+    [Fact]
+    public async Task TicketAfterJourneyValidityEnds_DoesNotExposeExpiredQr()
+    {
+        var (context, token, bookingId, code, staff) = await PaidTicketAsync();
+        await using var _ = context;
+        var tripId = await context.Bookings.Where(item => item.Id == bookingId).Select(item => item.TripId).SingleAsync();
+        var departure = DateTimeOffset.UtcNow.AddHours(-13);
+        await context.Trips.Where(item => item.Id == tripId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.DepartureTime, departure)
+                .SetProperty(item => item.ExpectedArrivalTime, departure.AddHours(6)));
+        await context.TicketCredentials.Where(item => item.BookingId == bookingId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+
+        var ticket = await _stage.Tickets(context).GetMyTicketAsync(code);
+
+        Assert.False(ticket.Available);
+        Assert.Null(ticket.Token);
+        Assert.Contains("hết hạn", ticket.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(TicketVerificationResult.Expired,
+            (await _stage.Tickets(context, userId: staff).VerifyAsync(token)).Result);
+    }
+
+    [Fact]
+    public async Task ConcurrentTicketRequests_ReturnOneActiveCredential()
+    {
+        await using var setupContext = Stage.NewContext();
+        var (_, booking, _) = await _stage.CreatePendingBookingAsync(setupContext);
+        Assert.True((await _stage.Payments(setupContext).ProcessPaymentAsync(new ProcessPaymentRequestDto
+        {
+            BookingCode = booking.BookingCode,
+            Amount = booking.TotalAmount,
+            SimulateSuccess = true
+        })).Success);
+        var bookingCode = booking.BookingCode;
+
+        var requests = Enumerable.Range(0, 5).Select(async _ =>
+        {
+            await using var attemptContext = Stage.NewContext();
+            return await _stage.Tickets(attemptContext).GetMyTicketAsync(bookingCode);
+        });
+        var tickets = await Task.WhenAll(requests);
+
+        Assert.All(tickets, ticket => Assert.True(ticket.Available, ticket.Message));
+        Assert.Single(tickets.Select(ticket => ticket.Token).Distinct());
+        Assert.Equal(1, await setupContext.TicketCredentials.CountAsync(item => item.BookingId == booking.Id && item.RevokedAt == null));
     }
 
     [Fact]
@@ -264,7 +351,11 @@ public sealed class TicketAndEmailTests : IAsyncLifetime
         services.AddScoped(_ => Stage.NewContext());
         services.AddSingleton(sender);
         await using var provider = services.BuildServiceProvider();
-        var worker = new BookingConfirmationEmailWorker(provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<BookingConfirmationEmailWorker>.Instance);
+        var worker = new BookingConfirmationEmailWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<BookingConfirmationEmailWorker>.Instance,
+            Stage.WorkerConfig,
+            new TestHostEnvironment());
         for (var pass = 0; pass < 3; pass++)
         {
             await worker.ProcessBatchAsync(CancellationToken.None);

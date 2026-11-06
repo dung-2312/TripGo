@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Domain.Entities;
@@ -14,13 +16,20 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
     private const int MaximumAttempts = 5;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingConfirmationEmailWorker> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
+    private bool _statusLogged;
 
     public BookingConfirmationEmailWorker(
         IServiceScopeFactory scopeFactory,
-        ILogger<BookingConfirmationEmailWorker> logger)
+        ILogger<BookingConfirmationEmailWorker> logger,
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _configuration = configuration;
+        _environment = environment;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -60,11 +69,27 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var databaseName = db.Database.GetDbConnection().Database;
 
-        if (!string.Equals(databaseName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+        var enabled = BackgroundWorkerPolicy.IsEnabled(
+            _configuration,
+            _environment,
+            "BookingConfirmationEmail",
+            databaseName,
+            out var reason);
+        if (!_statusLogged)
         {
-            _logger.LogWarning(
-                "Booking confirmation email delivery is disabled for database {Database}; only TripgoDb_IsolatedTest is permitted.",
-                databaseName);
+            if (enabled)
+            {
+                _logger.LogInformation("Booking confirmation email worker is active: {Reason}.", reason);
+            }
+            else
+            {
+                _logger.LogWarning("Booking confirmation email worker is disabled: {Reason}.", reason);
+            }
+            _statusLogged = true;
+        }
+
+        if (!enabled)
+        {
             return;
         }
 

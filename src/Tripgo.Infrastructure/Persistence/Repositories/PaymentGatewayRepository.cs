@@ -42,22 +42,73 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
         _context.PaymentTransactions.AsNoTracking()
             .FirstOrDefaultAsync(t => t.BookingId == bookingId && t.Provider == provider && t.Status == PaymentStatus.Pending, ct);
 
-    public async Task AddPendingTransactionAsync(PaymentTransaction transaction, CancellationToken ct = default)
+    public async Task<PendingPaymentTransactionResult> AddPendingTransactionAsync(PaymentTransaction transaction, CancellationToken ct = default)
     {
+        _context.EnsureWritesTargetIsolatedTestDatabase();
         _context.ChangeTracker.Clear();
         var strategy = _context.Database.CreateExecutionStrategy();
+        PendingPaymentTransactionResult? result = null;
         await strategy.ExecuteAsync(async () =>
         {
             _context.ChangeTracker.Clear();
-            transaction.Id = 0;
-            await using var dbTransaction = await _context.Database.BeginTransactionAsync(ct);
+            await using var dbTransaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var existing = await _context.PaymentTransactions.FirstOrDefaultAsync(
+                t => t.BookingId == transaction.BookingId &&
+                     t.Provider == transaction.Provider &&
+                     t.Status == PaymentStatus.Pending,
+                ct);
+            if (existing != null)
+            {
+                result = new PendingPaymentTransactionResult(existing, Created: false);
+                await dbTransaction.CommitAsync(ct);
+                return;
+            }
+
             var booking = await _context.Bookings.FirstAsync(b => b.Id == transaction.BookingId, ct);
             booking.PaymentStatus = PaymentStatus.Pending;
+            transaction.Id = 0;
             _context.PaymentTransactions.Add(transaction);
             await _context.SaveChangesAsync(ct);
             await dbTransaction.CommitAsync(ct);
+            result = new PendingPaymentTransactionResult(transaction, Created: true);
         });
         _context.ChangeTracker.Clear();
+        return result ?? throw new InvalidOperationException("The pending payment transaction was not created or retrieved.");
+    }
+
+    public async Task<bool> FailInitiationAsync(
+        string transactionCode,
+        string reason,
+        DateTimeOffset completedAt,
+        CancellationToken ct = default)
+    {
+        _context.EnsureWritesTargetIsolatedTestDatabase();
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var failed = false;
+        await strategy.ExecuteAsync(async () =>
+        {
+            _context.ChangeTracker.Clear();
+            await using var dbTransaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var payment = await _context.PaymentTransactions
+                .Include(item => item.Booking)
+                .FirstOrDefaultAsync(item => item.TransactionCode == transactionCode, ct);
+            if (payment == null || payment.Status != PaymentStatus.Pending ||
+                payment.Booking.Status != BookingStatus.PendingPayment)
+            {
+                await dbTransaction.RollbackAsync(ct);
+                return;
+            }
+
+            payment.Status = PaymentStatus.Failed;
+            payment.CompletedAt = completedAt;
+            payment.Note = reason.Length <= 500 ? reason : reason[..500];
+            payment.Booking.PaymentStatus = PaymentStatus.Failed;
+            await _context.SaveChangesAsync(ct);
+            await dbTransaction.CommitAsync(ct);
+            failed = true;
+        });
+        _context.ChangeTracker.Clear();
+        return failed;
     }
 
     public async Task SetProviderReferenceAsync(string transactionCode, string? providerReference, CancellationToken ct = default)
@@ -157,21 +208,21 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
         if (payment == null)
             return (PaymentWebhookEvent.OutcomeUnknownTransaction, "Không có giao dịch tương ứng trong hệ thống.");
 
-        if (callback.State == ProviderPaymentState.Unknown)
-            return (PaymentWebhookEvent.OutcomeIgnored, "Trạng thái không xác định.");
-
         // Terminal transactions never change again; only an exact repeat reaches this point with a new event ID.
         if (payment.Status != PaymentStatus.Pending)
             return (PaymentWebhookEvent.OutcomeDuplicate, $"Giao dịch đã ở trạng thái {payment.Status}.");
-
-        if (callback.State == ProviderPaymentState.Failed)
-            return (PaymentWebhookEvent.OutcomeApplied, null);
 
         if (callback.Amount != payment.Amount || callback.Amount != payment.Booking.TotalAmount)
             return (PaymentWebhookEvent.OutcomeAmountMismatch, $"Cổng báo {callback.Amount}, hệ thống yêu cầu {payment.Amount}.");
 
         if (!string.Equals(callback.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase))
             return (PaymentWebhookEvent.OutcomeCurrencyMismatch, $"Cổng báo {callback.Currency}, hệ thống yêu cầu {payment.Currency}.");
+
+        if (callback.State == ProviderPaymentState.Unknown)
+            return (PaymentWebhookEvent.OutcomeIgnored, "Trạng thái không xác định.");
+
+        if (callback.State == ProviderPaymentState.Failed)
+            return (PaymentWebhookEvent.OutcomeApplied, null);
 
         var booking = payment.Booking;
         if (booking.Status != BookingStatus.PendingPayment || booking.ExpiresAt <= now)

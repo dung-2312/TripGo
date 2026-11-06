@@ -11,6 +11,7 @@ using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
 using Tripgo.Application.Services;
 using Tripgo.Application.Services.Temporary;
+using Tripgo.Domain;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
 using Tripgo.Infrastructure.Persistence;
@@ -28,6 +29,18 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
     private readonly string _runSuffix = Guid.NewGuid().ToString("N")[..8];
     private readonly List<long> _createdUserIds = new();
     private readonly List<string> _createdBookingCodes = new();
+
+    private static IQueryable<Trip> GetBookableSandboxTrips(AppDbContext context)
+    {
+        var saleCutoff = DateTimeOffset.UtcNow.Add(BookingRules.SalesCutoffBeforeDeparture);
+        return context.Trips
+            .Include(trip => trip.Seats)
+            .Where(trip =>
+                trip.IsDemoTrip &&
+                trip.Status == TripStatus.Scheduled &&
+                trip.DepartureTime > saleCutoff &&
+                trip.Seats.Any(seat => seat.Status == TripSeatStatus.Available));
+    }
 
     private AppDbContext CreateContext()
     {
@@ -404,8 +417,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var bookingService = new BookingService(bookingRepo, sessionContext);
 
         // Find an active sandbox trip
-        var trip = await context.Trips.Include(t => t.Seats)
-            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+        var trip = await GetBookableSandboxTrips(context)
             .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
             .FirstAsync();
         await bookingService.EnsureDemoTripInventoryAsync(trip.Id);
@@ -419,7 +431,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             SeatCodes = new List<string> { seatToBook.SeatCode },
             HoldMinutes = 15
         });
-        Assert.True(holdRes.Success);
+        Assert.True(holdRes.Success, holdRes.Message);
         Assert.NotNull(holdRes.HoldToken);
 
         var createRes = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
@@ -466,8 +478,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var sessionContext = new TestBookingSessionContext(Guid.NewGuid().ToString("N"), userId);
         var bookingService = new BookingService(bookingRepo, sessionContext);
 
-        var trip = await context.Trips.Include(t => t.Seats)
-            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+        var trip = await GetBookableSandboxTrips(context)
             .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
             .FirstAsync();
         await bookingService.EnsureDemoTripInventoryAsync(trip.Id);
@@ -480,7 +491,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             SeatCodes = new List<string> { seat.SeatCode },
             HoldMinutes = 15
         });
-        Assert.True(holdRes.Success);
+        Assert.True(holdRes.Success, holdRes.Message);
         Assert.NotNull(holdRes.HoldToken);
 
         var createRes = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
@@ -538,8 +549,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var sessionA = new TestBookingSessionContext(Guid.NewGuid().ToString("N"), userAId);
         var bookingServiceA = new BookingService(bookingRepo, sessionA);
 
-        var trip = await context.Trips.Include(t => t.Seats)
-            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+        var trip = await GetBookableSandboxTrips(context)
             .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
             .FirstAsync();
         await bookingServiceA.EnsureDemoTripInventoryAsync(trip.Id);
@@ -552,7 +562,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             SeatCodes = new List<string> { seat.SeatCode },
             HoldMinutes = 15
         });
-        Assert.True(holdRes.Success);
+        Assert.True(holdRes.Success, holdRes.Message);
         Assert.NotNull(holdRes.HoldToken);
 
         var createRes = await bookingServiceA.CreateBookingAsync(new TestCreateBookingRequestDto
@@ -592,8 +602,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var guestSession = new TestBookingSessionContext(guestOwner, null);
         var guestBookingService = new BookingService(bookingRepo, guestSession);
 
-        var trip = await context.Trips.Include(t => t.Seats)
-            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+        var trip = await GetBookableSandboxTrips(context)
             .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
             .FirstAsync();
         await guestBookingService.EnsureDemoTripInventoryAsync(trip.Id);
@@ -606,7 +615,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             SeatCodes = new List<string> { seat.SeatCode },
             HoldMinutes = 15
         });
-        Assert.True(holdRes.Success);
+        Assert.True(holdRes.Success, holdRes.Message);
         Assert.NotNull(holdRes.HoldToken);
 
         var createRes = await guestBookingService.CreateBookingAsync(new TestCreateBookingRequestDto
@@ -655,8 +664,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var session = new TestBookingSessionContext(owner, null);
         var bookingService = new BookingService(bookingRepo, session);
 
-        var trip = await context.Trips.Include(t => t.Seats)
-            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+        var trip = await GetBookableSandboxTrips(context)
             .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
             .FirstAsync();
         await bookingService.EnsureDemoTripInventoryAsync(trip.Id);
@@ -669,7 +677,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             SeatCodes = new List<string> { seat.SeatCode },
             HoldMinutes = 15
         });
-        Assert.True(holdRes.Success);
+        Assert.True(holdRes.Success, holdRes.Message);
         Assert.NotNull(holdRes.HoldToken);
 
         var createRes = await bookingService.CreateBookingAsync(new TestCreateBookingRequestDto
@@ -777,8 +785,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
         var serviceA = new BookingService(bookingRepo, sessionA);
         var serviceB = new BookingService(bookingRepo, sessionB);
 
-        var trip = await context.Trips.Include(t => t.Seats)
-            .Where(t => t.IsDemoTrip && t.Seats.Any(s => s.Status == TripSeatStatus.Available))
+        var trip = await GetBookableSandboxTrips(context)
             .OrderByDescending(t => t.Seats.Count(s => s.Status == TripSeatStatus.Available))
             .FirstAsync();
 
@@ -792,7 +799,7 @@ public class CustomerAuthenticationAndOwnershipTests : IAsyncLifetime
             SeatCodes = new List<string> { seat.SeatCode },
             HoldMinutes = 15
         });
-        Assert.True(holdRes.Success);
+        Assert.True(holdRes.Success, holdRes.Message);
 
         var phoneA = $"09{new Random().Next(10000000, 99999999)}";
         var createRes = await serviceA.CreateBookingAsync(new TestCreateBookingRequestDto

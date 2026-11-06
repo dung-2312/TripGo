@@ -4,10 +4,11 @@
 @page "/"
 @layout Tripgo.Web.Components.Layout.CustomerLayout
 @using Tripgo.Application.DTOs
+@using Tripgo.Application.DTOs.Payment
 @using Tripgo.Application.Interfaces
 @inject ITripService TripService
 @inject IBookingService BookingService
-@inject IPaymentService PaymentService
+@inject IPaymentGatewayService PaymentGatewayService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<SearchTrips> Logger
@@ -1199,7 +1200,7 @@
                                                         <i class="bi bi-x-circle me-1" aria-hidden="true"></i> Hủy đơn @confirmedBookingCode và chọn lại
                                                     </button>
                                                 }
-                                                <button type="button" class="btn btn-success fw-bold px-4 py-2" disabled="@isBooking" @onclick="ExecutePaymentAndConfirm">
+                                                <button type="button" class="btn btn-success fw-bold px-4 py-2" disabled="@(isBooking || sandboxProviderName is null)" @onclick="ExecutePaymentAndConfirm">
                                                     @if (isBooking)
                                                     {
                                                         <span class="spinner-border spinner-border-sm me-1"></span>
@@ -1208,7 +1209,7 @@
                                                     else
                                                     {
                                                         <i class="bi bi-credit-card-fill me-1"></i>
-                                                        <span>Thanh toán sandbox @BookingTotal.ToString("N0") đ & xác nhận đặt chỗ</span>
+                                                        <span>@(sandboxProviderName is null ? "Thanh toán sandbox chưa được cấu hình" : $"Thanh toán sandbox {BookingTotal:N0} đ & xác nhận đặt chỗ")</span>
                                                     }
                                                 </button>
                                             </div>
@@ -1658,6 +1659,7 @@
     private bool simulatePaymentSuccess = true;
     private string? confirmedTransactionCode;
     private string? confirmedPaymentMethod;
+    private string? sandboxProviderName;
 
     private string sortOrder = "departure_asc";
     private CustomerBookingInfoDto booker = new();
@@ -1723,6 +1725,8 @@
     {
         try
         {
+            sandboxProviderName = PaymentGatewayService.GetProviders()
+                .FirstOrDefault(provider => provider.IsSandbox)?.Name;
             locations = await TripService.GetLocationsAsync();
             var routes = await TripService.GetRoutesAsync();
 
@@ -2518,21 +2522,16 @@
                 holdExpiresAt = createResult.ExpiresAt ?? holdExpiresAt;
             }
 
-            // 2. Process Sandbox Payment
-            var payReq = new ProcessPaymentRequestDto
-            {
-                BookingCode = confirmedBookingCode,
-                PaymentMethod = selectedPaymentMethod,
-                Amount = confirmedTotalAmount,
-                SimulateSuccess = simulatePaymentSuccess,
-                FailureReason = simulatePaymentSuccess ? null : "Giao dịch mô phỏng bị từ chối (Mã lỗi Sandbox E05: Số dư không đủ)."
-            };
+            // The sandbox provider signs a callback server-side; the browser never confirms payment directly.
+            var payResult = await PaymentGatewayService.SimulateSandboxPaymentAsync(
+                confirmedBookingCode,
+                simulatePaymentSuccess);
+            var bookingAfterPayment = await BookingService.GetBookingByCodeAsync(confirmedBookingCode);
 
-            var payResult = await PaymentService.ProcessPaymentAsync(payReq);
-            if (payResult.Success)
+            if (bookingAfterPayment?.Status == "Confirmed" && bookingAfterPayment.PaymentStatus == "Paid")
             {
                 StopHoldCountdown();
-                confirmedTransactionCode = payResult.TransactionCode;
+                confirmedTransactionCode = payResult.TransactionCode ?? bookingAfterPayment.TransactionCode;
                 confirmedPaymentMethod = selectedPaymentMethod switch
                 {
                     "SANDBOX_ATM" => "Thẻ / chuyển khoản (mô phỏng)",
@@ -2549,11 +2548,14 @@
                     searchResults = await TripService.SearchTripsAsync(searchModel);
                     ApplySort();
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Refreshing trips after sandbox payment failed.");
+                }
             }
             else
             {
-                bookingError = "Thanh toán mô phỏng không thành công: " + payResult.Message +
+                bookingError = "Thanh toán sandbox chưa được xác nhận: " + payResult.Message +
                                $" (Đơn {confirmedBookingCode} vẫn được giữ và chưa có khoản tiền nào được ghi nhận. Bạn có thể thử lại trước khi hết thời gian, hoặc hủy đơn để chọn lại).";
             }
         }
