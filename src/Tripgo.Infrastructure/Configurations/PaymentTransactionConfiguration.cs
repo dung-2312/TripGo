@@ -38,6 +38,16 @@ public class PaymentTransactionConfiguration : IEntityTypeConfiguration<PaymentT
 
         builder.HasIndex(x => new { x.BookingId, x.Status });
 
+        // A booking can only ever be paid once, whatever races the application layer loses.
+        builder.HasIndex(x => x.BookingId)
+            .IsUnique()
+            .HasFilter("[Status] = 2")
+            .HasDatabaseName("IX_PaymentTransactions_BookingId_Paid");
+
+        builder.Property(x => x.Provider).HasMaxLength(50).HasDefaultValue("SANDBOX").IsRequired();
+        builder.Property(x => x.Currency).HasMaxLength(3).HasDefaultValue("VND").IsRequired();
+        builder.Property(x => x.RefundReference).HasMaxLength(100);
+
         builder.HasOne(x => x.Booking)
             .WithMany(b => b.PaymentTransactions)
             .HasForeignKey(x => x.BookingId)

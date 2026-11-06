@@ -11,6 +11,8 @@ public class User
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public int RoleId { get; set; }
+    /// <summary>For Operator-role accounts: the single operator whose trips this account may act on.</summary>
+    public long? OperatorId { get; set; }
     public Role? Role { get; set; }
 
     public ICollection<Booking> Bookings { get; set; } = new List<Booking>();

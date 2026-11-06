@@ -14,16 +14,38 @@ public class PaymentService : IPaymentService
 {
     private readonly IBookingRepository _bookingRepository;
     private readonly IBookingSessionContext _bookingSessionContext;
+    private readonly bool _sandboxEnabled;
 
     public PaymentService(IBookingRepository bookingRepository, IBookingSessionContext bookingSessionContext)
+        : this(bookingRepository, bookingSessionContext, sandboxEnabled: true)
+    {
+    }
+
+    /// <summary>Used by the application: the simulated flow exists only while a sandbox provider is registered.</summary>
+    public PaymentService(IBookingRepository bookingRepository, IBookingSessionContext bookingSessionContext, IEnumerable<IPaymentProvider> providers)
+        : this(bookingRepository, bookingSessionContext, providers.Any(provider => provider.IsSandbox))
+    {
+    }
+
+    private PaymentService(IBookingRepository bookingRepository, IBookingSessionContext bookingSessionContext, bool sandboxEnabled)
     {
         _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
         _bookingSessionContext = bookingSessionContext ?? throw new ArgumentNullException(nameof(bookingSessionContext));
+        _sandboxEnabled = sandboxEnabled;
     }
 
     public async Task<PaymentProcessResultDto> ProcessPaymentAsync(ProcessPaymentRequestDto request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        if (!_sandboxEnabled)
+        {
+            return new PaymentProcessResultDto
+            {
+                Success = false,
+                Message = "Thanh toán mô phỏng không khả dụng trong môi trường này."
+            };
+        }
 
         var ownerIdentifier = await _bookingSessionContext.GetOwnerIdentifierAsync();
         var userId = await _bookingSessionContext.GetUserIdAsync();
@@ -55,7 +77,8 @@ public class PaymentService : IPaymentService
         }
 
         var method = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "SANDBOX_SIMULATED" : request.PaymentMethod.Trim();
-        var transactionCode = $"TXN-SANDBOX-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..32];
+        // The code must be unique on its own, so it keeps the whole GUID rather than a truncated slice of it.
+        var transactionCode = $"TXN-SANDBOX-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
 
         return await _bookingRepository.ConfirmPaymentAndBookingAsync(
             request.BookingCode.Trim(),

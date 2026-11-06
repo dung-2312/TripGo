@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Security.Cryptography.X509Certificates;
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using System.IO;
 using Microsoft.Data.SqlClient;
 using Tripgo.Application;
+using Tripgo.Application.Configuration;
 using Tripgo.Application.Interfaces;
 using Tripgo.Infrastructure;
 using Tripgo.Infrastructure.Persistence;
@@ -23,6 +26,10 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. Clean Architecture Modules.
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<AuthSecurityOptions>(
+    builder.Configuration.GetSection("Auth:Security").Get<AuthSecurityOptions>() ?? new AuthSecurityOptions());
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthClientAddressProvider, HttpContextAuthClientAddressProvider>();
 
 // 2. Add UI & Razor Components
 builder.Services.AddRazorComponents()
@@ -42,7 +49,29 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LogoutPath = "/auth/logout";
         options.AccessDeniedPath = "/login";
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Everyone gets a guest booking-session cookie, so "authenticated" alone would admit anonymous
+    // visitors. A real account is identified by its user ID claim.
+    options.AddPolicy(AccountPolicy.Name, policy =>
+        policy.RequireClaim(System.Security.Claims.ClaimTypes.NameIdentifier));
+});
+builder.Services.AddSingleton<Tripgo.Application.Interfaces.ITicketTokenProtector, TicketTokenProtector>();
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadinessHealthCheck>("database", tags: new[] { "ready" });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("public-api", httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 builder.Services.AddSingleton<ISignInExchangeStore, SignInExchangeStore>();
 builder.Services.AddScoped<IBookingSessionContext, BookingSessionContext>();
 builder.Services.AddHostedService<BookingExpirationWorker>();
@@ -81,6 +110,41 @@ if (!string.IsNullOrWhiteSpace(keyRingPath))
 }
 
 var app = builder.Build();
+
+app.Logger.LogWarning(
+    "Authentication throttling is process-local (in-memory); limits reset on restart and are not shared across instances. Configure a verified distributed limiter before multi-instance production.");
+
+var trustedProxyAddresses = builder.Configuration.GetSection("Auth:TrustedProxies").Get<string[]>() ?? [];
+var trustedProxies = new List<IPAddress>();
+foreach (var value in trustedProxyAddresses.Where(value => !string.IsNullOrWhiteSpace(value)))
+{
+    if (!IPAddress.TryParse(value, out var address))
+    {
+        throw new InvalidOperationException($"Auth:TrustedProxies contains an invalid IP address: '{value}'.");
+    }
+
+    trustedProxies.Add(address);
+}
+
+if (trustedProxies.Count == 0)
+{
+    app.Logger.LogWarning(
+        "No trusted authentication proxy is configured. Forwarded client addresses will not be trusted; direct connection addresses are used when available.");
+}
+
+if (app.Environment.IsProduction())
+{
+    // Reported loudly but not fatal: an operator may be deliberately running a staging rehearsal.
+    if (string.IsNullOrWhiteSpace(keyRingPath))
+    {
+        app.Logger.LogWarning("DataProtection:KeyRingPath is not set. Sign-in cookies and ticket codes will not survive a restart on another host.");
+    }
+
+    if (app.Services.GetServices<Tripgo.Application.Interfaces.IPaymentProvider>().Any(provider => provider.IsSandbox))
+    {
+        app.Logger.LogCritical("The sandbox payment provider is enabled in Production. Set Payments:Sandbox:Enabled to false.");
+    }
+}
 
 // =========================================================================================
 // RUNTIME DATABASE SAFETY GUARD — FAIL-FAST ENFORCEMENT
@@ -124,18 +188,14 @@ if (app.Environment.IsDevelopment())
 // Startup migration and seeding are restricted to an explicit local isolated-test target.
 if (builder.Configuration.GetValue<bool>("ApplyMigrationsOnStartup", false))
 {
-    var migrationTarget = new SqlConnectionStringBuilder(
-        builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty);
-    var allowedMigrationServer =
-        string.Equals(migrationTarget.DataSource, @"Admin-PC\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(migrationTarget.DataSource, @"localhost\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase);
+    var migrationViolation = DatabaseTargetGuard.GetWriteTargetViolation(
+        builder.Configuration.GetConnectionString("DefaultConnection"));
 
-    if (!app.Environment.IsDevelopment() ||
-        !allowedMigrationServer ||
-        !string.Equals(migrationTarget.InitialCatalog, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+    if (!app.Environment.IsDevelopment() || migrationViolation != null)
     {
         app.Logger.LogCritical(
-            "Automatic migration and seeding were blocked. They are permitted only in Development against TripgoDb_IsolatedTest on the approved SQL Server instance.");
+            "Automatic migration and seeding were blocked. They are permitted only in Development against TripgoDb_IsolatedTest on an approved SQL Server instance. Reason: {Reason}",
+            migrationViolation ?? "The environment is not Development.");
     }
     else
     {
@@ -173,6 +233,23 @@ if (app.Environment.IsDevelopment())
 }
 
 // Configure the HTTP request pipeline.
+if (trustedProxies.Count > 0)
+{
+    var forwardedHeaders = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = 1,
+        RequireHeaderSymmetry = true
+    };
+    forwardedHeaders.KnownProxies.Clear();
+    forwardedHeaders.KnownNetworks.Clear();
+    foreach (var trustedProxy in trustedProxies)
+    {
+        forwardedHeaders.KnownProxies.Add(trustedProxy);
+    }
+    app.UseForwardedHeaders(forwardedHeaders);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -185,7 +262,46 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseMiddleware<BookingSessionMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
+
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
+
+// Signed provider callbacks. The signature, not the caller, is what gets trusted here.
+app.MapPost("/api/payments/callback/{provider}", async (
+    string provider,
+    HttpRequest request,
+    Tripgo.Application.Interfaces.IPaymentGatewayService gateway,
+    CancellationToken cancellationToken) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync(cancellationToken);
+    var outcome = await gateway.HandleCallbackAsync(
+        provider,
+        new Tripgo.Application.DTOs.Payment.PaymentCallbackRequest(body, request.Headers["X-Tripgo-Signature"].ToString()),
+        cancellationToken);
+    return outcome.Accepted ? Results.Ok(new { outcome.Outcome }) : Results.BadRequest(new { outcome.Outcome });
+}).DisableAntiforgery().RequireRateLimiting("public-api");
+
+app.MapPost("/api/tickets/verify", async (
+    TicketVerifyRequest request,
+    Tripgo.Application.Interfaces.ITicketService tickets,
+    CancellationToken cancellationToken) =>
+{
+    var result = request.Board
+        ? await tickets.BoardAsync(request.Token ?? string.Empty, cancellationToken)
+        : await tickets.VerifyAsync(request.Token ?? string.Empty, cancellationToken);
+    return Results.Ok(result);
+}).RequireAuthorization(new Microsoft.AspNetCore.Authorization.AuthorizeAttribute { Roles = "Admin,Operator" })
+  .DisableAntiforgery()
+  .RequireRateLimiting("public-api");
 
 app.MapGet("/auth/exchange", async (
     string? token,
@@ -267,3 +383,8 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+internal sealed record TicketVerifyRequest(string? Token, bool Board);
+
+/// <summary>Exposed for the integration tests' WebApplicationFactory.</summary>
+public partial class Program;

@@ -145,6 +145,8 @@ public class TripRepository : ITripRepository
                 .ThenInclude(b => b.BusType)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.SeatLayout)
+            // Availability is "layout total minus unavailable", so free seats need not be loaded at all.
+            .Include(t => t.Seats.Where(seat => seat.Status != TripSeatStatus.Available))
             .Where(t =>
                 t.Route.IsActive &&
                 t.Route.OriginLocationId == originLocationId &&
@@ -184,15 +186,19 @@ public class TripRepository : ITripRepository
 
     public async Task<List<Trip>> GetAllTripsAdminAsync(CancellationToken ct = default)
     {
+        // Feeds the public schedule page, which only shows current departures.
+        var since = DateTimeOffset.UtcNow.AddDays(-1);
         return await _context.Trips
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.BusType)
             .Include(t => t.Bus)
                 .ThenInclude(b => b.SeatLayout)
-            .Include(t => t.Seats)
+            .Include(t => t.Seats.Where(seat => seat.Status != TripSeatStatus.Available))
+            .Where(t => t.DepartureTime >= since)
             .OrderByDescending(t => t.DepartureTime)
             .ToListAsync(ct);
     }

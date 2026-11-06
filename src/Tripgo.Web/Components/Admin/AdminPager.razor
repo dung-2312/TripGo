@@ -1,0 +1,14 @@
+@if (TotalPages > 1)
+{
+    <nav class="adm-pager" aria-label="Phân trang">
+        <button type="button" disabled="@(Page <= 1)" @onclick="() => PageChanged.InvokeAsync(Page - 1)">Trước</button>
+        <span>Trang @Page / @TotalPages</span>
+        <button type="button" disabled="@(Page >= TotalPages)" @onclick="() => PageChanged.InvokeAsync(Page + 1)">Sau</button>
+    </nav>
+}
+
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int TotalPages { get; set; }
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+}

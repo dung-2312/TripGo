@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
+using Tripgo.Domain;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
 
@@ -27,7 +28,7 @@ public class BookingService : IBookingService
     public async Task EnsureDemoTripInventoryAsync(long tripId, CancellationToken ct = default)
     {
         var trip = await _bookingRepository.GetTripForBookingAsync(tripId, ct);
-        if (trip == null || (!trip.IsDemoTrip && !trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase)))
+        if (trip == null || !BookingRules.IsSandboxTrip(trip))
         {
             return;
         }
@@ -76,8 +77,7 @@ public class BookingService : IBookingService
             return new List<TripSeatDto>();
         }
 
-        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
-        if (!isDemo)
+        if (!BookingRules.IsSandboxTrip(trip))
         {
             // Reference mode: No online booking, no persistent seat inventory
             return new List<TripSeatDto>();
@@ -134,13 +134,27 @@ public class BookingService : IBookingService
             };
         }
 
-        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
-        if (!isDemo)
+        if (!BookingRules.IsSandboxTrip(trip))
         {
             return new SeatHoldResultDto
             {
                 Success = false,
                 Message = "Chuyến xe này thuộc Lịch trình tham khảo của nhà xe. Hệ thống không mở bán hoặc giữ chỗ trực tuyến."
+            };
+        }
+
+        var saleBlockReason = BookingRules.GetSaleBlockReason(trip, DateTimeOffset.UtcNow);
+        if (saleBlockReason != null)
+        {
+            return new SeatHoldResultDto { Success = false, Message = saleBlockReason };
+        }
+
+        if (request.SeatCodes.Count > BookingRules.MaxSeatsPerBooking)
+        {
+            return new SeatHoldResultDto
+            {
+                Success = false,
+                Message = $"Mỗi đơn chỉ được đặt tối đa {BookingRules.MaxSeatsPerBooking} ghế."
             };
         }
 
@@ -256,14 +270,19 @@ public class BookingService : IBookingService
             };
         }
 
-        var isDemo = trip.IsDemoTrip || trip.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase);
-        if (!isDemo)
+        if (!BookingRules.IsSandboxTrip(trip))
         {
             return new BookingResultDto
             {
                 Success = false,
                 Message = "Chuyến xe này thuộc Lịch trình tham khảo của nhà xe. Đặt vé trực tuyến bị từ chối."
             };
+        }
+
+        var saleBlockReason = BookingRules.GetSaleBlockReason(trip, DateTimeOffset.UtcNow);
+        if (saleBlockReason != null)
+        {
+            return new BookingResultDto { Success = false, Message = saleBlockReason };
         }
 
         // 3. Validate pickup and dropoff points against trip stops or route stops
@@ -378,7 +397,7 @@ public class BookingService : IBookingService
         var totalAmount = baseAmount + surchargeAmount + insuranceAmount;
 
         var bookingCode = GenerateBookingCode();
-        var expiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
+        var expiresAt = DateTimeOffset.UtcNow.AddMinutes(BookingRules.PaymentWindowMinutes);
 
         var userId = await _bookingSessionContext.GetUserIdAsync();
 

@@ -1,0 +1,212 @@
+@page "/admin/bookings"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Đơn đặt chỗ | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Đơn đặt chỗ</h1>
+<p class="adm-subtitle">Thông tin hành khách được che mặc định. Mỗi lần xem đầy đủ đều được ghi vào nhật ký. Trạng thái thanh toán không thể sửa tay.</p>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+<section class="adm-card">
+    <div class="adm-toolbar">
+        <h2>Danh sách (@(page?.TotalCount ?? 0))</h2>
+        <div class="adm-filters">
+            <input aria-label="Tìm đơn" placeholder="Mã đơn, số điện thoại, tuyến..." @bind="filter.Search" @bind:after="ApplyFilterAsync" />
+            <select aria-label="Trạng thái đơn" @bind="filter.Status" @bind:after="ApplyFilterAsync">
+                <option value="">Mọi trạng thái</option>
+                @foreach (var status in Enum.GetNames<Tripgo.Domain.Enums.BookingStatus>())
+                {
+                    <option value="@status">@BookingLabel(status)</option>
+                }
+            </select>
+            <select aria-label="Trạng thái thanh toán" @bind="filter.PaymentStatus" @bind:after="ApplyFilterAsync">
+                <option value="">Mọi thanh toán</option>
+                @foreach (var status in Enum.GetNames<Tripgo.Domain.Enums.PaymentStatus>())
+                {
+                    <option value="@status">@PaymentLabel(status)</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (page == null || page.Items.Count == 0)
+    {
+        <div class="adm-empty">@(page == null ? "Đang tải..." : "Không có đơn phù hợp.")</div>
+    }
+    else
+    {
+        <div class="adm-table-wrap">
+            <table class="adm-table">
+                <thead><tr><th>Mã đơn</th><th>Tuyến / Khởi hành</th><th>Hành khách</th><th>Tổng tiền</th><th>Đơn</th><th>Thanh toán</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var row in page.Items)
+                    {
+                        <tr>
+                            <td><strong>@row.BookingCode</strong><small>@Vn(row.CreatedAt)</small></td>
+                            <td>@row.RouteName<small>@Vn(row.DepartureTime)</small></td>
+                            <td>@row.MaskedPassengerName<small>@row.MaskedPhone</small></td>
+                            <td>@Money(row.TotalAmount)@if (row.IsSandbox) { <small>Sandbox</small> }</td>
+                            <td><span class="adm-pill @BookingPill(row.Status)">@BookingLabel(row.Status)</span></td>
+                            <td><span class="adm-pill @PaymentPill(row.PaymentStatus)">@PaymentLabel(row.PaymentStatus)</span></td>
+                            <td class="adm-row-actions"><button type="button" class="adm-btn small" @onclick="() => OpenAsync(row.Id)">Chi tiết</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <AdminPager Page="page.Page" TotalPages="page.TotalPages" PageChanged="ChangePageAsync" />
+    }
+</section>
+
+@if (detail != null)
+{
+    <section class="adm-card">
+        <div class="adm-toolbar">
+            <h2>Đơn @detail.BookingCode</h2>
+            <button type="button" class="adm-btn" @onclick="() => detail = null">Đóng</button>
+        </div>
+        <dl class="adm-details">
+            <div><dt>Tuyến</dt><dd>@detail.RouteName</dd></div>
+            <div><dt>Nhà xe</dt><dd>@detail.OperatorName</dd></div>
+            <div><dt>Khởi hành</dt><dd>@Vn(detail.DepartureTime)</dd></div>
+            <div><dt>Đón / Trả</dt><dd>@detail.PickupPoint → @detail.DropoffPoint</dd></div>
+            <div><dt>Ghế</dt><dd>@string.Join(", ", detail.SeatCodes)</dd></div>
+            <div><dt>Số hành khách</dt><dd>@detail.PassengerCount</dd></div>
+            <div><dt>Giá vé / Phụ phí</dt><dd>@Money(detail.BaseAmount) / @Money(detail.SurchargeAmount)</dd></div>
+            <div><dt>Tổng tiền</dt><dd><strong>@Money(detail.TotalAmount)</strong></dd></div>
+            <div><dt>Trạng thái</dt><dd>@BookingLabel(detail.Status) · @PaymentLabel(detail.PaymentStatus)</dd></div>
+            @if (detail.CancelledAt.HasValue)
+            {
+                <div><dt>Đã hủy lúc</dt><dd>@Vn(detail.CancelledAt.Value) — @detail.CancellationReason</dd></div>
+            }
+            <div>
+                <dt>Liên hệ</dt>
+                <dd>
+                    @if (detail.ContactRevealed)
+                    {
+                        @detail.PassengerName <br /> @detail.PassengerPhone <br /> @detail.PassengerEmail
+                    }
+                    else
+                    {
+                        @detail.MaskedPassengerName <br /> @detail.MaskedPhone <br /> @detail.MaskedEmail
+                        <br /><button type="button" class="adm-btn small" @onclick="RevealAsync">Xem đầy đủ (ghi nhật ký)</button>
+                    }
+                </dd>
+            </div>
+        </dl>
+
+        <h3 class="adm-section">Giao dịch</h3>
+        @if (detail.Payments.Count == 0)
+        {
+            <div class="adm-empty">Chưa có giao dịch.</div>
+        }
+        else
+        {
+            <div class="adm-table-wrap">
+                <table class="adm-table">
+                    <thead><tr><th>Mã giao dịch</th><th>Cổng</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+                    <tbody>
+                        @foreach (var payment in detail.Payments)
+                        {
+                            <tr>
+                                <td><small>@payment.TransactionCode</small></td>
+                                <td>@payment.Provider@(payment.IsSandbox ? " (Sandbox)" : "")</td>
+                                <td>@payment.Amount.ToString("N0") @payment.Currency</td>
+                                <td>@PaymentLabel(payment.Status)</td>
+                                <td>@Vn(payment.CreatedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (detail.Status is "PendingPayment" or "Confirmed")
+        {
+            <h3 class="adm-section">Hủy đơn</h3>
+            <p class="adm-hint">@(detail.PaymentStatus == "Paid" ? "Đơn đã thanh toán: thao tác sẽ hoàn tiền qua cổng thanh toán rồi mới hủy." : "Đơn chưa thanh toán: ghế sẽ được trả lại ngay.")</p>
+            <div class="adm-form">
+                <label class="wide">Lý do hủy *<input @bind="cancelReason" @bind:event="oninput" maxlength="200" /></label>
+            </div>
+            <div class="adm-actions">
+                <button type="button" class="adm-btn danger" disabled="@IsBusy" @onclick="CancelAsync">Hủy đơn</button>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private AdminBookingFilter filter = new();
+    private PagedResult<AdminBookingRowDto>? page;
+    private AdminBookingDetailDto? detail;
+    private string cancelReason = string.Empty;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private Task ReloadAsync() => LoadAsync(async () => page = await Admin.GetBookingsAsync(filter));
+
+    private Task ApplyFilterAsync()
+    {
+        filter.Page = 1;
+        return ReloadAsync();
+    }
+
+    private Task ChangePageAsync(int target)
+    {
+        filter.Page = target;
+        return ReloadAsync();
+    }
+
+    private Task OpenAsync(long id) => LoadAsync(async () =>
+    {
+        cancelReason = string.Empty;
+        detail = await Admin.GetBookingAsync(id);
+    });
+
+    private Task RevealAsync() => LoadAsync(async () => detail = await Admin.GetBookingAsync(detail!.Id, revealContact: true));
+
+    private Task CancelAsync() => RunAsync(() => Admin.CancelBookingAsync(detail!.Id, cancelReason), async () =>
+    {
+        detail = await Admin.GetBookingAsync(detail!.Id);
+        await ReloadAsync();
+    });
+
+    private static string BookingLabel(string status) => status switch
+    {
+        "PendingPayment" => "Chờ thanh toán",
+        "Confirmed" => "Đã xác nhận",
+        "Cancelled" => "Đã hủy",
+        "Completed" => "Hoàn tất",
+        "Expired" => "Hết hạn",
+        _ => status
+    };
+
+    private static string PaymentLabel(string status) => status switch
+    {
+        "Unpaid" => "Chưa thanh toán",
+        "Pending" => "Đang xử lý",
+        "Paid" => "Đã thanh toán",
+        "Refunded" => "Đã hoàn tiền",
+        "Failed" => "Thất bại",
+        _ => status
+    };
+
+    private static string BookingPill(string status) => status switch
+    {
+        "Confirmed" or "Completed" => "good",
+        "PendingPayment" => "warn",
+        "Cancelled" => "bad",
+        _ => "muted"
+    };
+
+    private static string PaymentPill(string status) => status switch
+    {
+        "Paid" => "good",
+        "Failed" => "bad",
+        "Pending" => "warn",
+        _ => "muted"
+    };
+}

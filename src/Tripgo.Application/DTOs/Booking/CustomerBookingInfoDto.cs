@@ -7,6 +7,7 @@ public class CustomerBookingInfoDto
 {
     public long BookingId { get; set; }
     public long TripId { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
     public string BookingCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string FullName { get => Name; set => Name = value; }
@@ -34,6 +35,7 @@ public class CustomerBookingInfoDto
     public decimal TotalAmount { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
+    public bool IsDemoBooking { get; set; }
     public DateTimeOffset? ConfirmedAt { get; set; }
     public string? TransactionCode { get; set; }
     public string? PaymentMethod { get; set; }

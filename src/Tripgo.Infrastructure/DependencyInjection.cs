@@ -29,7 +29,19 @@ public static class DependencyInjection
         services.AddScoped<ITripRepository, TripRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IAdminRepository, AdminRepository>();
+        services.AddScoped<IPaymentGatewayRepository, PaymentGatewayRepository>();
+        services.AddScoped<Tripgo.Application.Interfaces.Persistence.IPasswordResetTokenRepository, Persistence.Repositories.PasswordResetTokenRepository>();
+        services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<Tripgo.Application.Interfaces.IEmailSender, Services.SmtpEmailSender>();
+
+        // A missing setting must never enable a simulated payment provider, especially in Production.
+        if (bool.TryParse(configuration["Payments:Sandbox:Enabled"], out var sandboxEnabled) && sandboxEnabled)
+        {
+            services.AddSingleton<Services.SandboxPaymentProvider>();
+            services.AddSingleton<Tripgo.Application.Interfaces.IPaymentProvider>(
+                provider => provider.GetRequiredService<Services.SandboxPaymentProvider>());
+        }
         services.AddScoped<Tripgo.Application.Interfaces.ISandboxFixtureService, Tripgo.Infrastructure.Services.SandboxFixtureService>();
 
         return services;

@@ -12,4 +12,6 @@ public sealed class BookingConfirmationEmailDto
     public string DropoffPoint { get; set; } = string.Empty;
     public List<string> SeatCodes { get; set; } = new();
     public decimal TotalAmount { get; set; }
+    public string MessageType { get; set; } = "BookingConfirmation";
+    public string? CancellationReason { get; set; }
 }

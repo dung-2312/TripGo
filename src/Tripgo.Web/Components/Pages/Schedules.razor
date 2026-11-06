@@ -76,8 +76,8 @@
                                     <span class="operator-vehicle font-monospace">@trip.BusLicensePlate</span>
                                 </td>
                                 <td>
-                                    <strong class="fs-6 text-primary">@trip.DepartureTime.ToLocalTime().ToString("HH:mm")</strong>
-                                    <span class="operator-vehicle">@trip.DepartureTime.ToLocalTime().ToString("dd/MM/yyyy")</span>
+                                    <strong class="fs-6 text-primary">@trip.DepartureTime.ToVietnam().ToString("HH:mm")</strong>
+                                    <span class="operator-vehicle">@trip.DepartureTime.ToVietnam().ToString("dd/MM/yyyy")</span>
                                 </td>
                                 <td><span class="badge bg-light text-secondary border">@DurationLabel(trip)</span></td>
                                 <td><span class="small text-dark">@trip.BusTypeName</span></td>
@@ -124,7 +124,7 @@
 
 @code {
     private List<TripSearchResultDto> allTrips = new();
-    private DateOnly selectedDate = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly selectedDate = VietnamTime.Today();
     private string filterText = string.Empty;
     private bool isLoading;
 
@@ -132,7 +132,7 @@
     {
         get
         {
-            var trips = allTrips.Where(trip => trip.Status == "Scheduled" && trip.DepartureTime >= DateTimeOffset.Now && trip.DepartureTime.ToLocalTime().Date == selectedDate.ToDateTime(TimeOnly.MinValue).Date);
+            var trips = allTrips.Where(trip => trip.Status == "Scheduled" && trip.DepartureTime >= DateTimeOffset.UtcNow && trip.DepartureTime.ToVietnam().Date == selectedDate.ToDateTime(TimeOnly.MinValue).Date);
             if (!string.IsNullOrWhiteSpace(filterText))
             {
                 var filter = filterText.Trim();
@@ -164,7 +164,7 @@
         {
             var origin = Uri.EscapeDataString(parts[0]);
             var dest = Uri.EscapeDataString(parts[1]);
-            var date = trip.DepartureTime.ToLocalTime().ToString("yyyy-MM-dd");
+            var date = trip.DepartureTime.ToVietnam().ToString("yyyy-MM-dd");
             return $"/search-trips?origin={origin}&dest={dest}&date={date}";
         }
         return "/search-trips";

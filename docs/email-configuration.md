@@ -45,7 +45,10 @@ or apply this migration to the main database without separate authorization.
 
 The worker polls every 20 seconds, processes up to 10 messages per batch, and
 retries failures after 1, 5, 15, 60, and 180 minutes. After five attempts a
-message is marked `Failed`; there is currently no manual retry interface.
+message is marked `Failed`, and an administrator can requeue it under
+Admin > Giám sát. `Email__Smtp__TimeoutSeconds` (5-100, default 60) limits one
+send attempt, including connecting. The outbox also carries booking
+acknowledgement, payment failure and cancellation messages.
 Delivery is at-least-once, so a process failure after SMTP accepts a message
 but before the outbox records it as sent may result in a duplicate email.
 

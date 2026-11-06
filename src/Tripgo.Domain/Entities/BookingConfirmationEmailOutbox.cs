@@ -7,9 +7,17 @@ public sealed class BookingConfirmationEmailOutbox
     public const string Sent = "Sent";
     public const string Failed = "Failed";
 
+    public const string TypeBookingConfirmation = "BookingConfirmation";
+    public const string TypeBookingAcknowledgement = "BookingAcknowledgement";
+    public const string TypePaymentFailed = "PaymentFailed";
+    public const string TypeBookingCancellation = "BookingCancellation";
+    public const string TypeTicketNotification = "TicketNotification";
+
     public long Id { get; set; }
     public long BookingId { get; set; }
     public string RecipientEmail { get; set; } = string.Empty;
+    public string MessageType { get; set; } = TypeBookingConfirmation;
+    public string DedupKey { get; set; } = string.Empty;
     public string Payload { get; set; } = string.Empty;
     public string Status { get; set; } = Pending;
     public int AttemptCount { get; set; }

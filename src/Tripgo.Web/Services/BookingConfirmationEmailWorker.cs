@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Domain.Entities;
@@ -14,13 +16,20 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
     private const int MaximumAttempts = 5;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingConfirmationEmailWorker> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
+    private bool _statusLogged;
 
     public BookingConfirmationEmailWorker(
         IServiceScopeFactory scopeFactory,
-        ILogger<BookingConfirmationEmailWorker> logger)
+        ILogger<BookingConfirmationEmailWorker> logger,
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _configuration = configuration;
+        _environment = environment;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -60,17 +69,34 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var databaseName = db.Database.GetDbConnection().Database;
 
-        if (!string.Equals(databaseName, "TripgoDb_IsolatedTest", StringComparison.OrdinalIgnoreCase))
+        var enabled = BackgroundWorkerPolicy.IsEnabled(
+            _configuration,
+            _environment,
+            "BookingConfirmationEmail",
+            databaseName,
+            out var reason);
+        if (!_statusLogged)
         {
-            _logger.LogWarning(
-                "Booking confirmation email delivery is disabled for database {Database}; only TripgoDb_IsolatedTest is permitted.",
-                databaseName);
+            if (enabled)
+            {
+                _logger.LogInformation("Booking confirmation email worker is active: {Reason}.", reason);
+            }
+            else
+            {
+                _logger.LogWarning("Booking confirmation email worker is disabled: {Reason}.", reason);
+            }
+            _statusLogged = true;
+        }
+
+        if (!enabled)
+        {
             return;
         }
 
         var migrations = (await db.Database.GetAppliedMigrationsAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
-        if (!migrations.Contains("20261105080107_BookingConfirmationEmailOutbox"))
+        if (!migrations.Contains("20261105080107_BookingConfirmationEmailOutbox") ||
+            !migrations.Any(migration => migration.EndsWith("_Stage1To4_ProductionFoundation", StringComparison.Ordinal)))
         {
             _logger.LogWarning(
                 "Booking confirmation email delivery is disabled because its database migration has not been applied.");
@@ -102,11 +128,15 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
                     continue;
                 }
 
+                // "Sent" records that the SMTP server accepted the message, not that it reached an inbox.
                 message.Status = BookingConfirmationEmailOutbox.Sent;
                 message.SentAt = DateTimeOffset.UtcNow;
                 message.LockedUntil = null;
                 message.LastError = null;
                 await db.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation(
+                    "Outbox message {OutboxId} ({MessageType}) accepted by SMTP on attempt {Attempt}.",
+                    message.Id, message.MessageType, message.AttemptCount);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -116,8 +146,8 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
             {
                 _logger.LogError(
                     exception,
-                    "Booking confirmation email outbox item {OutboxId} failed.",
-                    message.Id);
+                    "Outbox message {OutboxId} ({MessageType}) failed on attempt {Attempt}.",
+                    message.Id, message.MessageType, message.AttemptCount);
                 await MarkFailedAsync(
                     db,
                     message,
@@ -149,6 +179,18 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
 
             if (message == null)
             {
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+            }
+
+            // A worker that died mid-send has already used this attempt. A message that crashed on its
+            // last attempt stops here rather than being retried without limit.
+            if (message.AttemptCount >= MaximumAttempts)
+            {
+                message.Status = BookingConfirmationEmailOutbox.Failed;
+                message.LockedUntil = null;
+                message.LastError = "Worker stopped during the final delivery attempt; the outcome is unknown.";
+                await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return null;
             }

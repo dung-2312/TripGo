@@ -1,0 +1,217 @@
+@page "/admin/routes"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Tuyến đường | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Tuyến đường</h1>
+<p class="adm-subtitle">Một nhà xe chỉ có một tuyến đang hoạt động cho mỗi cặp điểm đi và điểm đến.</p>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+<section class="adm-card">
+    <h2>@(form.Id > 0 ? "Sửa tuyến" : "Tạo tuyến")</h2>
+    <div class="adm-form">
+        <label>Nhà xe *
+            <select @bind="form.OperatorId"><option value="0">Chọn nhà xe</option>@foreach (var op in operators) { <option value="@op.Id">@op.Name</option> }</select>
+        </label>
+        <label>Điểm đi *
+            <select @bind="form.OriginLocationId"><option value="0">Chọn điểm đi</option>@foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }</select>
+        </label>
+        <label>Điểm đến *
+            <select @bind="form.DestinationLocationId"><option value="0">Chọn điểm đến</option>@foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }</select>
+        </label>
+        <label>Tên tuyến *<input @bind="form.Name" maxlength="200" /></label>
+        <label>Mã tuyến<input @bind="form.Code" maxlength="50" placeholder="Tự sinh nếu để trống" /></label>
+        <label>Cự ly (km) *<input type="number" min="1" @bind="form.DistanceKm" /></label>
+        <label>Thời lượng (phút) *<input type="number" min="1" @bind="form.EstimatedDurationMinutes" /></label>
+        <label class="wide">Nguồn dữ liệu<input @bind="form.SourceReference" maxlength="500" /></label>
+    </div>
+    <div class="adm-actions">
+        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveAsync">@(form.Id > 0 ? "Lưu tuyến" : "Tạo tuyến")</button>
+        @if (form.Id > 0)
+        {
+            <button type="button" class="adm-btn" @onclick="() => form = new()">Hủy sửa</button>
+        }
+    </div>
+</section>
+
+<section class="adm-card">
+    <h2>Danh sách tuyến (@routes.Count)</h2>
+    @if (routes.Count == 0)
+    {
+        <div class="adm-empty">Chưa có tuyến nào. Hãy tạo nhà xe và tuyến đầu tiên.</div>
+    }
+    else
+    {
+        <div class="adm-table-wrap">
+            <table class="adm-table">
+                <thead><tr><th>Tuyến</th><th>Nhà xe</th><th>Cự ly / Thời lượng</th><th>Điểm dừng</th><th>Nguồn</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var route in routes)
+                    {
+                        <tr>
+                            <td><strong>@route.OriginName → @route.DestinationName</strong><small>@route.Code</small></td>
+                            <td>@route.OperatorName</td>
+                            <td>@(route.DistanceKm?.ToString("N0") ?? "—") km / @(route.EstimatedDurationMinutes?.ToString() ?? "—") phút</td>
+                            <td>@route.StopCount</td>
+                            <td>@DataSourceLabel(route.DataSource)</td>
+                            <td><span class="adm-pill @(route.IsActive ? "good" : "muted")">@(route.IsActive ? "Hoạt động" : "Ngưng")</span></td>
+                            <td class="adm-row-actions">
+                                <button type="button" class="adm-btn small" @onclick="() => Edit(route)">Sửa</button>
+                                <button type="button" class="adm-btn small" @onclick="() => OpenStopsAsync(route)">Điểm dừng</button>
+                                <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => ToggleAsync(route)">@(route.IsActive ? "Ngưng" : "Kích hoạt")</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (stopRoute != null)
+{
+    <section class="adm-card">
+        <div class="adm-toolbar">
+            <h2>Điểm dừng: @stopRoute.OriginName → @stopRoute.DestinationName</h2>
+            <button type="button" class="adm-btn" @onclick="() => stopRoute = null">Đóng</button>
+        </div>
+        <p class="adm-hint">Thứ tự tăng dần theo hướng đi. Mốc phút tính từ giờ khởi hành; để trống nếu chưa có dữ liệu xác nhận.</p>
+
+        @if (stops.Count == 0)
+        {
+            <div class="adm-empty">Tuyến chưa có điểm dừng.</div>
+        }
+        else
+        {
+            <div class="adm-table-wrap">
+                <table class="adm-table">
+                    <thead><tr><th>Thứ tự</th><th>Điểm</th><th>Đón</th><th>Trả</th><th>Phút đón</th><th>Phút trả</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var stop in stops.OrderBy(s => s.StopOrder))
+                        {
+                            <tr>
+                                <td><input class="adm-narrow" aria-label="Thứ tự" type="number" min="1" @bind="stop.StopOrder" /></td>
+                                <td>@stop.PointName</td>
+                                <td><input aria-label="Cho phép đón" type="checkbox" @bind="stop.AllowPickup" /></td>
+                                <td><input aria-label="Cho phép trả" type="checkbox" @bind="stop.AllowDropoff" /></td>
+                                <td><input class="adm-narrow" aria-label="Phút đón" type="number" min="0" @bind="stop.DepartureOffsetMinutes" /></td>
+                                <td><input class="adm-narrow" aria-label="Phút trả" type="number" min="0" @bind="stop.ArrivalOffsetMinutes" /></td>
+                                <td><button type="button" class="adm-btn small danger" @onclick="() => stops.Remove(stop)">Bỏ</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="adm-form">
+            <label class="wide">Thêm điểm có sẵn của nhà xe
+                <select @bind="pointToAdd">
+                    <option value="0">Chọn điểm</option>
+                    @foreach (var point in points.Where(p => p.IsActive && stops.All(s => s.PointId != p.Id)))
+                    {
+                        <option value="@point.Id">@point.LocationName · @point.Name</option>
+                    }
+                </select>
+            </label>
+        </div>
+        <div class="adm-actions">
+            <button type="button" class="adm-btn" disabled="@(pointToAdd == 0)" @onclick="AddStop">Thêm vào tuyến</button>
+            <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveStopsAsync">Lưu điểm dừng</button>
+        </div>
+
+        <h3 class="adm-section">Khai báo điểm đón/trả mới</h3>
+        <div class="adm-form">
+            <label>Tỉnh/thành *
+                <select @bind="newPoint.LocationId"><option value="0">Chọn</option>@foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }</select>
+            </label>
+            <label>Tên điểm *<input @bind="newPoint.Name" maxlength="200" /></label>
+            <label class="wide">Địa chỉ cụ thể *<input @bind="newPoint.Address" maxlength="500" /></label>
+        </div>
+        <div class="adm-actions">
+            <button type="button" class="adm-btn" disabled="@IsBusy" @onclick="AddPointAsync">Lưu điểm mới</button>
+        </div>
+    </section>
+}
+
+@code {
+    private List<AdminRouteDto> routes = new();
+    private List<AdminOperatorDto> operators = new();
+    private List<LocationDto> locations = new();
+    private AdminRouteInput form = new();
+    private AdminRouteDto? stopRoute;
+    private List<AdminRouteStopDto> stops = new();
+    private List<AdminPointDto> points = new();
+    private long pointToAdd;
+    private AdminPointInput newPoint = new();
+
+    protected override Task OnInitializedAsync() => LoadAsync(async () =>
+    {
+        operators = await Admin.GetOperatorsAsync();
+        locations = await Admin.GetLocationsAsync();
+        routes = await Admin.GetRoutesAsync();
+    });
+
+    private Task ReloadAsync() => LoadAsync(async () => routes = await Admin.GetRoutesAsync());
+
+    private Task SaveAsync() => RunAsync(() => Admin.SaveRouteAsync(form), async () =>
+    {
+        form = new();
+        await ReloadAsync();
+    });
+
+    private void Edit(AdminRouteDto route) => form = new AdminRouteInput
+    {
+        Id = route.Id,
+        OperatorId = route.OperatorId,
+        OriginLocationId = route.OriginLocationId,
+        DestinationLocationId = route.DestinationLocationId,
+        Code = route.Code,
+        Name = route.Name,
+        DistanceKm = route.DistanceKm ?? 0,
+        EstimatedDurationMinutes = route.EstimatedDurationMinutes ?? 0,
+        SourceReference = route.SourceReference
+    };
+
+    private Task ToggleAsync(AdminRouteDto route) =>
+        RunAsync(() => Admin.SetRouteActiveAsync(route.Id, !route.IsActive), ReloadAsync);
+
+    private Task OpenStopsAsync(AdminRouteDto route) => LoadAsync(async () =>
+    {
+        stopRoute = await Admin.GetRouteAsync(route.Id);
+        stops = stopRoute?.Stops ?? new();
+        points = await Admin.GetPointsAsync(route.OperatorId);
+        pointToAdd = 0;
+        newPoint = new AdminPointInput { OperatorId = route.OperatorId };
+    });
+
+    private void AddStop()
+    {
+        var point = points.FirstOrDefault(p => p.Id == pointToAdd);
+        if (point == null)
+        {
+            return;
+        }
+
+        stops.Add(new AdminRouteStopDto
+        {
+            PointId = point.Id,
+            PointName = $"{point.LocationName} · {point.Name}",
+            StopOrder = stops.Count == 0 ? 1 : stops.Max(s => s.StopOrder) + 1,
+            AllowPickup = true
+        });
+        pointToAdd = 0;
+    }
+
+    private Task SaveStopsAsync() =>
+        RunAsync(() => Admin.SaveRouteStopsAsync(stopRoute!.Id, stops), ReloadAsync);
+
+    private Task AddPointAsync() => RunAsync(() => Admin.AddPointAsync(newPoint), async () =>
+    {
+        points = await Admin.GetPointsAsync(stopRoute!.OperatorId);
+        newPoint = new AdminPointInput { OperatorId = stopRoute.OperatorId };
+    });
+}

@@ -1,0 +1,83 @@
+@page "/staff/verify-ticket"
+@attribute [Authorize(Roles = "Admin,Operator")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inject ITicketService Tickets
+@inject ILogger<StaffVerifyTicket> Logger
+@rendermode InteractiveServer
+
+<PageTitle>Kiểm tra mã | TripGo</PageTitle>
+
+<h1 class="adm-title">Kiểm tra mã vé</h1>
+<p class="adm-subtitle">Hiện toàn bộ mã trong môi trường này là SANDBOX và không có giá trị lên xe thật.</p>
+
+<section class="adm-card">
+    <div class="adm-form">
+        <label class="wide">Mã đọc từ QR
+            <input @bind="token" @bind:event="oninput" autocomplete="off" spellcheck="false" />
+        </label>
+    </div>
+    <div class="adm-actions">
+        <button type="button" class="adm-btn primary" disabled="@(isBusy || string.IsNullOrWhiteSpace(token))" @onclick="() => CheckAsync(false)">Kiểm tra</button>
+        @if (result?.Result == TicketVerificationResult.Valid)
+        {
+            <button type="button" class="adm-btn" disabled="@isBusy" @onclick="() => CheckAsync(true)">Ghi nhận đã kiểm tra lên xe</button>
+        }
+    </div>
+</section>
+
+@if (error != null)
+{
+    <AdminStatus Message="@error" IsError="true" />
+}
+
+@if (result != null)
+{
+    var good = result.Result is TicketVerificationResult.Valid or TicketVerificationResult.Boarded;
+    <section class="adm-card">
+        <AdminStatus Message="@result.Message" IsError="@(!good)" />
+        @if (result.IsSandbox)
+        {
+            <p><span class="adm-pill warn">SANDBOX — KHÔNG CÓ GIÁ TRỊ LÊN XE THẬT</span></p>
+        }
+        @if (result.BookingCode != null)
+        {
+            <dl class="adm-details">
+                <div><dt>Mã đơn</dt><dd>@result.BookingCode</dd></div>
+                <div><dt>Tuyến</dt><dd>@result.RouteName</dd></div>
+                <div><dt>Khởi hành</dt><dd>@result.DepartureTime?.ToOffset(Tripgo.Domain.VietnamTime.Offset).ToString("dd/MM/yyyy HH:mm")</dd></div>
+                <div><dt>Ghế</dt><dd>@string.Join(", ", result.SeatCodes)</dd></div>
+                <div><dt>Hành khách</dt><dd>@result.MaskedPassengerName</dd></div>
+            </dl>
+        }
+    </section>
+}
+
+@code {
+    private string token = string.Empty;
+    private TicketVerificationDto? result;
+    private string? error;
+    private bool isBusy;
+
+    private async Task CheckAsync(bool board)
+    {
+        isBusy = true;
+        error = null;
+        try
+        {
+            result = board ? await Tickets.BoardAsync(token) : await Tickets.VerifyAsync(token);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            error = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Ticket verification failed.");
+            error = "Không thể kiểm tra mã lúc này. Vui lòng thử lại.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

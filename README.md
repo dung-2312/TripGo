@@ -82,6 +82,9 @@ TripGo/
 
 ## 4. Getting Started
 
+> **Setup and status docs:** [local development and testing](docs/local-development.md), [integration status](docs/integrations.md), [deployment readiness](docs/deployment.md). Payments, tickets and email are sandbox only.
+
+
 ### Prerequisites
 
 - [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or later.

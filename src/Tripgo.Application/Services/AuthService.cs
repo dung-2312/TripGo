@@ -1,11 +1,12 @@
 using System;
-using System.Collections.Concurrent;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Tripgo.Application.Configuration;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
@@ -20,25 +21,37 @@ public class AuthService : IAuthService
     private readonly IPasswordHasherService _passwordHasher;
     private readonly IEmailSender? _emailSender;
     private readonly ILogger<AuthService>? _logger;
+    private readonly IPasswordResetTokenRepository? _passwordResetTokenRepository;
+    private readonly AuthSecurityOptions _securityOptions;
+    private readonly IAuthRateLimiter _rateLimiter;
+    private readonly IAuthClientAddressProvider _clientAddressProvider;
 
-    // Rate limiting / lockout: 5 failed attempts = 5 minutes lockout
-    private static readonly ConcurrentDictionary<string, (int FailedCount, DateTimeOffset LockoutUntil)> _lockoutTracker = new();
-
-    // Password reset tokens: token -> (userId, expiresAt)
-    private static readonly ConcurrentDictionary<string, (long UserId, DateTimeOffset ExpiresAt)> _resetTokens = new();
+    private const string InvalidLoginMessage = "Email, số điện thoại hoặc mật khẩu không chính xác. Nếu đăng nhập thất bại nhiều lần, vui lòng thử lại sau.";
+    private const string ResetRequestAcceptedMessage = "Nếu email khớp với tài khoản và dịch vụ email đã được cấu hình, liên kết đặt lại sẽ được gửi.";
+    private const string InvalidResetTokenMessage = "Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.";
+    private static readonly string DummyPasswordHash = new PasswordHasherService().HashPassword(
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
 
     public AuthService(
         IUserRepository userRepository,
         IBookingRepository bookingRepository,
         IPasswordHasherService passwordHasher,
         IEmailSender? emailSender = null,
-        ILogger<AuthService>? logger = null)
+        ILogger<AuthService>? logger = null,
+        IPasswordResetTokenRepository? passwordResetTokenRepository = null,
+        AuthSecurityOptions? securityOptions = null,
+        IAuthRateLimiter? rateLimiter = null,
+        IAuthClientAddressProvider? clientAddressProvider = null)
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
         _passwordHasher = passwordHasher ?? throw new ArgumentNullException(nameof(passwordHasher));
         _emailSender = emailSender;
         _logger = logger;
+        _passwordResetTokenRepository = passwordResetTokenRepository;
+        _securityOptions = securityOptions ?? new AuthSecurityOptions();
+        _rateLimiter = rateLimiter ?? new InMemoryAuthRateLimiter();
+        _clientAddressProvider = clientAddressProvider ?? new NullAuthClientAddressProvider();
     }
 
     public async Task<AuthResultDto> AuthenticateAsync(LoginViewModel model, CancellationToken ct = default)
@@ -49,35 +62,39 @@ public class AuthService : IAuthService
         }
 
         var identifier = model.EmailOrPhone.Trim().ToLowerInvariant();
+        var lockoutKey = HashIdentifier("login", identifier);
+        var now = DateTimeOffset.UtcNow;
 
         // Check lockout
-        if (_lockoutTracker.TryGetValue(identifier, out var lockout) && lockout.LockoutUntil > DateTimeOffset.UtcNow)
+        if (_rateLimiter.IsLoginLocked(lockoutKey, now))
         {
-            var remaining = Math.Ceiling((lockout.LockoutUntil - DateTimeOffset.UtcNow).TotalMinutes);
-            return AuthResultDto.FailureResult($"Tài khoản tạm thời bị khóa do nhiều lần đăng nhập không thành công. Vui lòng thử lại sau {remaining} phút.");
+            _logger?.LogWarning("Authentication attempt was rejected during the configured lockout period.");
+            return AuthResultDto.FailureResult(InvalidLoginMessage);
+        }
+
+        var loginWindow = TimeSpan.FromMinutes(Math.Max(1, _securityOptions.LoginRequestWindowMinutes));
+        if (!TryAcquireClientAddressLimit(
+                "login-ip",
+                now,
+                _securityOptions.LoginIpRequestLimit,
+                loginWindow) ||
+            !_rateLimiter.TryAcquire(lockoutKey, now, _securityOptions.LoginRequestLimit, loginWindow))
+        {
+            _logger?.LogWarning("Authentication attempt was rejected by the configured request limits.");
+            return AuthResultDto.FailureResult(InvalidLoginMessage);
         }
 
         var user = await _userRepository.GetByEmailOrPhoneAsync(identifier, ct);
-        if (user == null)
+        var passwordHashToCheck = user?.PasswordHash ?? DummyPasswordHash;
+        var passwordValid = _passwordHasher.VerifyPassword(model.Password, passwordHashToCheck);
+        if (user == null || !user.IsActive || !passwordValid)
         {
-            RecordFailedAttempt(identifier);
-            return AuthResultDto.FailureResult("Email, số điện thoại hoặc mật khẩu không chính xác.");
-        }
-
-        if (!user.IsActive)
-        {
-            return AuthResultDto.FailureResult("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ hỗ trợ.");
-        }
-
-        var isPasswordValid = _passwordHasher.VerifyPassword(model.Password, user.PasswordHash);
-        if (!isPasswordValid)
-        {
-            RecordFailedAttempt(identifier);
-            return AuthResultDto.FailureResult("Email, số điện thoại hoặc mật khẩu không chính xác.");
+            RecordFailedAttempt(lockoutKey, now);
+            return AuthResultDto.FailureResult(InvalidLoginMessage);
         }
 
         // Reset lockout on success
-        _lockoutTracker.TryRemove(identifier, out _);
+        _rateLimiter.ClearLoginFailures(lockoutKey);
 
         var roleName = user.Role?.Name ?? "Customer";
 
@@ -259,50 +276,53 @@ public class AuthService : IAuthService
     {
         if (string.IsNullOrWhiteSpace(email))
         {
-            return AuthResultDto.FailureResult("Vui lòng nhập địa chỉ email.");
+            return PasswordResetRequestResult();
         }
 
-        var user = await _userRepository.GetByEmailAsync(email.Trim(), ct);
-        if (user != null && _emailSender != null)
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+        var resetKey = HashIdentifier("reset", normalizedEmail);
+        if (!TryAcquireResetLimit("reset-account", resetKey, now))
         {
-            foreach (var expiredToken in _resetTokens)
-            {
-                if (expiredToken.Value.ExpiresAt <= DateTimeOffset.UtcNow)
-                {
-                    _resetTokens.TryRemove(expiredToken.Key, out _);
-                }
-            }
+            _logger?.LogWarning("Password reset request was throttled by the configured account limit.");
+            return PasswordResetRequestResult();
+        }
 
+        if (_passwordResetTokenRepository == null || _emailSender == null)
+        {
+            return PasswordResetRequestResult();
+        }
+
+        var user = await _userRepository.GetByEmailAsync(normalizedEmail, ct);
+        if (user != null && user.IsActive)
+        {
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             var tokenKey = HashResetToken(token);
-            _resetTokens[tokenKey] = (user.Id, DateTimeOffset.UtcNow.AddMinutes(15));
+            var expiresAt = now.AddMinutes(Math.Max(1, _securityOptions.PasswordResetTokenLifetimeMinutes));
+            await _passwordResetTokenRepository.IssueAsync(user.Id, tokenKey, now, expiresAt, ct);
             try
             {
                 if (!await _emailSender.SendPasswordResetAsync(user.Email, token, ct))
                 {
-                    _resetTokens.TryRemove(tokenKey, out _);
+                    await _passwordResetTokenRepository.InvalidateAsync(tokenKey, DateTimeOffset.UtcNow, ct);
+                    _logger?.LogWarning("Password reset email delivery was not accepted by the configured sender.");
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _resetTokens.TryRemove(tokenKey, out _);
+                await _passwordResetTokenRepository.InvalidateAsync(tokenKey, DateTimeOffset.UtcNow, ct);
                 _logger?.LogError(ex, "Could not send a password reset email.");
             }
         }
 
-        // Return generic success message to prevent user enumeration
-        return new AuthResultDto
-        {
-            Success = true,
-            ErrorMessage = null
-        };
+        return PasswordResetRequestResult();
     }
 
     public async Task<AuthResultDto> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct = default)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Token))
         {
-            return AuthResultDto.FailureResult("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+            return AuthResultDto.FailureResult(InvalidResetTokenMessage);
         }
 
         if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
@@ -315,20 +335,30 @@ public class AuthService : IAuthService
             return AuthResultDto.FailureResult("Mật khẩu xác nhận không khớp.");
         }
 
-        var tokenKey = HashResetToken(request.Token);
-        if (!_resetTokens.TryRemove(tokenKey, out var info) || info.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (!TryAcquireResetLimit(
+                "reset-token",
+                HashIdentifier("reset-token", request.Token),
+                DateTimeOffset.UtcNow))
         {
-            return AuthResultDto.FailureResult("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+            _logger?.LogWarning("Password reset attempt was throttled by the configured token limit.");
+            return AuthResultDto.FailureResult(InvalidResetTokenMessage);
         }
 
-        var user = await _userRepository.GetByIdAsync(info.UserId, ct);
+        if (_passwordResetTokenRepository == null)
+        {
+            return AuthResultDto.FailureResult(InvalidResetTokenMessage);
+        }
+
+        var tokenKey = HashResetToken(request.Token);
+        var user = await _passwordResetTokenRepository.ConsumeAsync(
+            tokenKey,
+            _passwordHasher.HashPassword(request.NewPassword),
+            DateTimeOffset.UtcNow,
+            ct);
         if (user == null)
         {
-            return AuthResultDto.FailureResult("Không tìm thấy thông tin tài khoản.");
+            return AuthResultDto.FailureResult(InvalidResetTokenMessage);
         }
-
-        user.PasswordHash = _passwordHasher.HashPassword(request.NewPassword);
-        await _userRepository.UpdateAsync(user, ct);
 
         return AuthResultDto.SuccessResult(user.Id, user.Email, user.FullName, user.PhoneNumber, user.Role?.Name ?? "Customer");
     }
@@ -343,21 +373,59 @@ public class AuthService : IAuthService
         return await _bookingRepository.ClaimGuestBookingsAsync(userId, guestOwnerIdentifier, ct);
     }
 
-    private static void RecordFailedAttempt(string identifier)
+    private void RecordFailedAttempt(string identifierHash, DateTimeOffset now)
     {
-        _lockoutTracker.AddOrUpdate(
-            identifier,
-            _ => (1, DateTimeOffset.MinValue),
-            (_, current) =>
-            {
-                var newCount = current.FailedCount + 1;
-                if (newCount >= 5)
-                {
-                    return (newCount, DateTimeOffset.UtcNow.AddMinutes(5));
-                }
-                return (newCount, DateTimeOffset.MinValue);
-            });
+        if (!_rateLimiter.TryRecordLoginFailure(
+            identifierHash,
+            now,
+            _securityOptions.LoginFailureLimit,
+            TimeSpan.FromMinutes(Math.Max(1, _securityOptions.LoginLockoutMinutes))))
+        {
+            _logger?.LogError("Authentication failure could not be recorded because the rate limiter is at capacity.");
+        }
     }
+
+    private bool TryAcquireResetLimit(string purpose, string key, DateTimeOffset now)
+    {
+        var window = TimeSpan.FromMinutes(Math.Max(1, _securityOptions.PasswordResetWindowMinutes));
+        return TryAcquireClientAddressLimit(
+                   "reset-ip",
+                   now,
+                   _securityOptions.PasswordResetIpRequestLimit,
+                   window) &&
+               _rateLimiter.TryAcquire(
+                   $"{purpose}:{key}",
+                   now,
+                   _securityOptions.PasswordResetRequestLimit,
+                   window);
+    }
+
+    private bool TryAcquireClientAddressLimit(
+        string purpose,
+        DateTimeOffset now,
+        int limit,
+        TimeSpan window)
+    {
+        var address = _clientAddressProvider.GetClientAddress();
+        if (string.IsNullOrWhiteSpace(address) || !IPAddress.TryParse(address, out var ipAddress))
+        {
+            return true;
+        }
+
+        var normalizedAddress = ipAddress.IsIPv4MappedToIPv6
+            ? ipAddress.MapToIPv4().ToString()
+            : ipAddress.ToString();
+        return _rateLimiter.TryAcquire($"{purpose}:{normalizedAddress}", now, limit, window);
+    }
+
+    private static string HashIdentifier(string purpose, string identifier) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{purpose}:{identifier}")));
+
+    private static AuthResultDto PasswordResetRequestResult() => new()
+    {
+        Success = true,
+        ErrorMessage = ResetRequestAcceptedMessage
+    };
 
     private static string HashResetToken(string token) =>
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));

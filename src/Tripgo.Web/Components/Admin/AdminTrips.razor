@@ -1,0 +1,283 @@
+@page "/admin/trips"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Chuyến xe | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Chuyến xe</h1>
+<p class="adm-subtitle">Lịch tham khảo không mở bán. Chỉ chuyến được đánh dấu Sandbox mới đặt chỗ thử nghiệm được.</p>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+<section class="adm-card">
+    <h2>@(form.Id > 0 ? "Sửa chuyến" : "Tạo chuyến")</h2>
+    <div class="adm-form">
+        <label class="wide">Tuyến *
+            <select @bind="form.RouteId" @bind:after="OnRouteChanged">
+                <option value="0">Chọn tuyến</option>
+                @foreach (var route in routes.Where(r => r.IsActive))
+                {
+                    <option value="@route.Id">@route.OriginName → @route.DestinationName · @route.OperatorName</option>
+                }
+            </select>
+        </label>
+        <label>Xe *
+            <select @bind="form.BusId" disabled="@(selectedOperatorId == 0)">
+                <option value="0">Chọn xe</option>
+                @foreach (var bus in buses.Where(b => b.IsActive && b.OperatorId == selectedOperatorId))
+                {
+                    <option value="@bus.Id">@bus.LicensePlate · @bus.TotalSeats ghế</option>
+                }
+            </select>
+        </label>
+        <label>Giờ khởi hành * (giờ Việt Nam)<input type="datetime-local" @bind="departure" /></label>
+        <label>Giờ đến dự kiến * (giờ Việt Nam)<input type="datetime-local" @bind="arrival" /></label>
+        <label>Giá vé cơ bản (VNĐ) *<input type="number" min="1" step="1000" @bind="form.BasePrice" /></label>
+        <fieldset class="wide">
+            <legend>Tài xế</legend>
+            @{ var operatorDrivers = drivers.Where(d => d.IsActive && d.OperatorId == selectedOperatorId).ToList(); }
+            @if (operatorDrivers.Count == 0)
+            {
+                <small>Nhà xe chưa có tài xế hoạt động.</small>
+            }
+            @foreach (var driver in operatorDrivers)
+            {
+                <label class="adm-check">
+                    <input type="checkbox" checked="@form.DriverIds.Contains(driver.Id)" @onchange="e => ToggleDriver(driver.Id, e)" />
+                    @driver.FullName
+                </label>
+            }
+        </fieldset>
+        @if (form.Id == 0)
+        {
+            <label class="adm-check wide">
+                <input type="checkbox" @bind="form.OpenAsSandbox" />
+                Mở đặt chỗ thử nghiệm (Sandbox). Ghế lấy từ sơ đồ của xe; không phải chuyến bán thật.
+            </label>
+        }
+    </div>
+    <div class="adm-actions">
+        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveAsync">@(form.Id > 0 ? "Lưu chuyến" : "Tạo chuyến")</button>
+        @if (form.Id > 0)
+        {
+            <button type="button" class="adm-btn" @onclick="ResetForm">Hủy sửa</button>
+        }
+    </div>
+</section>
+
+<section class="adm-card">
+    <div class="adm-toolbar">
+        <h2>Danh sách (@(page?.TotalCount ?? 0))</h2>
+        <div class="adm-filters">
+            <input aria-label="Tìm chuyến" placeholder="Mã, tuyến, nhà xe, biển số..." @bind="filter.Search" @bind:after="ApplyFilterAsync" />
+            <select aria-label="Trạng thái" @bind="filter.Status" @bind:after="ApplyFilterAsync">
+                <option value="">Mọi trạng thái</option>
+                @foreach (var status in Enum.GetNames<Tripgo.Domain.Enums.TripStatus>())
+                {
+                    <option value="@status">@StatusLabel(status)</option>
+                }
+            </select>
+            <label class="adm-check"><input type="checkbox" @bind="filter.UpcomingOnly" @bind:after="ApplyFilterAsync" /> Sắp chạy</label>
+        </div>
+    </div>
+
+    @if (page == null || page.Items.Count == 0)
+    {
+        <div class="adm-empty">@(page == null ? "Đang tải..." : "Không có chuyến phù hợp.")</div>
+    }
+    else
+    {
+        <div class="adm-table-wrap">
+            <table class="adm-table">
+                <thead><tr><th>Chuyến</th><th>Nhà xe / Xe</th><th>Khởi hành</th><th>Giá</th><th>Ghế đã bán</th><th>Loại</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var trip in page.Items)
+                    {
+                        <tr>
+                            <td><strong>@trip.RouteName</strong><small>@trip.TripCode</small></td>
+                            <td>@trip.OperatorName<small>@trip.BusLicensePlate</small></td>
+                            <td>@Vn(trip.DepartureTime)</td>
+                            <td>@Money(trip.BasePrice)</td>
+                            <td>@(trip.IsSandbox ? $"{trip.BookedSeats} / {trip.TotalSeats}" : "Không mở bán")</td>
+                            <td>@DataSourceLabel(trip.DataSource)</td>
+                            <td>
+                                <span class="adm-pill @PillClass(trip.Status)">@StatusLabel(trip.Status)</span>
+                                @if (!string.IsNullOrEmpty(trip.CancellationReason))
+                                {
+                                    <small>@trip.CancellationReason</small>
+                                }
+                            </td>
+                            <td class="adm-row-actions">
+                                @if (trip.Status is "Draft" or "Scheduled")
+                                {
+                                    <button type="button" class="adm-btn small" @onclick="() => Edit(trip)">Sửa</button>
+                                }
+                                @if (NextStatus(trip.Status) is { } next)
+                                {
+                                    <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => AdvanceAsync(trip, next)">Chuyển: @StatusLabel(next)</button>
+                                }
+                                @if (trip.Status is "Draft" or "Scheduled" or "Boarding")
+                                {
+                                    <button type="button" class="adm-btn small danger" @onclick="() => BeginCancel(trip)">Hủy</button>
+                                }
+                            </td>
+                        </tr>
+                        @if (cancellingId == trip.Id)
+                        {
+                            <tr class="adm-subrow">
+                                <td colspan="8">
+                                    <p>Hủy chuyến này: đơn chưa thanh toán được trả ghế, đơn đã thanh toán (@trip.ActiveBookings đơn đang hoạt động) được hoàn tiền qua cổng thanh toán.</p>
+                                    <label class="wide">Lý do hủy *<input @bind="cancelReason" @bind:event="oninput" maxlength="200" /></label>
+                                    <button type="button" class="adm-btn danger" disabled="@IsBusy" @onclick="() => CancelAsync(trip)">Xác nhận hủy chuyến</button>
+                                    <button type="button" class="adm-btn" @onclick="() => cancellingId = null">Đóng</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        <AdminPager Page="page.Page" TotalPages="page.TotalPages" PageChanged="ChangePageAsync" />
+    }
+</section>
+
+@code {
+    private static readonly TimeSpan Offset = Tripgo.Domain.VietnamTime.Offset;
+
+    private List<AdminRouteDto> routes = new();
+    private List<AdminBusDto> buses = new();
+    private List<AdminDriverDto> drivers = new();
+    private PagedResult<AdminTripDto>? page;
+    private AdminTripFilter filter = new() { UpcomingOnly = true };
+    private AdminTripInput form = new();
+    private DateTime? departure;
+    private DateTime? arrival;
+    private long selectedOperatorId;
+    private long? cancellingId;
+    private string cancelReason = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync(async () =>
+    {
+        routes = await Admin.GetRoutesAsync();
+        buses = await Admin.GetBusesAsync();
+        drivers = await Admin.GetDriversAsync();
+        page = await Admin.GetTripsAsync(filter);
+    });
+
+    private Task ReloadTripsAsync() => LoadAsync(async () => page = await Admin.GetTripsAsync(filter));
+
+    private Task ApplyFilterAsync()
+    {
+        filter.Page = 1;
+        return ReloadTripsAsync();
+    }
+
+    private Task ChangePageAsync(int target)
+    {
+        filter.Page = target;
+        return ReloadTripsAsync();
+    }
+
+    private void OnRouteChanged()
+    {
+        selectedOperatorId = routes.FirstOrDefault(r => r.Id == form.RouteId)?.OperatorId ?? 0;
+        form.BusId = 0;
+        form.DriverIds.Clear();
+    }
+
+    private void ToggleDriver(long driverId, ChangeEventArgs args)
+    {
+        if (args.Value is true)
+        {
+            form.DriverIds.Add(driverId);
+        }
+        else
+        {
+            form.DriverIds.Remove(driverId);
+        }
+    }
+
+    private void ResetForm()
+    {
+        form = new();
+        departure = null;
+        arrival = null;
+        selectedOperatorId = 0;
+    }
+
+    private void Edit(AdminTripDto trip)
+    {
+        form = new AdminTripInput
+        {
+            Id = trip.Id,
+            RouteId = trip.RouteId,
+            BusId = trip.BusId,
+            BasePrice = trip.BasePrice,
+            DriverIds = trip.DriverIds.ToList()
+        };
+        selectedOperatorId = trip.OperatorId;
+        departure = trip.DepartureTime.ToOffset(Offset).DateTime;
+        arrival = trip.ExpectedArrivalTime.ToOffset(Offset).DateTime;
+    }
+
+    private Task SaveAsync()
+    {
+        if (departure == null || arrival == null)
+        {
+            StatusMessage = "Vui lòng nhập giờ khởi hành và giờ đến dự kiến.";
+            StatusIsError = true;
+            return Task.CompletedTask;
+        }
+
+        form.DepartureTime = new DateTimeOffset(DateTime.SpecifyKind(departure.Value, DateTimeKind.Unspecified), Offset);
+        form.ExpectedArrivalTime = new DateTimeOffset(DateTime.SpecifyKind(arrival.Value, DateTimeKind.Unspecified), Offset);
+        return RunAsync(() => Admin.SaveTripAsync(form), async () =>
+        {
+            ResetForm();
+            await ReloadTripsAsync();
+        });
+    }
+
+    private Task AdvanceAsync(AdminTripDto trip, string next) =>
+        RunAsync(() => Admin.SetTripStatusAsync(trip.Id, next), ReloadTripsAsync);
+
+    private void BeginCancel(AdminTripDto trip)
+    {
+        cancellingId = trip.Id;
+        cancelReason = string.Empty;
+    }
+
+    private Task CancelAsync(AdminTripDto trip) => RunAsync(() => Admin.CancelTripAsync(trip.Id, cancelReason), async () =>
+    {
+        cancellingId = null;
+        await ReloadTripsAsync();
+    });
+
+    private static string? NextStatus(string status) => status switch
+    {
+        "Draft" => "Scheduled",
+        "Scheduled" => "Boarding",
+        "Boarding" => "Departed",
+        "Departed" => "Completed",
+        _ => null
+    };
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Draft" => "Nháp",
+        "Scheduled" => "Đã lên lịch",
+        "Boarding" => "Đang đón khách",
+        "Departed" => "Đã khởi hành",
+        "Completed" => "Hoàn tất",
+        "Cancelled" => "Đã hủy",
+        _ => status
+    };
+
+    private static string PillClass(string status) => status switch
+    {
+        "Cancelled" => "bad",
+        "Completed" => "muted",
+        _ => "good"
+    };
+}

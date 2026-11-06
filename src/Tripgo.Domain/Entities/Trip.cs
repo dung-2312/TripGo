@@ -22,6 +22,9 @@ public class Trip
         = TripStatus.Draft;
 
     public bool IsDemoTrip { get; set; } = false;
+    public TransportDataSource DataSource { get; set; } = TransportDataSource.Unverified;
+    public string? SourceReference { get; set; }
+    public string? CancellationReason { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
         = DateTimeOffset.UtcNow;

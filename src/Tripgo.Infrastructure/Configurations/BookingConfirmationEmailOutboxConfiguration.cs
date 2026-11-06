@@ -29,7 +29,10 @@ public sealed class BookingConfirmationEmailOutboxConfiguration
             .HasMaxLength(1000);
 
         builder.HasIndex(item => new { item.Status, item.NextAttemptAt });
-        builder.HasIndex(item => item.BookingId).IsUnique();
+        builder.Property(item => item.MessageType).HasMaxLength(40).IsRequired()
+            .HasDefaultValue(BookingConfirmationEmailOutbox.TypeBookingConfirmation);
+        builder.Property(item => item.DedupKey).HasMaxLength(100).IsRequired().HasDefaultValue(string.Empty);
+        builder.HasIndex(item => new { item.BookingId, item.MessageType, item.DedupKey }).IsUnique();
 
         builder.HasOne(item => item.Booking)
             .WithMany()

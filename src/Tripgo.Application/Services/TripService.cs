@@ -7,6 +7,7 @@ using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces;
 using Tripgo.Application.Interfaces.Persistence;
 using Tripgo.Application.Services.Temporary;
+using Tripgo.Domain;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
 
@@ -115,7 +116,7 @@ public class TripService : ITripService
         return bus.Id;
     }
 
-    private static List<SeatLayoutItem> ParseSeatLayout(string definition)
+    public static List<SeatLayoutItem> ParseSeatLayout(string definition)
     {
         var lines = (definition ?? string.Empty)
             .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -201,8 +202,11 @@ public class TripService : ITripService
             cancellationToken);
 
         var targetDate = requestedDate.Date;
+        // A sandbox departure whose sales have closed is no longer on offer, so it leaves the results.
+        var now = DateTimeOffset.UtcNow;
         var exactDateTrips = matchingTrips
             .Where(trip => trip.DepartureTime.ToOffset(vnOffset).Date == targetDate)
+            .Where(trip => !IsSandboxDemoTrip(trip) || BookingRules.GetSaleBlockReason(trip, now) == null)
             .ToList();
 
         var trips = exactDateTrips;
@@ -210,9 +214,9 @@ public class TripService : ITripService
         return trips.Select(t =>
         {
             var isDemo = IsSandboxDemoTrip(t);
-            var isBookable = isDemo;
+            var saleBlockReason = BookingRules.GetSaleBlockReason(t, DateTimeOffset.UtcNow);
+            var isBookable = isDemo && saleBlockReason == null;
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? 0;
-            var bookedCount = isDemo ? (t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0) : 0;
             var (pickups, dropoffs) = ExtractTripStops(t);
             var operatorHotline = t.Route?.Operator?.Phone ?? string.Empty;
 
@@ -229,7 +233,7 @@ public class TripService : ITripService
                 ArrivalTime = t.ExpectedArrivalTime,
                 BasePrice = t.BasePrice,
                 TotalSeats = totalSeats,
-                AvailableSeats = isDemo ? Math.Max(0, totalSeats - bookedCount) : 0,
+                AvailableSeats = CountSellableSeats(t, isDemo),
                 PickupPoints = pickups,
                 DropoffPoints = dropoffs,
                 IsBookable = isBookable,
@@ -240,10 +244,23 @@ public class TripService : ITripService
         }).ToList();
     }
 
-    private static bool IsSandboxDemoTrip(Trip t) =>
-        t.IsDemoTrip ||
-        t.TripCode.StartsWith("DEMO-", StringComparison.OrdinalIgnoreCase) ||
-        t.TripCode.StartsWith("[SANDBOX]", StringComparison.OrdinalIgnoreCase);
+    private static bool IsSandboxDemoTrip(Trip t) => BookingRules.IsSandboxTrip(t);
+
+    /// <summary>
+    /// Counts what a customer could actually select. A trip whose inventory has not been created yet
+    /// gets it from the configured layout on first use, so the layout total is the honest figure.
+    /// </summary>
+    private static int CountSellableSeats(Trip trip, bool isSandbox)
+    {
+        if (!isSandbox)
+        {
+            return 0;
+        }
+
+        var total = trip.Bus?.SeatLayout?.TotalSeats ?? trip.Seats?.Count ?? 0;
+        var unavailable = trip.Seats?.Count(seat => seat.Status != TripSeatStatus.Available) ?? 0;
+        return Math.Max(0, total - unavailable);
+    }
 
     public async Task<TripDetailDto?> GetTripDetailsAsync(long tripId, CancellationToken cancellationToken = default)
     {
@@ -259,7 +276,6 @@ public class TripService : ITripService
 
         if (isDemo && _bookingService != null)
         {
-            await _bookingService.EnsureDemoTripInventoryAsync(tripId, cancellationToken);
             var tripSeats = await _bookingService.GetSeatsForTripAsync(tripId, cancellationToken);
             seatItems = tripSeats.Select(s => new SeatLayoutItemDto
             {
@@ -270,6 +286,7 @@ public class TripService : ITripService
                 Column = s.Column,
                 SeatType = s.SeatType,
                 IsAvailable = s.IsAvailable,
+                Status = s.Status,
                 Price = s.Price
             }).ToList();
             availableSeats = seatItems.Count(s => s.IsAvailable);
@@ -296,7 +313,7 @@ public class TripService : ITripService
             Seats = seatItems,
             PickupPoints = pickupPoints,
             DropoffPoints = dropoffPoints,
-            IsBookable = isDemo,
+            IsBookable = isDemo && BookingRules.GetSaleBlockReason(trip, DateTimeOffset.UtcNow) == null,
             OperationalTier = isDemo ? "DEMO_SANDBOX_TRIP" : "PUBLISHED_REFERENCE_SCHEDULE",
             OperationalTierLabel = isDemo ? "Chuyến xe chạy thử nghiệm (Demo Sandbox)" : "Lịch trình tham khảo",
             OperatorHotline = operatorHotline
@@ -459,9 +476,6 @@ public class TripService : ITripService
         {
             var isDemo = IsSandboxDemoTrip(t);
             var totalSeats = t.Bus?.SeatLayout?.TotalSeats ?? (t.Seats?.Count ?? 0);
-            var bookedCount = isDemo
-                ? t.Seats?.Count(s => s.Status == TripSeatStatus.Booked) ?? 0
-                : 0;
 
             return new TripSearchResultDto
             {
@@ -476,8 +490,8 @@ public class TripService : ITripService
                 ArrivalTime = t.ExpectedArrivalTime,
                 BasePrice = t.BasePrice,
                 TotalSeats = totalSeats,
-                AvailableSeats = isDemo ? Math.Max(0, totalSeats - bookedCount) : 0,
-                IsBookable = isDemo,
+                AvailableSeats = CountSellableSeats(t, isDemo),
+                IsBookable = isDemo && BookingRules.GetSaleBlockReason(t, DateTimeOffset.UtcNow) == null,
                 OperationalTier = isDemo ? "DEMO_SANDBOX_TRIP" : "PUBLISHED_REFERENCE_SCHEDULE",
                 OperationalTierLabel = isDemo
                     ? "Chuyến xe chạy thử nghiệm (Demo Sandbox)"
@@ -572,12 +586,14 @@ public class TripService : ITripService
                     BusLicensePlate = persistent.BusLicensePlate,
                     DepartureTime = persistent.DepartureTime,
                     BookedAt = persistent.CreatedAt,
+                    ExpiresAt = persistent.ExpiresAt,
                     BasePrice = persistent.BaseAmount,
                     SurchargeAmount = persistent.SurchargeAmount,
                     InsuranceAmount = persistent.InsuranceAmount,
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
+                    IsDemoBooking = persistent.IsDemoBooking,
                     ConfirmedAt = persistent.ConfirmedAt,
                     TransactionCode = persistent.TransactionCode,
                     PaymentMethod = persistent.PaymentMethod,
@@ -616,12 +632,14 @@ public class TripService : ITripService
                     BusLicensePlate = persistent.BusLicensePlate,
                     DepartureTime = persistent.DepartureTime,
                     BookedAt = persistent.CreatedAt,
+                    ExpiresAt = persistent.ExpiresAt,
                     BasePrice = persistent.BaseAmount,
                     SurchargeAmount = persistent.SurchargeAmount,
                     InsuranceAmount = persistent.InsuranceAmount,
                     TotalAmount = persistent.TotalAmount,
                     BookingStatus = persistent.Status,
                     PaymentStatus = persistent.PaymentStatus,
+                    IsDemoBooking = persistent.IsDemoBooking,
                     ConfirmedAt = persistent.ConfirmedAt,
                     TransactionCode = persistent.TransactionCode,
                     PaymentMethod = persistent.PaymentMethod,
@@ -659,12 +677,14 @@ public class TripService : ITripService
                 BusLicensePlate = persistent.BusLicensePlate,
                 DepartureTime = persistent.DepartureTime,
                 BookedAt = persistent.CreatedAt,
+                ExpiresAt = persistent.ExpiresAt,
                 BasePrice = persistent.BaseAmount,
                 SurchargeAmount = persistent.SurchargeAmount,
                 InsuranceAmount = persistent.InsuranceAmount,
                 TotalAmount = persistent.TotalAmount,
                 BookingStatus = persistent.Status,
                 PaymentStatus = persistent.PaymentStatus,
+                IsDemoBooking = persistent.IsDemoBooking,
                 ConfirmedAt = persistent.ConfirmedAt,
                 TransactionCode = persistent.TransactionCode,
                 PaymentMethod = persistent.PaymentMethod,
@@ -719,7 +739,7 @@ public class TripService : ITripService
                 {
                     var hasFixed = stop.ScheduledDepartureTime.HasValue;
                     var time = hasFixed
-                        ? stop.ScheduledDepartureTime!.Value.ToLocalTime().ToString("HH:mm")
+                        ? stop.ScheduledDepartureTime!.Value.ToVietnam().ToString("HH:mm")
                         : PickupDropoffPointDto.UnknownTimeText;
                     pickupPoints.Add(new PickupDropoffPointDto
                     {
@@ -735,7 +755,7 @@ public class TripService : ITripService
                 {
                     var hasFixed = stop.ScheduledArrivalTime.HasValue;
                     var time = hasFixed
-                        ? stop.ScheduledArrivalTime!.Value.ToLocalTime().ToString("HH:mm")
+                        ? stop.ScheduledArrivalTime!.Value.ToVietnam().ToString("HH:mm")
                         : PickupDropoffPointDto.UnknownTimeText;
                     dropoffPoints.Add(new PickupDropoffPointDto
                     {
@@ -760,7 +780,7 @@ public class TripService : ITripService
                 {
                     var hasFixed = stop.DepartureOffsetMinutes.HasValue;
                     var depTime = hasFixed
-                        ? trip.DepartureTime.AddMinutes(stop.DepartureOffsetMinutes!.Value).ToLocalTime().ToString("HH:mm")
+                        ? trip.DepartureTime.AddMinutes(stop.DepartureOffsetMinutes!.Value).ToVietnam().ToString("HH:mm")
                         : PickupDropoffPointDto.UnknownTimeText;
                     pickupPoints.Add(new PickupDropoffPointDto
                     {
@@ -776,7 +796,7 @@ public class TripService : ITripService
                 {
                     var hasFixed = stop.ArrivalOffsetMinutes.HasValue;
                     var arrTime = hasFixed
-                        ? trip.DepartureTime.AddMinutes(stop.ArrivalOffsetMinutes!.Value).ToLocalTime().ToString("HH:mm")
+                        ? trip.DepartureTime.AddMinutes(stop.ArrivalOffsetMinutes!.Value).ToVietnam().ToString("HH:mm")
                         : PickupDropoffPointDto.UnknownTimeText;
                     dropoffPoints.Add(new PickupDropoffPointDto
                     {

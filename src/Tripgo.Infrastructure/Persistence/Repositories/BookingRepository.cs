@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Update;
 using Tripgo.Application.DTOs;
 using Tripgo.Application.Interfaces.Persistence;
+using Tripgo.Domain;
 using Tripgo.Domain.Entities;
 using Tripgo.Domain.Enums;
 
@@ -25,10 +26,42 @@ public class BookingRepository : IBookingRepository
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
+    /// <summary>
+    /// Runs a write with retries and a clean change tracker on both sides. The context outlives a single
+    /// operation (a Blazor circuit holds one for minutes), so nothing tracked by an earlier call may leak
+    /// into a decision, a retried attempt, or a caller's later reload of the same row.
+    /// </summary>
+    private async Task<T> RunWriteAsync<T>(Func<Task<T>> operation)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        try
+        {
+            return await strategy.ExecuteAsync(async () =>
+            {
+                _context.ChangeTracker.Clear();
+                return await operation();
+            });
+        }
+        finally
+        {
+            _context.ChangeTracker.Clear();
+        }
+    }
+
+    private async Task RunWriteAsync(Func<Task> operation)
+    {
+        await RunWriteAsync(async () =>
+        {
+            await operation();
+            return true;
+        });
+    }
+
     public async Task<Trip?> GetTripForBookingAsync(long tripId, CancellationToken ct = default)
     {
         return await _context.Trips
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Route)
                 .ThenInclude(r => r.Operator)
             .Include(t => t.Route)
@@ -74,8 +107,7 @@ public class BookingRepository : IBookingRepository
         var tripId = tripIds[0];
         var lockResource = $"TripSeatInventory:{tripId}";
         _context.EnsureWritesTargetIsolatedTestDatabase();
-        var strategy = _context.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+        await RunWriteAsync(async () =>
         {
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -100,11 +132,11 @@ public class BookingRepository : IBookingRepository
         string? ownerIdentifier = null,
         CancellationToken ct = default)
     {
-        var strategy = _context.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
+        return await RunWriteAsync(async () =>
         {
             _context.EnsureWritesTargetIsolatedTestDatabase();
+            // The context lives as long as the Blazor circuit; never decide availability from stale tracked rows.
+            _context.ChangeTracker.Clear();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
@@ -181,6 +213,16 @@ public class BookingRepository : IBookingRepository
                         bs.IsActive &&
                         (bs.Booking.Status == BookingStatus.PendingPayment ||
                          bs.Booking.Status == BookingStatus.Confirmed));
+
+                    if (seat.Status == TripSeatStatus.Blocked)
+                    {
+                        await transaction.RollbackAsync(ct);
+                        return new SeatHoldResultDto
+                        {
+                            Success = false,
+                            Message = $"Ghế {seat.SeatCode} hiện không mở bán."
+                        };
+                    }
 
                     if (seat.Status == TripSeatStatus.Booked || hasActiveBooking)
                     {
@@ -269,7 +311,7 @@ public class BookingRepository : IBookingRepository
                 return new SeatHoldResultDto
                 {
                     Success = true,
-                    Message = "Giữ chỗ thành công trong 10 phút.",
+                    Message = $"Giữ chỗ thành công trong {holdMinutes} phút.",
                     HoldToken = holdToken,
                     ExpiresAt = expiresAt,
                     HeldSeatCodes = newlyHeldCodes,
@@ -296,9 +338,9 @@ public class BookingRepository : IBookingRepository
     public async Task<bool> ReleaseHoldAsync(string holdToken, string ownerIdentifier, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ownerIdentifier)) return false;
-        var strategy = _context.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(async () =>
+        return await RunWriteAsync(async () =>
         {
+            _context.ChangeTracker.Clear();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var holds = await _context.SeatHolds
                 .Include(h => h.TripSeat)
@@ -341,10 +383,14 @@ public class BookingRepository : IBookingRepository
         if (string.IsNullOrWhiteSpace(ownerIdentifier))
             return new BookingResultDto { Success = false, Message = "Phiên đặt chỗ không hợp lệ." };
 
-        var strategy = _context.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
+        return await RunWriteAsync(async () =>
         {
+            // A retried attempt must start from a clean slate: nothing tracked, no generated keys kept.
+            _context.ChangeTracker.Clear();
+            booking.Id = 0;
+            seats.ForEach(seat => { seat.Id = 0; seat.BookingId = 0; });
+            passengers.ForEach(passenger => { passenger.Id = 0; passenger.BookingId = 0; });
+
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
@@ -357,6 +403,17 @@ public class BookingRepository : IBookingRepository
                 }
 
                 var seatIds = seats.Select(s => s.TripSeatId).Distinct().OrderBy(id => id).ToList();
+
+                // The trip may have been cancelled or closed since the seats were held.
+                var tripForSale = await _context.Trips.AsNoTracking()
+                    .Include(t => t.Route).ThenInclude(r => r.Operator)
+                    .FirstOrDefaultAsync(t => t.Id == booking.TripId, ct);
+                var saleBlockReason = tripForSale == null ? "Không tìm thấy thông tin chuyến xe." : BookingRules.GetSaleBlockReason(tripForSale, now);
+                if (saleBlockReason != null)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new BookingResultDto { Success = false, Message = saleBlockReason };
+                }
 
                 // 0. Prevent replay attacks using identical HoldToken
                 var isTokenAlreadyUsed = await _context.Bookings
@@ -449,6 +506,8 @@ public class BookingRepository : IBookingRepository
                     hold.TripSeat.UpdatedAt = now;
                 }
 
+                QueueBookingEmail(booking, BookingConfirmationEmailOutbox.TypeBookingAcknowledgement, string.Empty, now, tripForSale);
+
                 await _context.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
 
@@ -491,16 +550,18 @@ public class BookingRepository : IBookingRepository
     public async Task<bool> CancelBookingAsync(long bookingId, string? ownerIdentifier, long? userId, string reason, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ownerIdentifier) && !userId.HasValue) return false;
-        var strategy = _context.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
+        return await RunWriteAsync(async () =>
         {
+            _context.ChangeTracker.Clear();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
                 var booking = await _context.Bookings
                     .Include(b => b.BookingSeats)
                         .ThenInclude(bs => bs.TripSeat)
+                    .Include(b => b.Trip)
+                        .ThenInclude(trip => trip.Route)
+                            .ThenInclude(route => route.Operator)
                     .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
                 if (booking == null)
@@ -529,8 +590,7 @@ public class BookingRepository : IBookingRepository
                     return true;
                 }
 
-                if (booking.Status != BookingStatus.PendingPayment ||
-                    booking.PaymentStatus != PaymentStatus.Unpaid)
+                if (!BookingRules.CustomerCanCancel(booking))
                 {
                     await transaction.RollbackAsync(ct);
                     return false;
@@ -540,6 +600,7 @@ public class BookingRepository : IBookingRepository
                 booking.Status = BookingStatus.Cancelled;
                 booking.CancelledAt = now;
                 booking.CancellationReason = reason;
+                QueueBookingEmail(booking, BookingConfirmationEmailOutbox.TypeBookingCancellation, string.Empty, now);
 
                 var seatIds = booking.BookingSeats.Select(bs => bs.TripSeatId).ToList();
 
@@ -583,19 +644,23 @@ public class BookingRepository : IBookingRepository
 
     public async Task ExpireStaleBookingsAsync(CancellationToken ct = default)
     {
-        var strategy = _context.Database.CreateExecutionStrategy();
-
-        await strategy.ExecuteAsync(async () =>
+        await RunWriteAsync(async () =>
         {
+            _context.ChangeTracker.Clear();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
                 var now = DateTimeOffset.UtcNow;
+
+                // Failed attempts took no money, so they must not keep seats locked past the payment window.
                 var expiredBookings = await _context.Bookings
                     .Include(b => b.BookingSeats)
                         .ThenInclude(bs => bs.TripSeat)
+                    .Include(b => b.PaymentTransactions)
                     .Where(b => b.Status == BookingStatus.PendingPayment &&
-                                b.PaymentStatus == PaymentStatus.Unpaid &&
+                                (b.PaymentStatus == PaymentStatus.Unpaid ||
+                                 b.PaymentStatus == PaymentStatus.Failed ||
+                                 b.PaymentStatus == PaymentStatus.Pending) &&
                                 b.ExpiresAt <= now)
                     .ToListAsync(ct);
 
@@ -604,6 +669,18 @@ public class BookingRepository : IBookingRepository
                 foreach (var b in expiredBookings)
                 {
                     b.Status = BookingStatus.Expired;
+
+                    foreach (var pending in b.PaymentTransactions.Where(t => t.Status == PaymentStatus.Pending))
+                    {
+                        pending.Status = PaymentStatus.Failed;
+                        pending.CompletedAt = now;
+                        pending.Note = "Hết thời hạn thanh toán trước khi nhận được xác nhận từ cổng thanh toán.";
+                    }
+
+                    if (b.PaymentStatus == PaymentStatus.Pending)
+                    {
+                        b.PaymentStatus = PaymentStatus.Failed;
+                    }
                     var seatIds = b.BookingSeats.Select(bs => bs.TripSeatId).ToList();
 
                     foreach (var bs in b.BookingSeats)
@@ -779,9 +856,9 @@ public class BookingRepository : IBookingRepository
 
     public async Task ExpireStaleHoldsAsync(CancellationToken ct = default)
     {
-        var strategy = _context.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+        await RunWriteAsync(async () =>
         {
+            _context.ChangeTracker.Clear();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var now = DateTimeOffset.UtcNow;
             var staleHolds = await _context.SeatHolds
@@ -825,11 +902,10 @@ public class BookingRepository : IBookingRepository
             };
         }
 
-        var strategy = _context.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
+        return await RunWriteAsync(async () =>
         {
             _context.EnsureWritesTargetIsolatedTestDatabase();
+            _context.ChangeTracker.Clear();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
@@ -869,6 +945,17 @@ public class BookingRepository : IBookingRepository
                     {
                         Success = false,
                         Message = "Bạn không có quyền thao tác trên đơn đặt chỗ này."
+                    };
+                }
+
+                // Simulated money can only ever settle simulated bookings.
+                if (!booking.IsDemoBooking)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new PaymentProcessResultDto
+                    {
+                        Success = false,
+                        Message = "Đơn đặt chỗ này không dùng được thanh toán mô phỏng."
                     };
                 }
 
@@ -948,6 +1035,7 @@ public class BookingRepository : IBookingRepository
 
                     _context.PaymentTransactions.Add(failedTx);
                     booking.PaymentStatus = PaymentStatus.Failed;
+                    QueueBookingEmail(booking, BookingConfirmationEmailOutbox.TypePaymentFailed, transactionCode, now);
                     await _context.SaveChangesAsync(ct);
                     await transaction.CommitAsync(ct);
 
@@ -984,34 +1072,9 @@ public class BookingRepository : IBookingRepository
                 booking.Status = BookingStatus.Confirmed;
                 booking.ConfirmedAt = now;
 
-                if (booking.IsDemoBooking && !string.IsNullOrWhiteSpace(booking.PassengerEmail))
+                if (booking.IsDemoBooking)
                 {
-                    var confirmation = new BookingConfirmationEmailDto
-                    {
-                        BookingCode = booking.BookingCode,
-                        PassengerName = booking.PassengerName,
-                        RecipientEmail = booking.PassengerEmail,
-                        RouteName = booking.Trip.Route?.Name ?? string.Empty,
-                        OperatorName = booking.Trip.Route?.Operator?.Name ?? string.Empty,
-                        DepartureTime = booking.Trip.DepartureTime,
-                        PickupPoint = booking.PickupPointNote,
-                        DropoffPoint = booking.DropoffPointNote,
-                        SeatCodes = booking.BookingSeats
-                            .Select(seat => seat.SeatCode)
-                            .OrderBy(code => code, StringComparer.OrdinalIgnoreCase)
-                            .ToList(),
-                        TotalAmount = booking.TotalAmount
-                    };
-                    _context.BookingConfirmationEmailOutbox.Add(new BookingConfirmationEmailOutbox
-                    {
-                        BookingId = booking.Id,
-                        RecipientEmail = confirmation.RecipientEmail,
-                        Payload = JsonSerializer.Serialize(confirmation),
-                        Status = BookingConfirmationEmailOutbox.Pending,
-                        AttemptCount = 0,
-                        NextAttemptAt = now,
-                        CreatedAt = now
-                    });
+                    QueueBookingEmail(booking, BookingConfirmationEmailOutbox.TypeBookingConfirmation, string.Empty, now);
                 }
 
                 // Finalize seats
@@ -1075,6 +1138,48 @@ public class BookingRepository : IBookingRepository
                             _context.SeatHolds.Any(h => h.HoldToken == t.Booking.HoldToken && h.OwnerIdentifier == ownerIdentifier))))))
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync(ct);
+    }
+
+    /// <summary>Adds the email to the outbox inside the caller's transaction, so it exists only if the change commits.</summary>
+    private void QueueBookingEmail(Booking booking, string messageType, string dedupKey, DateTimeOffset now, Trip? trip = null)
+    {
+        if (string.IsNullOrWhiteSpace(booking.PassengerEmail))
+        {
+            return;
+        }
+
+        trip ??= booking.Trip;
+        var payload = new BookingConfirmationEmailDto
+        {
+            BookingCode = booking.BookingCode,
+            PassengerName = booking.PassengerName,
+            RecipientEmail = booking.PassengerEmail,
+            RouteName = trip?.Route?.Name ?? string.Empty,
+            OperatorName = trip?.Route?.Operator?.Name ?? string.Empty,
+            DepartureTime = trip?.DepartureTime ?? default,
+            PickupPoint = booking.PickupPointNote,
+            DropoffPoint = booking.DropoffPointNote,
+            SeatCodes = booking.BookingSeats
+                .Select(seat => seat.SeatCode)
+                .OrderBy(code => code, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            TotalAmount = booking.TotalAmount,
+            MessageType = messageType,
+            CancellationReason = booking.CancellationReason
+        };
+
+        _context.BookingConfirmationEmailOutbox.Add(new BookingConfirmationEmailOutbox
+        {
+            BookingId = booking.Id,
+            RecipientEmail = booking.PassengerEmail,
+            MessageType = messageType,
+            DedupKey = dedupKey,
+            Payload = JsonSerializer.Serialize(payload),
+            Status = BookingConfirmationEmailOutbox.Pending,
+            AttemptCount = 0,
+            NextAttemptAt = now,
+            CreatedAt = now
+        });
     }
 
     private static bool IsDuplicateKey(DbUpdateException exception)

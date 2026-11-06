@@ -49,6 +49,7 @@ public class SandboxFixtureService : ISandboxFixtureService
 
             // 0. Ensure default roles and users exist, repair pickup/dropoff Unicode text, and deduplicate locations
             await EnsureRolesAndDefaultUsersAsync(ct);
+            await EnsureFreshDatabaseBaselineAsync(ct);
             await RepairPickupDropoffUnicodeAsync(ct);
             await EnsureCanonicalLocationsAsync(ct);
 
@@ -93,6 +94,120 @@ public class SandboxFixtureService : ISandboxFixtureService
             throw;
         }
     }
+
+    /// <summary>
+    /// A freshly migrated isolated database has no transport data, and the imported data set is not
+    /// in the repository. This creates a self-evidently fictional operator, bus and route network so
+    /// the booking journey can run end to end. Nothing here claims to describe a real operator, fare
+    /// or timetable, and it never runs when any route already exists.
+    /// </summary>
+    public async Task EnsureFreshDatabaseBaselineAsync(CancellationToken ct = default)
+    {
+        _context.EnsureWritesTargetIsolatedTestDatabase();
+
+        if (await _context.Routes.AnyAsync(ct))
+        {
+            return;
+        }
+
+        await DbInitializer.SeedAsync(_context);
+
+        // Point IDs 1-30 are reserved for the imported data set that RepairPickupDropoffUnicodeAsync
+        // corrects by ID. Keep sandbox points out of that range so they are never renamed by it.
+        if (!await _context.PickupDropoffPoints.AnyAsync(ct))
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "DBCC CHECKIDENT ('[PickupDropoffPoints]', RESEED, 1000) WITH NO_INFOMSGS;", ct);
+        }
+
+        var sandboxOperator = await _context.Operators.FirstOrDefaultAsync(o => o.Code == SandboxOperatorCode, ct);
+        if (sandboxOperator == null)
+        {
+            sandboxOperator = new Operator
+            {
+                Code = SandboxOperatorCode,
+                Name = "[SANDBOX] Nhà xe thử nghiệm",
+                Description = "Nhà xe hư cấu chỉ dùng để kiểm thử. Không phải đơn vị vận tải có thật.",
+                DataSource = TransportDataSource.SandboxFixture,
+                IsActive = true,
+                IsVerified = false,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _context.Operators.Add(sandboxOperator);
+            await _context.SaveChangesAsync(ct);
+        }
+
+        if (!await _context.Buses.AnyAsync(b => b.OperatorId == sandboxOperator.Id, ct))
+        {
+            var busType = await _context.BusTypes.OrderBy(t => t.Id).FirstAsync(ct);
+            const int seatsPerFloor = 12;
+            var items = new List<SeatLayoutItem>();
+            for (var floor = 1; floor <= 2; floor++)
+            {
+                for (var position = 1; position <= seatsPerFloor; position++)
+                {
+                    items.Add(new SeatLayoutItem
+                    {
+                        SeatCode = $"{(floor == 1 ? 'A' : 'B')}{position:D2}",
+                        Floor = floor,
+                        Row = (position - 1) / 2 + 1,
+                        Column = (position - 1) % 2 + 1,
+                        SeatType = "Bed",
+                        IsActive = true
+                    });
+                }
+            }
+
+            _context.Buses.Add(new Bus
+            {
+                OperatorId = sandboxOperator.Id,
+                BusTypeId = busType.Id,
+                LicensePlate = "SANDBOX-001",
+                Name = "[SANDBOX] Xe thử nghiệm 01",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                SeatLayout = new SeatLayout
+                {
+                    Name = "[SANDBOX] Sơ đồ 24 giường",
+                    Floors = 2,
+                    TotalSeats = items.Count,
+                    IsActive = true,
+                    Items = items
+                }
+            });
+            await _context.SaveChangesAsync(ct);
+        }
+
+        var locations = await _context.Locations.ToDictionaryAsync(l => l.Code, StringComparer.OrdinalIgnoreCase, ct);
+        var pairs = new[]
+        {
+            ("SGN", "DLI"), ("SGN", "NHA"), ("SGN", "UIH"), ("SGN", "DAD"),
+            ("HAN", "SAP"), ("HAN", "DAD"), ("DAD", "NHA")
+        };
+
+        foreach (var (first, second) in pairs)
+        {
+            foreach (var (from, to) in new[] { (first, second), (second, first) })
+            {
+                _context.Routes.Add(new Route
+                {
+                    OperatorId = sandboxOperator.Id,
+                    OriginLocationId = locations[from].Id,
+                    DestinationLocationId = locations[to].Id,
+                    Code = $"SANDBOX-{from}-{to}",
+                    Name = $"[SANDBOX] {locations[from].Name} - {locations[to].Name}",
+                    DataSource = TransportDataSource.SandboxFixture,
+                    IsActive = true,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync(ct);
+        _logger.LogInformation("Created the fictional sandbox baseline in a fresh isolated database.");
+    }
+
+    public const string SandboxOperatorCode = "SANDBOX";
 
     private async Task EnsureCanonicalLocationsAsync(CancellationToken ct)
     {
@@ -260,6 +375,7 @@ public class SandboxFixtureService : ISandboxFixtureService
                 BasePrice = basePrice,
                 Status = TripStatus.Scheduled,
                 IsDemoTrip = true,
+                DataSource = TransportDataSource.SandboxFixture,
                 CreatedAt = createdTimestamp,
                 Stops = stops,
                 Seats = seats
@@ -617,11 +733,7 @@ public class SandboxFixtureService : ISandboxFixtureService
 
     public async Task EnsureRolesAndDefaultUsersAsync(CancellationToken ct = default)
     {
-        var dbName = _context.Database.GetDbConnection().Database;
-        if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Seeding is strictly forbidden against production database 'TripgoDb'.");
-        }
+        _context.EnsureWritesTargetIsolatedTestDatabase();
 
         // 1. Roles: Admin, Customer, Operator
         var existingRoles = await _context.Roles.ToListAsync(ct);
@@ -649,54 +761,60 @@ public class SandboxFixtureService : ISandboxFixtureService
 
         await _context.SaveChangesAsync(ct);
 
-        // 2. Default Admin User: admin@tripgo.vn / Admin@123
-        var adminEmail = "admin@tripgo.vn";
-        var existingAdmin = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == adminEmail, ct);
-        if (existingAdmin == null)
-        {
-            var adminUser = new User
-            {
-                FullName = "Quản Trị Viên TripGo",
-                Email = adminEmail,
-                PhoneNumber = "0900000001",
-                PasswordHash = _passwordHasher.HashPassword("Admin@123"),
-                RoleId = adminRole.Id,
-                IsActive = true,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            _context.Users.Add(adminUser);
-            _logger.LogInformation("Seeded default admin user: {Email} (Role: Admin)", adminEmail);
-        }
-
-        // 3. Default Customer User: customer@tripgo.vn / Customer@123
-        var customerEmail = "customer@tripgo.vn";
-        var existingCustomer = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == customerEmail, ct);
-        if (existingCustomer == null)
-        {
-            var customerUser = new User
-            {
-                FullName = "Khách Hàng Mẫu",
-                Email = customerEmail,
-                PhoneNumber = "0912345678",
-                PasswordHash = _passwordHasher.HashPassword("Customer@123"),
-                RoleId = customerRole.Id,
-                IsActive = true,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            _context.Users.Add(customerUser);
-            _logger.LogInformation("Seeded default customer user: {Email} (Role: Customer)", customerEmail);
-        }
+        // 2. Optional local sign-in accounts. Passwords never live in source control: the accounts are
+        // created only when the developer supplies a password for this environment.
+        await EnsureSandboxUserAsync(
+            "admin@tripgo.test", "Quản Trị Viên Sandbox", "0900000091", adminRole.Id,
+            Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_ADMIN_PASSWORD"), ct);
+        await EnsureSandboxUserAsync(
+            "customer@tripgo.test", "Khách Hàng Sandbox", "0900000092", customerRole.Id,
+            Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_CUSTOMER_PASSWORD"), ct);
 
         await _context.SaveChangesAsync(ct);
     }
 
+    private async Task EnsureSandboxUserAsync(
+        string email, string fullName, string phone, int roleId, string? password, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            return;
+        }
+
+        var existingUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(), ct);
+        if (existingUser != null)
+        {
+            if (string.Equals(email, "admin@tripgo.test", StringComparison.OrdinalIgnoreCase))
+            {
+                existingUser.PasswordHash = _passwordHasher.HashPassword(password);
+            }
+
+            return;
+        }
+
+        if (await _context.Users.AnyAsync(u => u.PhoneNumber == phone, ct))
+        {
+            return;
+        }
+
+        _context.Users.Add(new User
+        {
+            FullName = fullName,
+            Email = email,
+            PhoneNumber = phone,
+            PasswordHash = _passwordHasher.HashPassword(password),
+            RoleId = roleId,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        _logger.LogInformation("Seeded sandbox account {Email}.", email);
+    }
+
     public async Task RepairPickupDropoffUnicodeAsync(CancellationToken ct = default)
     {
+        _context.EnsureWritesTargetIsolatedTestDatabase();
         var dbName = _context.Database.GetDbConnection().Database;
-        if (string.Equals(dbName, "TripgoDb", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Database write is strictly forbidden against production database 'TripgoDb'.");
-        }
 
         var points = await _context.PickupDropoffPoints.Where(p => p.Id <= 30).ToListAsync(ct);
         int repairedCount = 0;
@@ -756,4 +874,3 @@ public class SandboxFixtureService : ISandboxFixtureService
         [30] = ("Bến xe Trung tâm Quy Nhơn", "71 Tây Sơn, Phường Ghềnh Ráng, TP. Quy Nhơn, Bình Định")
     };
 }
-

@@ -1,0 +1,83 @@
+@page "/admin"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Tổng quan | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Tổng quan</h1>
+<p class="adm-subtitle">Mọi số liệu được đếm trực tiếp từ dữ liệu đang lưu trong cơ sở dữ liệu.</p>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+@if (data == null)
+{
+    @if (!StatusIsError)
+    {
+        <div class="adm-empty"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Đang tải số liệu...</div>
+    }
+}
+else
+{
+    <section aria-labelledby="dash-bookings">
+        <h2 id="dash-bookings" class="adm-section">Đơn đặt chỗ</h2>
+        <div class="adm-stats">
+            <div class="adm-stat"><span>Tổng số đơn</span><strong>@data.TotalBookings</strong></div>
+            <div class="adm-stat"><span>Chờ thanh toán</span><strong>@data.PendingBookings</strong></div>
+            <div class="adm-stat"><span>Đã xác nhận</span><strong>@data.ConfirmedBookings</strong></div>
+            <div class="adm-stat"><span>Đã hủy</span><strong>@data.CancelledBookings</strong></div>
+            <div class="adm-stat"><span>Hết hạn</span><strong>@data.ExpiredBookings</strong></div>
+        </div>
+    </section>
+
+    <section aria-labelledby="dash-money">
+        <h2 id="dash-money" class="adm-section">Doanh thu</h2>
+        <div class="adm-stats">
+            <div class="adm-stat">
+                <span>Doanh thu thật</span>
+                @if (data.RealPaidAmount.HasValue)
+                {
+                    <strong>@Money(data.RealPaidAmount.Value)</strong>
+                    <small>@data.RealPaidTransactions giao dịch</small>
+                }
+                else
+                {
+                    <strong>Chưa có</strong>
+                    <small>Chưa có giao dịch nào qua cổng thanh toán thật.</small>
+                }
+            </div>
+            <div class="adm-stat">
+                <span>Giao dịch mô phỏng (không phải doanh thu)</span>
+                <strong>@(data.SandboxPaidAmount.HasValue ? Money(data.SandboxPaidAmount.Value) : "0 đ")</strong>
+                <small>@data.SandboxPaidTransactions giao dịch sandbox</small>
+            </div>
+        </div>
+    </section>
+
+    <section aria-labelledby="dash-ops">
+        <h2 id="dash-ops" class="adm-section">Vận hành</h2>
+        <div class="adm-stats">
+            <div class="adm-stat"><span>Chuyến sắp chạy</span><strong>@data.UpcomingTrips</strong><small>@data.SandboxTrips sandbox · @data.ReferenceTrips tham khảo</small></div>
+            <div class="adm-stat"><span>Chuyến đã hủy</span><strong>@data.CancelledTrips</strong></div>
+            <div class="adm-stat"><span>Nhà xe hoạt động</span><strong>@data.ActiveOperators</strong><small>@data.VerifiedOperators đã xác minh · @data.InactiveOperators ngưng</small></div>
+            <div class="adm-stat"><span>Tuyến hoạt động</span><strong>@data.ActiveRoutes</strong></div>
+            <div class="adm-stat"><span>Xe hoạt động</span><strong>@data.ActiveBuses</strong></div>
+        </div>
+    </section>
+
+    <section aria-labelledby="dash-attention">
+        <h2 id="dash-attention" class="adm-section">Cần chú ý</h2>
+        <div class="adm-stats">
+            <a class="adm-stat is-link" href="/admin/monitoring"><span>Email đang chờ gửi</span><strong>@data.EmailsPending</strong></a>
+            <a class="adm-stat is-link" href="/admin/monitoring"><span>Email gửi thất bại</span><strong>@data.EmailsFailed</strong></a>
+            <a class="adm-stat is-link" href="/admin/monitoring"><span>Sự kiện thanh toán cần đối soát</span><strong>@data.PaymentEventsNeedingReview</strong></a>
+        </div>
+    </section>
+}
+
+@code {
+    private AdminDashboardDto? data;
+
+    protected override Task OnInitializedAsync() =>
+        LoadAsync(async () => data = await Admin.GetDashboardAsync());
+}

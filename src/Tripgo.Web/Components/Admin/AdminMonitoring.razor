@@ -1,0 +1,160 @@
+@page "/admin/monitoring"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Giám sát | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Giám sát</h1>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+<div class="adm-tabs" role="tablist" aria-label="Khu vực giám sát">
+    <button type="button" role="tab" aria-selected="@(tab == "email")" class="@(tab == "email" ? "active" : "")" @onclick='() => SwitchAsync("email")'>Email</button>
+    <button type="button" role="tab" aria-selected="@(tab == "payments")" class="@(tab == "payments" ? "active" : "")" @onclick='() => SwitchAsync("payments")'>Đối soát thanh toán</button>
+    <button type="button" role="tab" aria-selected="@(tab == "audit")" class="@(tab == "audit" ? "active" : "")" @onclick='() => SwitchAsync("audit")'>Nhật ký quản trị</button>
+</div>
+
+@if (tab == "email")
+{
+    <section class="adm-card">
+        <div class="adm-toolbar">
+            <h2>Hàng đợi email</h2>
+            <select aria-label="Lọc trạng thái email" @bind="emailStatus" @bind:after="ReloadEmailsAsync">
+                <option value="">Mọi trạng thái</option>
+                <option value="Pending">Đang chờ</option>
+                <option value="Processing">Đang gửi</option>
+                <option value="Sent">SMTP đã nhận</option>
+                <option value="Failed">Thất bại</option>
+            </select>
+        </div>
+        <p class="adm-hint">"SMTP đã nhận" nghĩa là máy chủ thư đã chấp nhận, không đảm bảo thư đã đến hộp thư người nhận.</p>
+        @if (emails == null || emails.Items.Count == 0)
+        {
+            <div class="adm-empty">@(emails == null ? "Đang tải..." : "Không có email nào.")</div>
+        }
+        else
+        {
+            <div class="adm-table-wrap">
+                <table class="adm-table">
+                    <thead><tr><th>Đơn</th><th>Loại</th><th>Người nhận</th><th>Trạng thái</th><th>Số lần thử</th><th>Lỗi gần nhất</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var email in emails.Items)
+                        {
+                            <tr>
+                                <td>@email.BookingCode</td>
+                                <td>@email.MessageType</td>
+                                <td>@email.MaskedRecipient</td>
+                                <td><span class="adm-pill @(email.Status == "Sent" ? "good" : email.Status == "Failed" ? "bad" : "warn")">@email.Status</span></td>
+                                <td>@email.AttemptCount</td>
+                                <td><small>@email.LastError</small></td>
+                                <td class="adm-row-actions">
+                                    @if (email.Status == "Failed")
+                                    {
+                                        <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => RetryAsync(email.Id)">Gửi lại</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <AdminPager Page="emails.Page" TotalPages="emails.TotalPages" PageChanged="p => ChangeEmailPageAsync(p)" />
+        }
+    </section>
+}
+else if (tab == "payments")
+{
+    <section class="adm-card">
+        <div class="adm-toolbar">
+            <h2>Sự kiện từ cổng thanh toán</h2>
+            <label class="adm-check"><input type="checkbox" @bind="reviewOnly" @bind:after="ReloadPaymentsAsync" /> Chỉ mục cần đối soát</label>
+        </div>
+        @if (payments == null || payments.Items.Count == 0)
+        {
+            <div class="adm-empty">@(payments == null ? "Đang tải..." : "Chưa có sự kiện nào.")</div>
+        }
+        else
+        {
+            <div class="adm-table-wrap">
+                <table class="adm-table">
+                    <thead><tr><th>Thời gian</th><th>Cổng</th><th>Giao dịch</th><th>Kết quả</th><th>Số tiền báo</th><th>Chi tiết</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in payments.Items)
+                        {
+                            <tr>
+                                <td>@Vn(item.ReceivedAt)</td>
+                                <td>@item.Provider</td>
+                                <td><small>@item.TransactionCode</small></td>
+                                <td><span class="adm-pill @(item.Outcome is "Applied" or "Duplicate" ? "good" : "bad")">@item.Outcome</span></td>
+                                <td>@item.ReportedAmount?.ToString("N0") @item.ReportedCurrency</td>
+                                <td><small>@item.Detail</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <AdminPager Page="payments.Page" TotalPages="payments.TotalPages" PageChanged="p => ChangePaymentPageAsync(p)" />
+        }
+    </section>
+}
+else
+{
+    <section class="adm-card">
+        <h2>Nhật ký quản trị</h2>
+        @if (audit == null || audit.Items.Count == 0)
+        {
+            <div class="adm-empty">@(audit == null ? "Đang tải..." : "Chưa có thao tác nào được ghi nhận.")</div>
+        }
+        else
+        {
+            <div class="adm-table-wrap">
+                <table class="adm-table">
+                    <thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Thao tác</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in audit.Items)
+                        {
+                            <tr>
+                                <td>@Vn(item.CreatedAt)</td>
+                                <td>@item.ActorEmail</td>
+                                <td>@item.Action</td>
+                                <td>@item.EntityType #@item.EntityId</td>
+                                <td><small>@item.Details</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <AdminPager Page="audit.Page" TotalPages="audit.TotalPages" PageChanged="p => ChangeAuditPageAsync(p)" />
+        }
+    </section>
+}
+
+@code {
+    private string tab = "email";
+    private string? emailStatus;
+    private bool reviewOnly;
+    private PagedResult<AdminEmailRowDto>? emails;
+    private PagedResult<AdminPaymentEventDto>? payments;
+    private PagedResult<AdminAuditRowDto>? audit;
+
+    protected override Task OnInitializedAsync() => ReloadEmailsAsync();
+
+    private Task SwitchAsync(string target)
+    {
+        tab = target;
+        return target switch
+        {
+            "payments" => ReloadPaymentsAsync(),
+            "audit" => ChangeAuditPageAsync(1),
+            _ => ReloadEmailsAsync()
+        };
+    }
+
+    private Task ReloadEmailsAsync() => ChangeEmailPageAsync(1);
+    private Task ReloadPaymentsAsync() => ChangePaymentPageAsync(1);
+    private Task ChangeEmailPageAsync(int page) => LoadAsync(async () => emails = await Admin.GetEmailOutboxAsync(emailStatus, page));
+    private Task ChangePaymentPageAsync(int page) => LoadAsync(async () => payments = await Admin.GetPaymentEventsAsync(reviewOnly, page));
+    private Task ChangeAuditPageAsync(int page) => LoadAsync(async () => audit = await Admin.GetAuditLogAsync(page));
+    private Task RetryAsync(long id) => RunAsync(() => Admin.RetryEmailAsync(id), ReloadEmailsAsync);
+}

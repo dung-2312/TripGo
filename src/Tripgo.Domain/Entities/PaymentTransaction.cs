@@ -12,6 +12,11 @@ public class PaymentTransaction
     public string TransactionCode { get; set; } = string.Empty;
 
     public string PaymentMethod { get; set; } = "SANDBOX_SIMULATED";
+    public string Provider { get; set; } = "SANDBOX";
+    public string Currency { get; set; } = "VND";
+    public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? RefundedAt { get; set; }
+    public string? RefundReference { get; set; }
 
     public decimal Amount { get; set; }
 

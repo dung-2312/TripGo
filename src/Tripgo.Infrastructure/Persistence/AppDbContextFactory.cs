@@ -24,12 +24,11 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
         }
 
         var target = new SqlConnectionStringBuilder(connectionString);
-        var serverName = target.DataSource.Trim();
-        if (!string.Equals(serverName, @"Admin-PC\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(serverName, @"localhost\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase))
+        var explicitlyApprovedServer = Environment.GetEnvironmentVariable(DatabaseTargetGuard.ApprovedServerEnvironmentVariable);
+        if (!DatabaseTargetGuard.IsApprovedServer(target.DataSource, explicitlyApprovedServer))
         {
             throw new InvalidOperationException(
-                "EF Core tooling is restricted to Admin-PC\\MSSQLSERVER01 (or its localhost alias).");
+                $"EF Core tooling is restricted to Admin-PC\\MSSQLSERVER01 (or its localhost alias), or a local server named explicitly in {DatabaseTargetGuard.ApprovedServerEnvironmentVariable}.");
         }
 
         if (!string.IsNullOrWhiteSpace(target.AttachDBFilename) || target.UserInstance)

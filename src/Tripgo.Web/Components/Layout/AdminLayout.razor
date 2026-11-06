@@ -1,0 +1,31 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+<link rel="stylesheet" href="admin.css?v=1" />
+
+<div class="adm-shell">
+    <nav class="adm-nav" aria-label="Quản trị TripGo">
+        <a class="adm-brand" href="/admin"><i class="bi bi-bus-front-fill" aria-hidden="true"></i> TripGo Admin</a>
+        <div class="adm-nav-links">
+            <NavLink href="/admin" Match="NavLinkMatch.All"><i class="bi bi-speedometer2" aria-hidden="true"></i> Tổng quan</NavLink>
+            <NavLink href="/admin/operators"><i class="bi bi-buildings" aria-hidden="true"></i> Nhà xe</NavLink>
+            <NavLink href="/admin/routes"><i class="bi bi-signpost-split" aria-hidden="true"></i> Tuyến đường</NavLink>
+            <NavLink href="/admin/fleet"><i class="bi bi-truck-front" aria-hidden="true"></i> Đội xe</NavLink>
+            <NavLink href="/admin/trips"><i class="bi bi-calendar2-check" aria-hidden="true"></i> Chuyến xe</NavLink>
+            <NavLink href="/admin/bookings"><i class="bi bi-ticket-perforated" aria-hidden="true"></i> Đơn đặt chỗ</NavLink>
+            <NavLink href="/admin/monitoring"><i class="bi bi-activity" aria-hidden="true"></i> Giám sát</NavLink>
+            <NavLink href="/staff/verify-ticket"><i class="bi bi-qr-code-scan" aria-hidden="true"></i> Kiểm tra mã</NavLink>
+        </div>
+        <div class="adm-nav-footer">
+            <a href="/"><i class="bi bi-arrow-left" aria-hidden="true"></i> Trang đặt vé</a>
+            <a href="/auth/logout"><i class="bi bi-box-arrow-right" aria-hidden="true"></i> Đăng xuất</a>
+        </div>
+    </nav>
+    <main class="adm-main">
+        <div class="adm-sandbox-note" role="note">
+            <i class="bi bi-cpu" aria-hidden="true"></i>
+            Môi trường SANDBOX: dữ liệu đặt chỗ và thanh toán là mô phỏng, không có giao dịch tiền thật.
+        </div>
+        @Body
+    </main>
+</div>

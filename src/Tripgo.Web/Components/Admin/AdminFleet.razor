@@ -1,0 +1,209 @@
+@page "/admin/fleet"
+@attribute [Authorize(Roles = "Admin")]
+@layout Tripgo.Web.Components.Layout.AdminLayout
+@inherits AdminPageBase
+@rendermode InteractiveServer
+
+<PageTitle>Đội xe | TripGo Admin</PageTitle>
+
+<h1 class="adm-title">Đội xe và tài xế</h1>
+<p class="adm-subtitle">TripGo không tự sinh ghế: chỉ lưu sơ đồ được khai báo cho từng xe.</p>
+<AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
+
+<section class="adm-card">
+    <h2>Đăng ký xe</h2>
+    <div class="adm-form">
+        <label>Nhà xe *
+            <select @bind="bus.OperatorId"><option value="0">Chọn nhà xe</option>@foreach (var op in operators) { <option value="@op.Id">@op.Name</option> }</select>
+        </label>
+        <label>Loại xe *
+            <select @bind="bus.BusTypeId"><option value="0">Chọn loại xe</option>@foreach (var type in busTypes) { <option value="@type.Id">@type.Name</option> }</select>
+        </label>
+        <label>Biển số *<input @bind="bus.LicensePlate" maxlength="20" /></label>
+        <label>Tên xe<input @bind="bus.Name" maxlength="100" /></label>
+        <label class="wide">Sơ đồ ghế * (mỗi dòng: mã ghế,tầng,hàng,cột,loại ghế)
+            <textarea rows="6" @bind="bus.SeatLayoutDefinition" @bind:event="oninput" placeholder="A01,1,1,1,Bed"></textarea>
+        </label>
+    </div>
+    <div class="adm-actions">
+        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="CreateBusAsync">Đăng ký xe</button>
+    </div>
+</section>
+
+<section class="adm-card">
+    <h2>Danh sách xe (@buses.Count)</h2>
+    @if (buses.Count == 0)
+    {
+        <div class="adm-empty">Chưa có xe nào.</div>
+    }
+    else
+    {
+        <div class="adm-table-wrap">
+            <table class="adm-table">
+                <thead><tr><th>Biển số</th><th>Nhà xe</th><th>Loại xe</th><th>Sơ đồ</th><th>Chuyến sắp chạy</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var item in buses)
+                    {
+                        <tr>
+                            <td><strong>@item.LicensePlate</strong><small>@item.Name</small></td>
+                            <td>@item.OperatorName</td>
+                            <td>@item.BusTypeName</td>
+                            <td>@item.TotalSeats ghế / @item.Floors tầng</td>
+                            <td>@item.UpcomingTrips</td>
+                            <td><span class="adm-pill @(item.IsActive ? "good" : "muted")">@(item.IsActive ? "Hoạt động" : "Ngưng")</span></td>
+                            <td class="adm-row-actions">
+                                <button type="button" class="adm-btn small" @onclick="() => OpenLayoutAsync(item)">Sơ đồ ghế</button>
+                                <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => ToggleBusAsync(item)">@(item.IsActive ? "Ngưng" : "Kích hoạt")</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (layoutBus != null)
+{
+    <section class="adm-card">
+        <div class="adm-toolbar">
+            <h2>Sơ đồ ghế xe @layoutBus.LicensePlate</h2>
+            <button type="button" class="adm-btn" @onclick="() => layoutBus = null">Đóng</button>
+        </div>
+        @if (seats.Count == 0)
+        {
+            <div class="adm-empty">Xe chưa có sơ đồ ghế.</div>
+        }
+        else
+        {
+            <div class="adm-seatmaps">
+                @foreach (var floor in seats.GroupBy(s => s.Floor).OrderBy(g => g.Key))
+                {
+                    var columns = floor.Max(s => s.Column);
+                    <div>
+                        <h3 class="adm-section">Tầng @floor.Key</h3>
+                        <div class="adm-seatmap" style="grid-template-columns: repeat(@columns, 56px);">
+                            @foreach (var seat in floor)
+                            {
+                                <div class="adm-seat" style="grid-row: @seat.Row; grid-column: @seat.Column;" title="@seat.SeatType">@seat.SeatCode</div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        @if (layoutBus.UpcomingTrips > 0)
+        {
+            <p class="adm-hint">Xe còn @layoutBus.UpcomingTrips chuyến sắp chạy nên không thể thay sơ đồ.</p>
+        }
+        else
+        {
+            <div class="adm-form">
+                <label class="wide">Thay sơ đồ mới (mỗi dòng: mã ghế,tầng,hàng,cột,loại ghế)
+                    <textarea rows="6" @bind="layoutDefinition" @bind:event="oninput"></textarea>
+                </label>
+            </div>
+            <div class="adm-actions">
+                <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="ReplaceLayoutAsync">Thay sơ đồ</button>
+            </div>
+        }
+    </section>
+}
+
+<section class="adm-card">
+    <h2>Tài xế (@drivers.Count)</h2>
+    <div class="adm-form">
+        <label>Nhà xe *
+            <select @bind="driver.OperatorId"><option value="0">Chọn nhà xe</option>@foreach (var op in operators) { <option value="@op.Id">@op.Name</option> }</select>
+        </label>
+        <label>Họ tên *<input @bind="driver.FullName" maxlength="200" /></label>
+        <label>Điện thoại *<input type="tel" @bind="driver.Phone" maxlength="20" /></label>
+        <label>Số GPLX *<input @bind="driver.LicenseNumber" maxlength="50" /></label>
+        <label>Hạng GPLX<input @bind="driver.LicenseClass" maxlength="10" /></label>
+        <label>Ngày hết hạn GPLX<input type="date" @bind="driver.LicenseExpiryDate" /></label>
+    </div>
+    <div class="adm-actions">
+        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveDriverAsync">Lưu tài xế</button>
+    </div>
+    @if (drivers.Count == 0)
+    {
+        <div class="adm-empty">Chưa có tài xế nào.</div>
+    }
+    else
+    {
+        <div class="adm-table-wrap">
+            <table class="adm-table">
+                <thead><tr><th>Họ tên</th><th>Nhà xe</th><th>GPLX</th><th>Hết hạn</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var item in drivers)
+                    {
+                        <tr>
+                            <td><strong>@item.FullName</strong><small>@item.Phone</small></td>
+                            <td>@item.OperatorName</td>
+                            <td>@item.LicenseNumber @item.LicenseClass</td>
+                            <td>@(item.LicenseExpiryDate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                            <td><span class="adm-pill @(item.IsActive ? "good" : "muted")">@(item.IsActive ? "Hoạt động" : "Ngưng")</span></td>
+                            <td class="adm-row-actions">
+                                <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => ToggleDriverAsync(item)">@(item.IsActive ? "Ngưng" : "Kích hoạt")</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private List<AdminOperatorDto> operators = new();
+    private List<BusTypeDto> busTypes = new();
+    private List<AdminBusDto> buses = new();
+    private List<AdminDriverDto> drivers = new();
+    private CreateBusDto bus = new();
+    private AdminDriverInput driver = new();
+    private AdminBusDto? layoutBus;
+    private List<AdminSeatDto> seats = new();
+    private string layoutDefinition = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync(async () =>
+    {
+        operators = await Admin.GetOperatorsAsync();
+        busTypes = await Admin.GetBusTypesAsync();
+        buses = await Admin.GetBusesAsync();
+        drivers = await Admin.GetDriversAsync();
+    });
+
+    private Task ReloadBusesAsync() => LoadAsync(async () => buses = await Admin.GetBusesAsync());
+    private Task ReloadDriversAsync() => LoadAsync(async () => drivers = await Admin.GetDriversAsync());
+
+    private Task CreateBusAsync() => RunAsync(() => Admin.CreateBusAsync(bus), async () =>
+    {
+        bus = new();
+        await ReloadBusesAsync();
+    });
+
+    private Task ToggleBusAsync(AdminBusDto item) =>
+        RunAsync(() => Admin.SetBusActiveAsync(item.Id, !item.IsActive), ReloadBusesAsync);
+
+    private Task OpenLayoutAsync(AdminBusDto item) => LoadAsync(async () =>
+    {
+        layoutBus = item;
+        seats = await Admin.GetBusSeatsAsync(item.Id);
+        layoutDefinition = string.Join('\n', seats.Select(s => $"{s.SeatCode},{s.Floor},{s.Row},{s.Column},{s.SeatType}"));
+    });
+
+    private Task ReplaceLayoutAsync() => RunAsync(() => Admin.ReplaceBusLayoutAsync(layoutBus!.Id, layoutDefinition), async () =>
+    {
+        seats = await Admin.GetBusSeatsAsync(layoutBus!.Id);
+        await ReloadBusesAsync();
+    });
+
+    private Task SaveDriverAsync() => RunAsync(() => Admin.SaveDriverAsync(driver), async () =>
+    {
+        driver = new();
+        await ReloadDriversAsync();
+    });
+
+    private Task ToggleDriverAsync(AdminDriverDto item) =>
+        RunAsync(() => Admin.SetDriverActiveAsync(item.Id, !item.IsActive), ReloadDriversAsync);
+}
