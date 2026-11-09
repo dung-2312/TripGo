@@ -5,7 +5,7 @@ namespace Tripgo.Web.Models;
 public enum SeatStatus
 {
     Available,    // Ghế trống, có thể chọn
-    Unavailable,  // Đã có người mua, bị khóa
+    Unavailable,  // Đã có người mua, bị khóa.
     Selected      // Đang được người dùng chọn.
 }
 
