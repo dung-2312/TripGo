@@ -5,6 +5,7 @@ public sealed class BookingConfirmationEmailDto
     public string BookingCode { get; set; } = string.Empty;
     public string? TicketCode { get; set; }
     public string PassengerName { get; set; } = string.Empty;
+    public string? PassengerPhone { get; set; }
     public string RecipientEmail { get; set; } = string.Empty;
     public string RouteName { get; set; } = string.Empty;
     public string OperatorName { get; set; } = string.Empty;

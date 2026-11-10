@@ -20,8 +20,10 @@ public sealed class BookingSessionMiddleware
                                            Guid.TryParseExact(claim.Value, "N", out _)))
         {
             var ownerIdentifier = Guid.NewGuid().ToString("N");
+            var claims = context.User.Claims.ToList();
+            claims.Add(new Claim(BookingSessionContext.OwnerClaimType, ownerIdentifier));
             var identity = new ClaimsIdentity(
-                new[] { new Claim(BookingSessionContext.OwnerClaimType, ownerIdentifier) },
+                claims,
                 CookieAuthenticationDefaults.AuthenticationScheme);
             var principal = new ClaimsPrincipal(identity);
 

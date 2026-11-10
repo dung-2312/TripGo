@@ -353,6 +353,7 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
                 BookingCode = booking.BookingCode,
                 TicketCode = ticketCode,
                 PassengerName = booking.PassengerName,
+                PassengerPhone = booking.PassengerPhone,
                 RecipientEmail = booking.PassengerEmail,
                 RouteName = booking.Trip?.Route?.Name ?? string.Empty,
                 OperatorName = booking.Trip?.Route?.Operator?.Name ?? string.Empty,

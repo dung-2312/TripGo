@@ -60,7 +60,7 @@
                             <td><span class="adm-pill @(route.IsActive ? "good" : "muted")">@(route.IsActive ? "Hoạt động" : "Ngưng")</span></td>
                             <td class="adm-row-actions">
                                 <button type="button" class="adm-btn small" @onclick="() => Edit(route)">Sửa</button>
-                                <button type="button" class="adm-btn small" @onclick="() => OpenStopsAsync(route)">Điểm dừng</button>
+                                <button type="button" class="adm-btn small primary" @onclick="() => OpenStopsAsync(route)">Điểm dừng</button>
                                 <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => ToggleAsync(route)">@(route.IsActive ? "Ngưng" : "Kích hoạt")</button>
                             </td>
                         </tr>
@@ -73,68 +73,75 @@
 
 @if (stopRoute != null)
 {
-    <section class="adm-card">
-        <div class="adm-toolbar">
-            <h2>Điểm dừng: @stopRoute.OriginName → @stopRoute.DestinationName</h2>
-            <button type="button" class="adm-btn" @onclick="() => stopRoute = null">Đóng</button>
-        </div>
-        <p class="adm-hint">Thứ tự tăng dần theo hướng đi. Mốc phút tính từ giờ khởi hành; để trống nếu chưa có dữ liệu xác nhận.</p>
-
-        @if (stops.Count == 0)
-        {
-            <div class="adm-empty">Tuyến chưa có điểm dừng.</div>
-        }
-        else
-        {
-            <div class="adm-table-wrap">
-                <table class="adm-table">
-                    <thead><tr><th>Thứ tự</th><th>Điểm</th><th>Đón</th><th>Trả</th><th>Phút đón</th><th>Phút trả</th><th></th></tr></thead>
-                    <tbody>
-                        @foreach (var stop in stops.OrderBy(s => s.StopOrder))
-                        {
-                            <tr>
-                                <td><input class="adm-narrow" aria-label="Thứ tự" type="number" min="1" @bind="stop.StopOrder" /></td>
-                                <td>@stop.PointName</td>
-                                <td><input aria-label="Cho phép đón" type="checkbox" @bind="stop.AllowPickup" /></td>
-                                <td><input aria-label="Cho phép trả" type="checkbox" @bind="stop.AllowDropoff" /></td>
-                                <td><input class="adm-narrow" aria-label="Phút đón" type="number" min="0" @bind="stop.DepartureOffsetMinutes" /></td>
-                                <td><input class="adm-narrow" aria-label="Phút trả" type="number" min="0" @bind="stop.ArrivalOffsetMinutes" /></td>
-                                <td><button type="button" class="adm-btn small danger" @onclick="() => stops.Remove(stop)">Bỏ</button></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+    <div class="adm-modal-backdrop" @onclick="() => stopRoute = null">
+        <div class="adm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-stops-title" @onclick:stopPropagation="true">
+            <div class="adm-modal-header">
+                <h2 id="modal-stops-title">Điểm dừng tuyến: @stopRoute.OriginName → @stopRoute.DestinationName</h2>
+                <button type="button" class="adm-close-btn" @onclick="() => stopRoute = null" aria-label="Đóng">&times;</button>
             </div>
-        }
+            <div class="adm-modal-body">
+                <p class="adm-hint" style="margin-top:0">Thứ tự tăng dần theo hướng đi. Mốc phút tính từ giờ khởi hành; để trống nếu chưa có dữ liệu xác nhận.</p>
 
-        <div class="adm-form">
-            <label class="wide">Thêm điểm có sẵn của nhà xe
-                <select @bind="pointToAdd">
-                    <option value="0">Chọn điểm</option>
-                    @foreach (var point in points.Where(p => p.IsActive && stops.All(s => s.PointId != p.Id)))
-                    {
-                        <option value="@point.Id">@point.LocationName · @point.Name</option>
-                    }
-                </select>
-            </label>
-        </div>
-        <div class="adm-actions">
-            <button type="button" class="adm-btn" disabled="@(pointToAdd == 0)" @onclick="AddStop">Thêm vào tuyến</button>
-            <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveStopsAsync">Lưu điểm dừng</button>
-        </div>
+                @if (stops.Count == 0)
+                {
+                    <div class="adm-empty">Tuyến chưa có điểm dừng.</div>
+                }
+                else
+                {
+                    <div class="adm-table-wrap">
+                        <table class="adm-table">
+                            <thead><tr><th>Thứ tự</th><th>Điểm</th><th>Đón</th><th>Trả</th><th>Phút đón</th><th>Phút trả</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var stop in stops.OrderBy(s => s.StopOrder))
+                                {
+                                    <tr>
+                                        <td><input class="adm-narrow" aria-label="Thứ tự" type="number" min="1" @bind="stop.StopOrder" /></td>
+                                        <td>@stop.PointName</td>
+                                        <td><input aria-label="Cho phép đón" type="checkbox" @bind="stop.AllowPickup" /></td>
+                                        <td><input aria-label="Cho phép trả" type="checkbox" @bind="stop.AllowDropoff" /></td>
+                                        <td><input class="adm-narrow" aria-label="Phút đón" type="number" min="0" @bind="stop.DepartureOffsetMinutes" /></td>
+                                        <td><input class="adm-narrow" aria-label="Phút trả" type="number" min="0" @bind="stop.ArrivalOffsetMinutes" /></td>
+                                        <td><button type="button" class="adm-btn small danger" @onclick="() => stops.Remove(stop)">Bỏ</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
 
-        <h3 class="adm-section">Khai báo điểm đón/trả mới</h3>
-        <div class="adm-form">
-            <label>Tỉnh/thành *
-                <select @bind="newPoint.LocationId"><option value="0">Chọn</option>@foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }</select>
-            </label>
-            <label>Tên điểm *<input @bind="newPoint.Name" maxlength="200" /></label>
-            <label class="wide">Địa chỉ cụ thể *<input @bind="newPoint.Address" maxlength="500" /></label>
+                <div class="adm-form" style="margin-top:16px">
+                    <label class="wide">Thêm điểm có sẵn của nhà xe
+                        <select @bind="pointToAdd">
+                            <option value="0">Chọn điểm</option>
+                            @foreach (var point in points.Where(p => p.IsActive && stops.All(s => s.PointId != p.Id)))
+                            {
+                                <option value="@point.Id">@point.LocationName · @point.Name</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+                <div class="adm-actions">
+                    <button type="button" class="adm-btn" disabled="@(pointToAdd == 0)" @onclick="AddStop">Thêm vào tuyến</button>
+                    <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="SaveStopsAsync">Lưu điểm dừng</button>
+                </div>
+
+                <h3 class="adm-section">Khai báo điểm đón/trả mới</h3>
+                <div class="adm-form">
+                    <label>Tỉnh/thành *
+                        <select @bind="newPoint.LocationId"><option value="0">Chọn</option>@foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }</select>
+                    </label>
+                    <label>Tên điểm *<input @bind="newPoint.Name" maxlength="200" /></label>
+                    <label class="wide">Địa chỉ cụ thể *<input @bind="newPoint.Address" maxlength="500" /></label>
+                </div>
+                <div class="adm-actions">
+                    <button type="button" class="adm-btn" disabled="@IsBusy" @onclick="AddPointAsync">Lưu điểm mới</button>
+                </div>
+            </div>
+            <div class="adm-modal-footer">
+                <button type="button" class="adm-btn" @onclick="() => stopRoute = null">Đóng</button>
+            </div>
         </div>
-        <div class="adm-actions">
-            <button type="button" class="adm-btn" disabled="@IsBusy" @onclick="AddPointAsync">Lưu điểm mới</button>
-        </div>
-    </section>
+    </div>
 }
 
 @code {

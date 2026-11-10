@@ -50,6 +50,62 @@ public sealed class AdminRepository : IAdminRepository
 
         var reviewOutcomes = NeedsReviewOutcomes;
 
+        var topRoutesRaw = await _context.Bookings.AsNoTracking()
+            .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.PendingPayment)
+            .GroupBy(b => new { RouteName = b.Trip.Route.Name, OperatorName = b.Trip.Route.Operator.Name })
+            .Select(g => new
+            {
+                g.Key.RouteName,
+                g.Key.OperatorName,
+                BookingCount = g.Count(),
+                TotalRevenue = g.Sum(b => b.TotalAmount)
+            })
+            .OrderByDescending(r => r.BookingCount)
+            .Take(5)
+            .ToListAsync(ct);
+
+        var topRoutes = topRoutesRaw.Select(r => new AdminDashboardTopRouteDto
+        {
+            RouteName = r.RouteName,
+            OperatorName = r.OperatorName,
+            BookingCount = r.BookingCount,
+            TotalRevenue = r.TotalRevenue
+        }).ToList();
+
+        var recentRows = await _context.Bookings.AsNoTracking()
+            .OrderByDescending(b => b.CreatedAt)
+            .Take(5)
+            .Select(b => new
+            {
+                b.Id,
+                b.BookingCode,
+                RouteName = b.Trip.Route.Name,
+                b.Trip.DepartureTime,
+                b.PassengerName,
+                b.PassengerPhone,
+                b.Status,
+                b.PaymentStatus,
+                b.TotalAmount,
+                b.CreatedAt,
+                b.IsDemoBooking
+            })
+            .ToListAsync(ct);
+
+        var recentBookings = recentRows.Select(b => new AdminBookingRowDto
+        {
+            Id = b.Id,
+            BookingCode = b.BookingCode,
+            RouteName = b.RouteName,
+            DepartureTime = b.DepartureTime,
+            MaskedPassengerName = PrivacyMask.Name(b.PassengerName),
+            MaskedPhone = PrivacyMask.Phone(b.PassengerPhone),
+            Status = b.Status.ToString(),
+            PaymentStatus = b.PaymentStatus.ToString(),
+            TotalAmount = b.TotalAmount,
+            CreatedAt = b.CreatedAt,
+            IsSandbox = b.IsDemoBooking
+        }).ToList();
+
         return new AdminDashboardDto
         {
             TotalBookings = bookingCounts.Sum(x => x.Count),
@@ -72,7 +128,9 @@ public sealed class AdminRepository : IAdminRepository
             RealPaidTransactions = realPaid?.Count ?? 0,
             EmailsPending = await _context.BookingConfirmationEmailOutbox.CountAsync(e => e.Status == BookingConfirmationEmailOutbox.Pending, ct),
             EmailsFailed = await _context.BookingConfirmationEmailOutbox.CountAsync(e => e.Status == BookingConfirmationEmailOutbox.Failed, ct),
-            PaymentEventsNeedingReview = await _context.PaymentWebhookEvents.CountAsync(e => reviewOutcomes.Contains(e.Outcome), ct)
+            PaymentEventsNeedingReview = await _context.PaymentWebhookEvents.CountAsync(e => reviewOutcomes.Contains(e.Outcome), ct),
+            TopRoutes = topRoutes,
+            RecentBookings = recentBookings
         };
     }
 
@@ -935,7 +993,8 @@ public sealed class AdminRepository : IAdminRepository
                 e.AttemptCount,
                 e.NextAttemptAt,
                 e.SentAt,
-                e.LastError
+                e.LastError,
+                e.Payload
             })
             .ToListAsync(ct);
 
@@ -954,7 +1013,9 @@ public sealed class AdminRepository : IAdminRepository
                 AttemptCount = e.AttemptCount,
                 NextAttemptAt = e.NextAttemptAt,
                 SentAt = e.SentAt,
-                LastError = e.LastError
+                LastError = e.LastError,
+                RecipientEmail = e.RecipientEmail,
+                Payload = e.Payload
             }).ToList()
         };
     }
