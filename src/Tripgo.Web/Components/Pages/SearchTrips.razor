@@ -2646,12 +2646,17 @@
                 try
                 {
                     var myTicket = await TicketService.GetMyTicketAsync(confirmedBookingCode);
-                    confirmedTicketCode = myTicket?.TicketCode ?? $"TKT-{confirmedBookingCode}";
+                    confirmedTicketCode = myTicket?.TicketCode;
+                    if (string.IsNullOrWhiteSpace(confirmedTicketCode))
+                    {
+                        bookingError = myTicket?.Message ?? "Vé điện tử chưa sẵn sàng. Vui lòng mở Vé của tôi để thử lại.";
+                    }
                 }
                 catch (Exception ex)
                 {
                     Logger.LogWarning(ex, "Could not fetch ticket code immediately after payment.");
-                    confirmedTicketCode = $"TKT-{confirmedBookingCode}";
+                    confirmedTicketCode = null;
+                    bookingError = "Thanh toán đã được ghi nhận nhưng chưa thể tải mã vé. Vui lòng mở Vé của tôi để thử lại.";
                 }
 
                 bookingStep = 4; // Advance to confirmation card

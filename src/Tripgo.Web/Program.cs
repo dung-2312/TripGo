@@ -42,7 +42,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.ExpireTimeSpan = TimeSpan.FromDays(180);
         options.SlidingExpiration = true;
         options.LoginPath = "/login";
@@ -348,8 +348,7 @@ app.MapGet("/auth/exchange", async (
     await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, authProperties);
 
     var targetUrl = "/";
-    if (!string.IsNullOrWhiteSpace(data.ReturnUrl) &&
-        data.ReturnUrl.StartsWith('/') && !data.ReturnUrl.StartsWith("//") && !data.ReturnUrl.StartsWith("/\\"))
+    if (IsSafeLocalReturnUrl(data.ReturnUrl))
     {
         targetUrl = data.ReturnUrl;
     }
@@ -383,6 +382,12 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static bool IsSafeLocalReturnUrl(string? returnUrl) =>
+    !string.IsNullOrWhiteSpace(returnUrl) &&
+    returnUrl.StartsWith("/", StringComparison.Ordinal) &&
+    !returnUrl.StartsWith("//", StringComparison.Ordinal) &&
+    !returnUrl.StartsWith("/\\", StringComparison.Ordinal);
 
 internal sealed record TicketVerifyRequest(string? Token, bool Board);
 

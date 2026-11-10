@@ -63,7 +63,14 @@ public sealed class SmtpEmailSender : IEmailSender
             return Task.FromResult(true);
         }
 
-        var baseUrl = _configuration["Email:BaseUrl"] ?? "http://localhost:5065";
+        if (!Uri.TryCreate(_configuration["Email:BaseUrl"], UriKind.Absolute, out var baseUri) ||
+            baseUri.Scheme is not ("http" or "https"))
+        {
+            _logger.LogWarning("Booking confirmation email was not sent because Email:BaseUrl is missing or invalid.");
+            return Task.FromResult(false);
+        }
+
+        var baseUrl = baseUri.ToString().TrimEnd('/');
         var seats = string.Join(", ", confirmation.SeatCodes);
         var departureTimeOffset = confirmation.DepartureTime.ToOffset(TimeSpan.FromHours(7));
         var departureFull = departureTimeOffset.ToString(
@@ -72,15 +79,9 @@ public sealed class SmtpEmailSender : IEmailSender
         var departureTimeStr = departureTimeOffset.ToString("HH:mm");
         var departureDateShort = departureTimeOffset.ToString("dd/MM");
 
-        var estimatedArrival = departureTimeOffset.AddHours(5);
-        var arrivalTimeStr = estimatedArrival.ToString("HH:mm");
-        var arrivalDateShort = estimatedArrival.ToString("dd/MM");
-
         var amount = confirmation.TotalAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
         var template = BookingEmailTemplate.For(confirmation.MessageType, confirmation.BookingCode, confirmation.CancellationReason);
-        var ticketCode = string.IsNullOrWhiteSpace(confirmation.TicketCode)
-            ? $"TKT-{confirmation.BookingCode}"
-            : confirmation.TicketCode;
+        var ticketCode = string.IsNullOrWhiteSpace(confirmation.TicketCode) ? null : confirmation.TicketCode;
 
         var (origin, dest) = ParseRoute(confirmation.RouteName);
         var manageOrderUrl = $"{baseUrl.TrimEnd('/')}/my-tickets?code={Uri.EscapeDataString(confirmation.BookingCode)}";
@@ -93,9 +94,12 @@ public sealed class SmtpEmailSender : IEmailSender
         try
         {
             using var generator = new QRCoder.QRCodeGenerator();
-            using var qrData = generator.CreateQrCode($"TRIPGO:{confirmation.BookingCode}:{ticketCode}", QRCoder.QRCodeGenerator.ECCLevel.M);
-            var pngByteQr = new QRCoder.PngByteQRCode(qrData);
-            qrBytes = pngByteQr.GetGraphic(5);
+            if (ticketCode != null)
+            {
+                using var qrData = generator.CreateQrCode($"TRIPGO:{confirmation.BookingCode}:{ticketCode}", QRCoder.QRCodeGenerator.ECCLevel.M);
+                var pngByteQr = new QRCoder.PngByteQRCode(qrData);
+                qrBytes = pngByteQr.GetGraphic(5);
+            }
         }
         catch (Exception ex)
         {
@@ -109,7 +113,7 @@ public sealed class SmtpEmailSender : IEmailSender
 
             THÔNG TIN VÉ ĐIỆN TỬ:
             Mã đặt chỗ (Booking Code): {confirmation.BookingCode}
-            Mã vé điện tử (Ticket Code): {ticketCode}
+            Mã vé điện tử (Ticket Code): {ticketCode ?? "Chưa được cấp"}
             Tuyến đường: {confirmation.RouteName}
             Nhà xe đối tác: {confirmation.OperatorName}
             Thời gian khởi hành: {departureFull}
@@ -202,8 +206,7 @@ public sealed class SmtpEmailSender : IEmailSender
                               </tr>
                               <tr>
                                 <td style="width:75px;vertical-align:top;">
-                                  <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.2;">{arrivalTimeStr}</div>
-                                  <div style="font-size:11px;color:#64748b;">({arrivalDateShort})</div>
+                                  <div style="font-size:12px;font-weight:700;color:#64748b;line-height:1.2;">Chưa xác minh</div>
                                 </td>
                                 <td style="border-left:2px solid #ef4444;padding-left:14px;vertical-align:top;">
                                   <div style="font-size:14px;font-weight:700;color:#0f172a;">{WebUtility.HtmlEncode(confirmation.DropoffPoint)}</div>
@@ -221,10 +224,6 @@ public sealed class SmtpEmailSender : IEmailSender
                             <tr style="border-bottom:1px solid #f1f5f9;">
                               <td style="color:#64748b;width:35%;">Nhà xe</td>
                               <td style="font-weight:700;color:#0f172a;">{WebUtility.HtmlEncode(confirmation.OperatorName)}</td>
-                            </tr>
-                            <tr style="border-bottom:1px solid #f1f5f9;">
-                              <td style="color:#64748b;">Loại xe</td>
-                              <td style="color:#0f172a;">Limousine / Giường nằm VIP</td>
                             </tr>
                             <tr style="border-bottom:1px solid #f1f5f9;">
                               <td style="color:#64748b;">Ghế / giường</td>
@@ -249,8 +248,8 @@ public sealed class SmtpEmailSender : IEmailSender
                               <tr style="border-bottom:1px solid #f1f5f9;"><td style="color:#64748b;width:40%;">Biển số xe</td><td style="font-weight:600;color:#0f172a;">Đang cập nhật</td></tr>
                               <tr style="border-bottom:1px solid #f1f5f9;"><td style="color:#64748b;">SĐT phụ xe</td><td style="font-weight:600;color:#0f172a;">Đang cập nhật</td></tr>
                               <tr style="border-bottom:1px solid #f1f5f9;"><td style="color:#64748b;">SĐT tài xế</td><td style="font-weight:600;color:#0f172a;">Đang cập nhật</td></tr>
-                              <tr style="border-bottom:1px solid #f1f5f9;"><td style="color:#64748b;">SĐT văn phòng</td><td style="font-weight:600;color:#0f172a;">1900 1074, 0981 085 085</td></tr>
-                              <tr><td style="color:#64748b;">Hotline hỗ trợ TripGo</td><td style="font-weight:600;color:#1868e8;">1900 888684</td></tr>
+                              <tr style="border-bottom:1px solid #f1f5f9;"><td style="color:#64748b;">SĐT văn phòng</td><td style="font-weight:600;color:#0f172a;">Chưa được xác minh</td></tr>
+                              <tr><td style="color:#64748b;">Hotline hỗ trợ TripGo</td><td style="font-weight:600;color:#1868e8;">Chưa có kênh được xác minh</td></tr>
                             </table>
                           </div>
                         </td>
@@ -345,7 +344,7 @@ public sealed class SmtpEmailSender : IEmailSender
                       <tr>
                         <td style="padding:0 24px 16px 24px;">
                           <div style="background:#eff6ff;border-left:4px solid #1868e8;padding:12px 14px;border-radius:4px;font-size:13px;color:#1e3a8a;line-height:1.5;">
-                            <strong>Hướng dẫn xuất trình vé:</strong> Quý khách vui lòng có mặt tại điểm đón trước giờ khởi hành ít nhất <strong>30 phút</strong> và xuất trình email này hoặc mã QR vé điện tử cho nhân viên nhà xe để soát vé lên xe.
+                             <strong>Lưu ý thử nghiệm:</strong> Dữ liệu đặt chỗ và mã QR (nếu có) chỉ phục vụ kiểm thử kỹ thuật, không có giá trị để lên xe thật.
                           </div>
                         </td>
                       </tr>
@@ -363,7 +362,7 @@ public sealed class SmtpEmailSender : IEmailSender
                       <tr>
                         <td style="background:#f8fafc;padding:18px 24px;text-align:center;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;">
                           <div>Cảm ơn quý khách đã tin tưởng và đồng hành cùng <strong>TripGo</strong>.</div>
-                          <div style="margin-top:4px;">Hotline hỗ trợ: <strong>1900 888684</strong> | Email: <strong>hotro@tripgo.vn</strong></div>
+                           <div style="margin-top:4px;">TripGo hiện chưa có kênh hỗ trợ được xác minh.</div>
                         </td>
                       </tr>
                     </table>

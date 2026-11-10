@@ -249,7 +249,7 @@ else
                     var manageUrl = $"/my-tickets?code={selectedConfirmation.BookingCode}";
                     var returnUrl = $"/search-trips?origin={Uri.EscapeDataString(dst)}&dest={Uri.EscapeDataString(orig)}";
                     var cancelUrl = $"/my-tickets?code={selectedConfirmation.BookingCode}&action=cancel";
-                    var phoneDisplay = string.IsNullOrWhiteSpace(selectedConfirmation.PassengerPhone) ? "0377707651" : selectedConfirmation.PassengerPhone;
+                    var phoneDisplay = string.IsNullOrWhiteSpace(selectedConfirmation.PassengerPhone) ? "Chưa có số điện thoại" : selectedConfirmation.PassengerPhone;
 
                     <div style="background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-left: 8px solid #3b82f6; border-right: 8px solid #3b82f6;">
                         <!-- Email Header Brand -->
@@ -344,8 +344,8 @@ else
                                     <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b; width: 40%;">Biển số xe</td><td style="padding: 5px 12px; font-weight: 600;">Đang cập nhật</td></tr>
                                     <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT phụ xe</td><td style="padding: 5px 12px; font-weight: 600;">Đang cập nhật</td></tr>
                                     <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT tài xế</td><td style="padding: 5px 12px; font-weight: 600;">Đang cập nhật</td></tr>
-                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT văn phòng</td><td style="padding: 5px 12px; font-weight: 600;">1900 1074, 0981 085 085</td></tr>
-                                    <tr><td style="padding: 5px 12px; color: #64748b;">Hotline hỗ trợ TripGo</td><td style="padding: 5px 12px; font-weight: 600; color: #1868e8;">1900 888684</td></tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT văn phòng</td><td style="padding: 5px 12px; font-weight: 600;">Chưa có số được xác minh</td></tr>
+                                    <tr><td style="padding: 5px 12px; color: #64748b;">Hỗ trợ TripGo</td><td style="padding: 5px 12px; font-weight: 600; color: #1868e8;">Chưa có kênh hỗ trợ được xác minh</td></tr>
                                 </table>
                             </div>
 

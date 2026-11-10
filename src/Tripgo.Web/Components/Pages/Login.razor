@@ -234,7 +234,7 @@
         if (authState.User.Identity?.IsAuthenticated == true &&
             authState.User.FindFirst(ClaimTypes.NameIdentifier) != null)
         {
-            var target = !string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/') ? ReturnUrl : "/";
+            var target = IsSafeLocalReturnUrl(ReturnUrl) ? ReturnUrl! : "/";
             NavigationManager.NavigateTo(target);
             return;
         }
@@ -256,6 +256,12 @@
             errorMessage = "Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.";
         }
     }
+
+    private static bool IsSafeLocalReturnUrl(string? returnUrl) =>
+        !string.IsNullOrWhiteSpace(returnUrl) &&
+        returnUrl.StartsWith("/", StringComparison.Ordinal) &&
+        !returnUrl.StartsWith("//", StringComparison.Ordinal) &&
+        !returnUrl.StartsWith("/\\", StringComparison.Ordinal);
 
     private async Task HandleLoginAsync()
     {

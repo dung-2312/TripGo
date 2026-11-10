@@ -340,7 +340,7 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
 
         var credential = _context.TicketCredentials.Local.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null)
             ?? _context.TicketCredentials.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null);
-        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : $"TKT-{booking.Id:D6}";
+        var ticketCode = credential == null ? null : $"TKT-{credential.Id:D6}";
 
         _context.BookingConfirmationEmailOutbox.Add(new BookingConfirmationEmailOutbox
         {
