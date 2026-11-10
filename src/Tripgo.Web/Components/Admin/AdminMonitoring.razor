@@ -3,14 +3,18 @@
 @layout Tripgo.Web.Components.Layout.AdminLayout
 @inherits AdminPageBase
 @rendermode InteractiveServer
+@using System.Text.Json
+@using System.Globalization
+@using Tripgo.Application.DTOs
+@using Tripgo.Domain.Entities
 
 <PageTitle>Giám sát | TripGo Admin</PageTitle>
 
-<h1 class="adm-title">Giám sát</h1>
+<h1 class="adm-title">Giám sát hệ thống</h1>
 <AdminStatus Message="@StatusMessage" IsError="@StatusIsError" />
 
 <div class="adm-tabs" role="tablist" aria-label="Khu vực giám sát">
-    <button type="button" role="tab" aria-selected="@(tab == "email")" class="@(tab == "email" ? "active" : "")" @onclick='() => SwitchAsync("email")'>Email</button>
+    <button type="button" role="tab" aria-selected="@(tab == "email")" class="@(tab == "email" ? "active" : "")" @onclick='() => SwitchAsync("email")'>Hàng đợi Email</button>
     <button type="button" role="tab" aria-selected="@(tab == "payments")" class="@(tab == "payments" ? "active" : "")" @onclick='() => SwitchAsync("payments")'>Đối soát thanh toán</button>
     <button type="button" role="tab" aria-selected="@(tab == "audit")" class="@(tab == "audit" ? "active" : "")" @onclick='() => SwitchAsync("audit")'>Nhật ký quản trị</button>
 </div>
@@ -19,39 +23,82 @@
 {
     <section class="adm-card">
         <div class="adm-toolbar">
-            <h2>Hàng đợi email</h2>
+            <div>
+                <h2 style="margin: 0; font-size: 1.15rem;">Hàng đợi & Outbox Email</h2>
+                <p class="adm-hint" style="margin: 4px 0 0 0;">Quản lý toàn bộ thư thông báo, xác nhận vé điện tử gửi đến khách hàng.</p>
+            </div>
             <select aria-label="Lọc trạng thái email" @bind="emailStatus" @bind:after="ReloadEmailsAsync">
                 <option value="">Mọi trạng thái</option>
-                <option value="Pending">Đang chờ</option>
-                <option value="Processing">Đang gửi</option>
-                <option value="Sent">SMTP đã nhận</option>
-                <option value="Failed">Thất bại</option>
+                <option value="Pending">Đang chờ (Pending)</option>
+                <option value="Processing">Đang gửi (Processing)</option>
+                <option value="Sent">Đã gửi thành công (Sent)</option>
+                <option value="Failed">Thất bại (Failed)</option>
             </select>
         </div>
-        <p class="adm-hint">"SMTP đã nhận" nghĩa là máy chủ thư đã chấp nhận, không đảm bảo thư đã đến hộp thư người nhận.</p>
+
         @if (emails == null || emails.Items.Count == 0)
         {
-            <div class="adm-empty">@(emails == null ? "Đang tải..." : "Không có email nào.")</div>
+            <div class="adm-empty">@(emails == null ? "Đang tải dữ liệu..." : "Không có email nào trong hàng đợi.")</div>
         }
         else
         {
             <div class="adm-table-wrap">
                 <table class="adm-table">
-                    <thead><tr><th>Đơn</th><th>Loại</th><th>Người nhận</th><th>Trạng thái</th><th>Số lần thử</th><th>Lỗi gần nhất</th><th></th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>Mã đơn</th>
+                            <th>Loại thông báo</th>
+                            <th>Người nhận</th>
+                            <th>Trạng thái</th>
+                            <th>Số lần thử</th>
+                            <th>Lỗi gần nhất</th>
+                            <th style="text-align: right;">Thao tác</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var email in emails.Items)
                         {
                             <tr>
-                                <td>@email.BookingCode</td>
-                                <td>@email.MessageType</td>
-                                <td>@email.MaskedRecipient</td>
-                                <td><span class="adm-pill @(email.Status == "Sent" ? "good" : email.Status == "Failed" ? "bad" : "warn")">@email.Status</span></td>
-                                <td>@email.AttemptCount</td>
-                                <td><small>@email.LastError</small></td>
-                                <td class="adm-row-actions">
+                                <td>
+                                    <span style="font-family: monospace; font-weight: 600; color: #0284c7;">@email.BookingCode</span>
+                                </td>
+                                <td>
+                                    <span class="adm-dash-badge neutral">@GetMessageTypeLabel(email.MessageType)</span>
+                                </td>
+                                <td>
+                                    <div>@(email.RecipientEmail ?? email.MaskedRecipient)</div>
+                                    @if (IsTestRecipient(email.RecipientEmail ?? email.MaskedRecipient))
+                                    {
+                                        <small class="adm-dash-badge warning" style="font-size: 0.68rem; padding: 2px 6px; margin-top: 2px; display: inline-block;">Sandbox Demo</small>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="adm-pill @(email.Status == "Sent" ? "good" : email.Status == "Failed" ? "bad" : "warn")">
+                                        @email.Status
+                                    </span>
+                                </td>
+                                <td style="text-align: center; font-weight: 600;">@email.AttemptCount</td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(email.LastError))
+                                    {
+                                        <small style="color: #ef4444; font-size: 0.75rem; display: block; max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@email.LastError">
+                                            @email.LastError
+                                        </small>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #94a3b8; font-size: 0.8rem;">-</span>
+                                    }
+                                </td>
+                                <td class="adm-row-actions" style="text-align: right;">
+                                    <button type="button" class="adm-btn small ghost" @onclick="() => OpenEmailPreview(email)" title="Xem nội dung thư và mã QR">
+                                        Xem thư
+                                    </button>
                                     @if (email.Status == "Failed")
                                     {
-                                        <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => RetryAsync(email.Id)">Gửi lại</button>
+                                        <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => RetryAsync(email.Id)">
+                                            Gửi lại
+                                        </button>
                                     }
                                 </td>
                             </tr>
@@ -67,12 +114,15 @@ else if (tab == "payments")
 {
     <section class="adm-card">
         <div class="adm-toolbar">
-            <h2>Sự kiện từ cổng thanh toán</h2>
+            <div>
+                <h2 style="margin: 0; font-size: 1.15rem;">Sự kiện từ cổng thanh toán</h2>
+                <p class="adm-hint" style="margin: 4px 0 0 0;">Theo dõi các giao dịch, phản hồi IPN/Callback từ hệ thống thanh toán.</p>
+            </div>
             <label class="adm-check"><input type="checkbox" @bind="reviewOnly" @bind:after="ReloadPaymentsAsync" /> Chỉ mục cần đối soát</label>
         </div>
         @if (payments == null || payments.Items.Count == 0)
         {
-            <div class="adm-empty">@(payments == null ? "Đang tải..." : "Chưa có sự kiện nào.")</div>
+            <div class="adm-empty">@(payments == null ? "Đang tải dữ liệu..." : "Chưa có sự kiện thanh toán nào.")</div>
         }
         else
         {
@@ -84,10 +134,10 @@ else if (tab == "payments")
                         {
                             <tr>
                                 <td>@Vn(item.ReceivedAt)</td>
-                                <td>@item.Provider</td>
-                                <td><small>@item.TransactionCode</small></td>
+                                <td><span class="adm-dash-badge info">@item.Provider</span></td>
+                                <td><span style="font-family: monospace; font-size: 0.8rem;">@item.TransactionCode</span></td>
                                 <td><span class="adm-pill @(item.Outcome is "Applied" or "Duplicate" ? "good" : "bad")">@item.Outcome</span></td>
-                                <td>@item.ReportedAmount?.ToString("N0") @item.ReportedCurrency</td>
+                                <td style="font-weight: 600;">@item.ReportedAmount?.ToString("N0") @item.ReportedCurrency</td>
                                 <td><small>@item.Detail</small></td>
                             </tr>
                         }
@@ -101,10 +151,15 @@ else if (tab == "payments")
 else
 {
     <section class="adm-card">
-        <h2>Nhật ký quản trị</h2>
+        <div class="adm-toolbar">
+            <div>
+                <h2 style="margin: 0; font-size: 1.15rem;">Nhật ký thao tác quản trị</h2>
+                <p class="adm-hint" style="margin: 4px 0 0 0;">Lịch sử can thiệp, cập nhật lịch trình và sửa đổi dữ liệu hệ thống.</p>
+            </div>
+        </div>
         @if (audit == null || audit.Items.Count == 0)
         {
-            <div class="adm-empty">@(audit == null ? "Đang tải..." : "Chưa có thao tác nào được ghi nhận.")</div>
+            <div class="adm-empty">@(audit == null ? "Đang tải dữ liệu..." : "Chưa có thao tác nào được ghi nhận.")</div>
         }
         else
         {
@@ -116,8 +171,8 @@ else
                         {
                             <tr>
                                 <td>@Vn(item.CreatedAt)</td>
-                                <td>@item.ActorEmail</td>
-                                <td>@item.Action</td>
+                                <td><strong>@item.ActorEmail</strong></td>
+                                <td><span class="adm-dash-badge neutral">@item.Action</span></td>
                                 <td>@item.EntityType #@item.EntityId</td>
                                 <td><small>@item.Details</small></td>
                             </tr>
@@ -130,6 +185,259 @@ else
     </section>
 }
 
+@* Modal xem trước email vé điện tử (Vexere SaaS style) *@
+@if (selectedEmail != null)
+{
+    <div class="adm-modal-backdrop" @onclick="CloseEmailPreview">
+        <div class="adm-modal-dialog" style="max-width: 680px;" @onclick:stopPropagation="true">
+            <div class="adm-modal-header">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.1rem; color: #0f172a; font-weight: 700;">Hộp thư vé điện tử</h3>
+                    <div style="font-size: 0.8rem; color: #64748b; margin-top: 3px;">
+                        Mã đơn: <strong style="color: #0284c7;">@selectedEmail.BookingCode</strong> &bull; 
+                        Trạng thái: <span class="adm-pill @(selectedEmail.Status == "Sent" ? "good" : selectedEmail.Status == "Failed" ? "bad" : "warn")">@selectedEmail.Status</span>
+                    </div>
+                </div>
+                <button type="button" class="adm-close-btn" @onclick="CloseEmailPreview" aria-label="Đóng">&times;</button>
+            </div>
+
+            <div class="adm-modal-body" style="background: #e2e8f0; padding: 18px; max-height: 75vh; overflow-y: auto;">
+                @* Thông tin header gửi nhận *@
+                <div style="background: #ffffff; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid #cbd5e1; font-size: 0.85rem; line-height: 1.6;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span style="color: #64748b;">Người gửi (Brand Sender):</span>
+                        <strong style="color: #1868e8;">TripGo - Đặt Vé Xe Khách &lt;noreply@tripgo.vn&gt;</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span style="color: #64748b;">Người nhận (Recipient):</span>
+                        <strong style="color: #0f172a;">@(selectedEmail.RecipientEmail ?? selectedEmail.MaskedRecipient)</strong>
+                    </div>
+                    @if (selectedEmail.SentAt.HasValue)
+                    {
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                            <span style="color: #64748b;">Thời gian gửi:</span>
+                            <span>@Vn(selectedEmail.SentAt.Value)</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                            <span style="color: #64748b;">Lần thử tiếp theo:</span>
+                            <span>@Vn(selectedEmail.NextAttemptAt)</span>
+                        </div>
+                    }
+                    @if (IsTestRecipient(selectedEmail.RecipientEmail ?? selectedEmail.MaskedRecipient))
+                    {
+                        <div style="margin-top: 6px; padding: 6px 10px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; color: #065f46; font-size: 0.8rem;">
+                            <strong>Mô phỏng Sandbox:</strong> Hộp thư nhận dạng miền thử nghiệm (.test), hệ thống mô phỏng phát thư thành công an toàn, tránh bị máy chủ Google chặn miền nội bộ.
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(selectedEmail.LastError))
+                    {
+                        <div style="margin-top: 6px; padding: 6px 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #991b1b; font-size: 0.8rem;">
+                            <strong>Chi tiết lỗi SMTP:</strong> @selectedEmail.LastError
+                        </div>
+                    }
+                </div>
+
+                @* Mô phỏng giao diện email nhận được theo chuẩn phong cách Vexere *@
+                @if (selectedConfirmation != null)
+                {
+                    var (orig, dst) = ParseRoute(selectedConfirmation.RouteName);
+                    var depTime = selectedConfirmation.DepartureTime.ToVietnam();
+                    var arrTime = depTime.AddHours(5);
+                    var manageUrl = $"/my-tickets?code={selectedConfirmation.BookingCode}";
+                    var returnUrl = $"/search-trips?origin={Uri.EscapeDataString(dst)}&dest={Uri.EscapeDataString(orig)}";
+                    var cancelUrl = $"/my-tickets?code={selectedConfirmation.BookingCode}&action=cancel";
+                    var phoneDisplay = string.IsNullOrWhiteSpace(selectedConfirmation.PassengerPhone) ? "0377707651" : selectedConfirmation.PassengerPhone;
+
+                    <div style="background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-left: 8px solid #3b82f6; border-right: 8px solid #3b82f6;">
+                        <!-- Email Header Brand -->
+                        <div style="background-color: #1868e8; padding: 20px; text-align: center;">
+                            <div style="font-size: 24px; font-weight: 900; color: #ffffff; letter-spacing: 0.04em;">
+                                <span style="background: #fed049; color: #071F49; padding: 2px 7px; border-radius: 6px; font-size: 16px; margin-right: 6px; vertical-align: middle;">&#128652;</span>
+                                <span style="color: #ffffff;">TRIP</span><span style="color: #fed049;">GO</span>
+                            </div>
+                            <div style="color: #bfdbfe; font-size: 12px; margin-top: 3px;">Nền tảng đặt vé xe khách trực tuyến</div>
+                        </div>
+
+                        <!-- Email Body -->
+                        <div style="padding: 22px;">
+                            <h4 style="margin: 0 0 8px 0; color: #0f172a; font-size: 1.15rem; font-weight: 800;">
+                                @GetTemplateHeading(selectedConfirmation.MessageType)
+                            </h4>
+                            <p style="margin: 0 0 6px 0; font-size: 0.92rem; color: #1e293b;">
+                                Xin chào <strong>@selectedConfirmation.PassengerName</strong>,
+                            </p>
+                            <p style="margin: 0 0 12px 0; font-size: 0.88rem; color: #334155; line-height: 1.55;">
+                                Cảm ơn quý khách đã tin tưởng sử dụng dịch vụ của <strong>TripGo</strong>. TripGo xác nhận quý khách đã đặt chỗ thành công đơn hàng xe khách của nhà xe <strong>@selectedConfirmation.OperatorName</strong>.
+                            </p>
+
+                            <!-- Amber Warning Box -->
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin: 12px 0 16px 0; font-size: 0.82rem; line-height: 1.5; color: #92400e;">
+                                <strong>Cảnh báo:</strong> TripGo <strong>KHÔNG</strong> bao giờ yêu cầu quý khách truy cập liên kết lạ, cung cấp mã OTP ngân hàng hoặc chuyển tiền vào tài khoản cá nhân không đứng tên công ty. Quý khách vui lòng nâng cao cảnh giác bảo mật.
+                            </div>
+
+                            <!-- Trip Details Header -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #cbd5e1; padding-bottom: 8px; margin-bottom: 12px; font-size: 0.85rem;">
+                                <span>Mã ĐH: <strong style="color: #1868e8; font-family: monospace;">@selectedConfirmation.BookingCode</strong></span>
+                                <span>Mã vé: <strong style="font-family: monospace;">@(string.IsNullOrWhiteSpace(selectedConfirmation.TicketCode) ? $"TKT-{selectedConfirmation.BookingCode}" : selectedConfirmation.TicketCode)</strong></span>
+                            </div>
+
+                            <!-- Schedule Timeline Box -->
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                                <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                                    <div style="min-width: 60px;">
+                                        <div style="font-weight: 800; font-size: 1.05rem; color: #0f172a;">@depTime.ToString("HH:mm")</div>
+                                        <div style="font-size: 0.72rem; color: #64748b;">(@depTime.ToString("dd/MM"))</div>
+                                    </div>
+                                    <div style="border-left: 2px solid #3b82f6; padding-left: 10px;">
+                                        <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a;">@selectedConfirmation.PickupPoint</div>
+                                        <div style="font-size: 0.75rem; color: #64748b;">Điểm đón khách</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 12px;">
+                                    <div style="min-width: 60px;">
+                                        <div style="font-weight: 800; font-size: 1.05rem; color: #0f172a;">@arrTime.ToString("HH:mm")</div>
+                                        <div style="font-size: 0.72rem; color: #64748b;">(@arrTime.ToString("dd/MM"))</div>
+                                    </div>
+                                    <div style="border-left: 2px solid #ef4444; padding-left: 10px;">
+                                        <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a;">@selectedConfirmation.DropoffPoint</div>
+                                        <div style="font-size: 0.75rem; color: #64748b;">Điểm trả khách (dự kiến)</div>
+                                    </div>
+                                </div>
+                                <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 8px; border-top: 1px dashed #e2e8f0; padding-top: 6px;">
+                                    (*) Thời gian đón/trả là dự kiến và có thể thay đổi do một số điều kiện khách quan.
+                                </div>
+                            </div>
+
+                            <!-- Vehicle Details Table -->
+                            <table style="width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.82rem; margin-bottom: 14px;">
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                                        <td style="padding: 7px 10px; color: #64748b; width: 35%;">Nhà xe</td>
+                                        <td style="padding: 7px 10px; font-weight: 700; color: #0f172a;">@selectedConfirmation.OperatorName</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                                        <td style="padding: 7px 10px; color: #64748b;">Loại xe</td>
+                                        <td style="padding: 7px 10px; color: #0f172a;">Limousine / Giường nằm VIP</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                                        <td style="padding: 7px 10px; color: #64748b;">Ghế / giường</td>
+                                        <td style="padding: 7px 10px; font-weight: 700; color: #1868e8;">@string.Join(", ", selectedConfirmation.SeatCodes)</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 10px; color: #64748b; font-weight: 600;">Tổng thanh toán</td>
+                                        <td style="padding: 8px 10px; font-weight: 800; color: #059669; font-size: 0.95rem;">
+                                            @selectedConfirmation.TotalAmount.ToString("N0") đ
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- Operator Contact Card -->
+                            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 14px; font-size: 0.82rem;">
+                                <div style="background: #f0f7ff; padding: 7px 12px; font-weight: 700; color: #071F49;">
+                                    Thông tin liên hệ nhà xe
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b; width: 40%;">Biển số xe</td><td style="padding: 5px 12px; font-weight: 600;">Đang cập nhật</td></tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT phụ xe</td><td style="padding: 5px 12px; font-weight: 600;">Đang cập nhật</td></tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT tài xế</td><td style="padding: 5px 12px; font-weight: 600;">Đang cập nhật</td></tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 5px 12px; color: #64748b;">SĐT văn phòng</td><td style="padding: 5px 12px; font-weight: 600;">1900 1074, 0981 085 085</td></tr>
+                                    <tr><td style="padding: 5px 12px; color: #64748b;">Hotline hỗ trợ TripGo</td><td style="padding: 5px 12px; font-weight: 600; color: #1868e8;">1900 888684</td></tr>
+                                </table>
+                            </div>
+
+                            <!-- Passenger Contact Card -->
+                            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 14px; font-size: 0.82rem;">
+                                <div style="background: #f0f7ff; padding: 7px 12px; font-weight: 700; color: #071F49;">
+                                    Thông tin liên hệ hành khách
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 6px 12px; color: #64748b; width: 40%;">Họ tên</td><td style="padding: 6px 12px; font-weight: 700;">@selectedConfirmation.PassengerName</td></tr>
+                                    <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 6px 12px; color: #64748b;">Điện thoại</td><td style="padding: 6px 12px; font-weight: 700;">@phoneDisplay</td></tr>
+                                    <tr><td style="padding: 6px 12px; color: #64748b;">Email</td><td style="padding: 6px 12px; color: #1868e8; font-weight: 600;">@selectedConfirmation.RecipientEmail</td></tr>
+                                </table>
+                            </div>
+
+                            <!-- Action Buttons: Quản lý đơn hàng & Đặt chiều về -->
+                            <div style="margin-bottom: 14px;">
+                                <a href="@manageUrl" target="_blank" style="display: block; background: #fed049; color: #0f172a; font-weight: 700; text-align: center; text-decoration: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; font-size: 0.95rem;">
+                                    Quản lý đơn hàng
+                                </a>
+                                <a href="@returnUrl" target="_blank" style="display: block; background: #fed049; color: #0f172a; font-weight: 700; text-align: center; text-decoration: none; padding: 12px 16px; border-radius: 8px; font-size: 0.95rem;">
+                                    Đặt chiều về
+                                </a>
+                            </div>
+
+                            <!-- Cancellation Policy Subcard + Red Cancel Button -->
+                            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 14px; font-size: 0.82rem;">
+                                <div style="background: #f0f7ff; padding: 7px 12px; font-weight: 700; color: #071F49;">
+                                    Chính sách hủy của nhà xe
+                                </div>
+                                <div style="padding: 12px;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; font-weight: 600; color: #64748b;">
+                                        <span>Thời gian huỷ</span><span>Phí huỷ</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9;">
+                                        <span>Trước 12:00 giờ khởi hành</span><span style="font-weight: 700; color: #059669;">Miễn phí</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 4px 0; margin-bottom: 8px;">
+                                        <span>Trong vòng 12:00 giờ khởi hành</span><span style="font-weight: 700; color: #ef4444;">100%</span>
+                                    </div>
+                                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; color: #1e40af; margin-bottom: 10px;">
+                                        Phí hủy được tính trên giá gốc (*) và không vượt quá số tiền quý khách đã thanh toán.
+                                    </div>
+                                    <a href="@cancelUrl" target="_blank" style="display: block; background: #ef4444; color: #ffffff; font-weight: 700; text-align: center; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-size: 0.9rem;">
+                                        Hủy đơn hàng
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- QR Code Block -->
+                            <div style="text-align: center; margin: 14px 0; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                                <div style="font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px; text-transform: uppercase;">
+                                    Mã QR Vé Điện Tử
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(selectedQrBase64))
+                                {
+                                    <img src="@selectedQrBase64" width="140" height="140" alt="Mã QR vé" style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px; background: #ffffff; display: inline-block;" />
+                                }
+                                <div style="font-size: 12px; font-family: monospace; font-weight: 700; color: #0f172a; margin-top: 4px;">
+                                    @(string.IsNullOrWhiteSpace(selectedConfirmation.TicketCode) ? $"TKT-{selectedConfirmation.BookingCode}" : selectedConfirmation.TicketCode)
+                                </div>
+                            </div>
+
+                            <!-- Instructions -->
+                            <div style="background: #eff6ff; border-left: 4px solid #1868e8; padding: 10px 12px; border-radius: 0 6px 6px 0; font-size: 0.8rem; color: #1e3a8a; line-height: 1.5;">
+                                <strong>Hướng dẫn xuất trình vé:</strong> Quý khách vui lòng có mặt tại điểm đón trước giờ khởi hành ít nhất 30 phút và xuất trình email này hoặc mã QR vé điện tử cho nhân viên nhà xe để soát vé lên xe.
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="background: #ffffff; border-radius: 8px; padding: 16px; border: 1px solid #e2e8f0;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 0.95rem;">Dữ liệu Payload thô (JSON):</h4>
+                        <pre style="background: #f8fafc; padding: 12px; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; color: #334155;">@selectedEmail.Payload</pre>
+                    </div>
+                }
+            </div>
+
+            <div class="adm-modal-footer">
+                @if (selectedEmail.Status == "Failed")
+                {
+                    <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="() => RetrySelectedAsync(selectedEmail.Id)">
+                        Gửi lại email này
+                    </button>
+                }
+                <button type="button" class="adm-btn ghost" @onclick="CloseEmailPreview">Đóng</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string tab = "email";
     private string? emailStatus;
@@ -137,6 +445,10 @@ else
     private PagedResult<AdminEmailRowDto>? emails;
     private PagedResult<AdminPaymentEventDto>? payments;
     private PagedResult<AdminAuditRowDto>? audit;
+
+    private AdminEmailRowDto? selectedEmail;
+    private BookingConfirmationEmailDto? selectedConfirmation;
+    private string? selectedQrBase64;
 
     protected override Task OnInitializedAsync() => ReloadEmailsAsync();
 
@@ -157,4 +469,99 @@ else
     private Task ChangePaymentPageAsync(int page) => LoadAsync(async () => payments = await Admin.GetPaymentEventsAsync(reviewOnly, page));
     private Task ChangeAuditPageAsync(int page) => LoadAsync(async () => audit = await Admin.GetAuditLogAsync(page));
     private Task RetryAsync(long id) => RunAsync(() => Admin.RetryEmailAsync(id), ReloadEmailsAsync);
+
+    private async Task RetrySelectedAsync(long id)
+    {
+        var ok = await RunAsync(() => Admin.RetryEmailAsync(id), ReloadEmailsAsync);
+        if (ok)
+        {
+            CloseEmailPreview();
+        }
+    }
+
+    private void OpenEmailPreview(AdminEmailRowDto email)
+    {
+        selectedEmail = email;
+        selectedConfirmation = null;
+        selectedQrBase64 = null;
+
+        if (!string.IsNullOrWhiteSpace(email.Payload))
+        {
+            try
+            {
+                selectedConfirmation = JsonSerializer.Deserialize<BookingConfirmationEmailDto>(email.Payload);
+                if (selectedConfirmation != null)
+                {
+                    var ticketCode = string.IsNullOrWhiteSpace(selectedConfirmation.TicketCode)
+                        ? $"TKT-{selectedConfirmation.BookingCode}"
+                        : selectedConfirmation.TicketCode;
+
+                    using var generator = new QRCoder.QRCodeGenerator();
+                    using var qrData = generator.CreateQrCode($"TRIPGO:{selectedConfirmation.BookingCode}:{ticketCode}", QRCoder.QRCodeGenerator.ECCLevel.M);
+                    var pngByteQr = new QRCoder.PngByteQRCode(qrData);
+                    var bytes = pngByteQr.GetGraphic(5);
+                    selectedQrBase64 = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+                }
+            }
+            catch
+            {
+                // Fallback to displaying raw payload
+            }
+        }
+    }
+
+    private void CloseEmailPreview()
+    {
+        selectedEmail = null;
+        selectedConfirmation = null;
+        selectedQrBase64 = null;
+    }
+
+    private static (string origin, string dest) ParseRoute(string? routeName)
+    {
+        if (string.IsNullOrWhiteSpace(routeName)) return ("Hà Nội", "Sa Pa");
+        var parts = routeName.Split(new[] { '-', '→', '–' }, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+        {
+            return (parts[0], parts[1]);
+        }
+        return (routeName, routeName);
+    }
+
+    private static bool IsTestRecipient(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return false;
+        return email.EndsWith(".test", StringComparison.OrdinalIgnoreCase) ||
+               email.EndsWith(".example", StringComparison.OrdinalIgnoreCase) ||
+               email.EndsWith(".invalid", StringComparison.OrdinalIgnoreCase) ||
+               email.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase) ||
+               email.EndsWith("@example.com", StringComparison.OrdinalIgnoreCase) ||
+               email.EndsWith("@test.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetMessageTypeLabel(string? type) => type switch
+    {
+        BookingConfirmationEmailOutbox.TypeBookingAcknowledgement => "Xác nhận nhận đơn",
+        BookingConfirmationEmailOutbox.TypePaymentFailed => "Báo thanh toán lỗi",
+        BookingConfirmationEmailOutbox.TypeBookingCancellation => "Thông báo hủy vé",
+        _ => "Vé điện tử"
+    };
+
+    private static string GetTemplateHeading(string? type) => type switch
+    {
+        BookingConfirmationEmailOutbox.TypeBookingAcknowledgement => "Đã nhận đơn đặt chỗ (Sandbox)",
+        BookingConfirmationEmailOutbox.TypePaymentFailed => "Thanh toán chưa thành công (Sandbox)",
+        BookingConfirmationEmailOutbox.TypeBookingCancellation => "Đơn đặt chỗ đã hủy (Sandbox)",
+        _ => "Xác nhận đặt chỗ thành công"
+    };
+
+    private static string GetTemplateLead(string? type, string? reason) => type switch
+    {
+        BookingConfirmationEmailOutbox.TypeBookingAcknowledgement => "Chúng tôi đã nhận đơn đặt chỗ của bạn. Đơn chưa được xác nhận cho đến khi thanh toán hoàn tất.",
+        BookingConfirmationEmailOutbox.TypePaymentFailed => "Giao dịch thanh toán của bạn chưa thành công và chưa có khoản tiền nào được ghi nhận. Bạn có thể thử lại trước khi đơn hết hạn.",
+        BookingConfirmationEmailOutbox.TypeBookingCancellation => string.IsNullOrWhiteSpace(reason)
+            ? "Đơn đặt chỗ của bạn đã được hủy và ghế đã được trả lại."
+            : $"Đơn đặt chỗ của bạn đã được hủy và ghế đã được trả lại. Lý do: {reason}",
+        _ => "Đơn đặt chỗ của bạn đã được xác nhận thành công. Dưới đây là thông tin vé điện tử chi tiết."
+    };
 }

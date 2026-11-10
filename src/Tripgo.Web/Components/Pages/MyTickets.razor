@@ -81,15 +81,27 @@
         <!-- Status & Feedback Alerts -->
         @if (!string.IsNullOrWhiteSpace(actionAlertMessage))
         {
-            <div class="alert @(actionAlertIsError ? "alert-danger" : "alert-success") alert-dismissible fade show rounded-4 shadow-sm mb-4 border-0" role="alert">
+            <div class="alert @(actionAlertIsError ? "alert-danger" : "alert-success") alert-dismissible fade show rounded-4 shadow-sm mb-4 border-0 d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
+                <div class="d-flex align-items-center gap-2">
                 <i class="bi @(actionAlertIsError ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill") me-2 fs-5"></i>
                 <span>@actionAlertMessage</span>
+                </div>
+                @if (actionAlertIsError && !string.IsNullOrWhiteSpace(QueryCode))
+                {
+                    <AuthorizeView Policy="@Tripgo.Web.Services.AccountPolicy.Name">
+                        <NotAuthorized>
+                            <a href="@GetLoginUrl()" class="btn btn-danger btn-sm rounded-pill px-3 fw-bold text-white shadow-sm">
+                                <i class="bi bi-box-arrow-in-right me-1"></i> Đăng nhập ngay
+                            </a>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                }
                 <button type="button" class="btn-close" @onclick="() => actionAlertMessage = null" aria-label="Close"></button>
             </div>
         }
 
         <!-- Account Context Header -->
-        <AuthorizeView>
+        <AuthorizeView Policy="@Tripgo.Web.Services.AccountPolicy.Name">
             <Authorized>
                 <div class="card shadow-sm border-0 rounded-4 p-3 px-md-4 mb-4 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3"
                      style="background: var(--tg-surface); border: 1px solid var(--tg-border) !important;">
@@ -125,7 +137,7 @@
                         </div>
                     </div>
                     <div class="d-flex gap-2 flex-shrink-0">
-                        <a href="/login?ReturnUrl=/my-tickets" class="tg-auth-btn-primary btn-sm text-decoration-none px-3 py-1">
+                        <a href="@GetLoginUrl()" class="tg-auth-btn-primary btn-sm text-decoration-none px-3 py-1">
                             Đăng nhập
                         </a>
                         <a href="/register?ReturnUrl=/my-tickets" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 fw-bold">
@@ -630,6 +642,27 @@
 
                 <!-- Modal Actions -->
                 <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center d-print-none">
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-primary rounded-pill px-3 fw-bold" @onclick="PrintBoardingPass">
+                            <i class="bi bi-printer me-1"></i> In vé / Lưu PDF
+                        </button>
+                        <a href="@GetReturnTripUrl(selectedDetailTicket)" class="btn btn-warning rounded-pill px-3 fw-bold text-dark shadow-sm">
+                            <i class="bi bi-arrow-left-right me-1"></i> Đặt chiều về
+                        </a>
+                    </div>
+                    <div class="d-flex gap-2">
+                        @if (CanCancel(selectedDetailTicket))
+                        {
+                            <button type="button" class="btn btn-outline-danger rounded-pill px-3" @onclick="() => ExecuteCancelAsync(selectedDetailTicket)">
+                                <i class="bi bi-x-circle me-1"></i> Hủy đặt chỗ
+                            </button>
+                        }
+                        <button type="button" class="btn btn-secondary rounded-pill px-4" @onclick="CloseTicketModal">
+                            Đóng
+                        </button>
+                    </div>
+                </div>
+                <div style="display: none;">
                     <button type="button" class="btn btn-outline-primary rounded-pill px-4 fw-bold" @onclick="PrintBoardingPass">
                         <i class="bi bi-printer me-1"></i> In vé / Lưu PDF
                     </button>
@@ -656,6 +689,8 @@
 
     [SupplyParameterFromQuery(Name = "phone")]
     public string? QueryPhone { get; set; }
+    [SupplyParameterFromQuery(Name = "action")]
+    public string? QueryAction { get; set; }
 
     private bool isLoading = true;
     private bool isSearchingManual = false;
@@ -678,6 +713,12 @@
     private int completedCount = 0;
     private int cancelledCount = 0;
     private bool sandboxPaymentAvailable;
+
+    private string GetLoginUrl()
+    {
+        var relativeUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        return string.IsNullOrWhiteSpace(relativeUrl) ? "/login" : $"/login?ReturnUrl=/{relativeUrl}";
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -787,12 +828,36 @@
                         allTickets.Insert(0, found);
                     }
                     selectedDetailTicket = found;
+                    if (string.Equals(QueryAction, "cancel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (CanCancel(found))
+                        {
+                            confirmingCancelId = found.BookingId;
+                            actionAlertMessage = $"Bạn đang yêu cầu hủy đơn {found.BookingCode}. Vui lòng xác nhận hủy bên dưới.";
+                            actionAlertIsError = false;
+                        }
+                        else
+                        {
+                            actionAlertMessage = $"Đơn đặt chỗ {found.BookingCode} đã được xác nhận/thanh toán. Để hủy vé theo chính sách nhà xe, quý khách vui lòng liên hệ nhà xe {found.OperatorName} hoặc tổng đài TripGo 1900 888684.";
+                            actionAlertIsError = false;
+                        }
+                    }
                     actionAlertMessage = $"Đã tìm thấy thông tin đơn đặt chỗ {found.BookingCode}.";
                     actionAlertIsError = false;
                 }
                 else
                 {
-                    actionAlertMessage = "Không tìm thấy vé phù hợp hoặc bạn không có quyền xem vé này.";
+                    var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                    var isAuthenticated = authState.User?.Identity?.IsAuthenticated == true &&
+                                         authState.User.HasClaim(c => c.Type == ClaimTypes.NameIdentifier);
+                    if (!isAuthenticated)
+                    {
+                        actionAlertMessage = $"Đơn đặt chỗ {query} được liên kết với tài khoản thành viên. Quý khách vui lòng đăng nhập bằng tài khoản đã đặt vé để xem và quản lý đơn đặt chỗ này.";
+                    }
+                    else
+                    {
+                        actionAlertMessage = "Không tìm thấy vé phù hợp hoặc bạn không có quyền xem vé này.";
+                    }
                     actionAlertIsError = true;
                 }
             }
@@ -876,6 +941,13 @@
     {
         var parts = routeName.Split(new[] { '-', '→', '–' }, StringSplitOptions.TrimEntries);
         return parts.Length > 1 ? parts[1] : routeName;
+    }
+
+    private static string GetReturnTripUrl(CustomerBookingInfoDto ticket)
+    {
+        var origin = GetOriginFromRoute(ticket.RouteName);
+        var dest = GetDestFromRoute(ticket.RouteName);
+        return $"/search-trips?origin={Uri.EscapeDataString(dest)}&dest={Uri.EscapeDataString(origin)}";
     }
 
     private static bool CanCancel(CustomerBookingInfoDto ticket) =>

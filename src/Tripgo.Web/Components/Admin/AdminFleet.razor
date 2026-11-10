@@ -52,7 +52,7 @@
                             <td>@item.UpcomingTrips</td>
                             <td><span class="adm-pill @(item.IsActive ? "good" : "muted")">@(item.IsActive ? "Hoạt động" : "Ngưng")</span></td>
                             <td class="adm-row-actions">
-                                <button type="button" class="adm-btn small" @onclick="() => OpenLayoutAsync(item)">Sơ đồ ghế</button>
+                                <button type="button" class="adm-btn small primary" @onclick="() => OpenLayoutAsync(item)">Sơ đồ ghế</button>
                                 <button type="button" class="adm-btn small" disabled="@IsBusy" @onclick="() => ToggleBusAsync(item)">@(item.IsActive ? "Ngưng" : "Kích hoạt")</button>
                             </td>
                         </tr>
@@ -65,49 +65,58 @@
 
 @if (layoutBus != null)
 {
-    <section class="adm-card">
-        <div class="adm-toolbar">
-            <h2>Sơ đồ ghế xe @layoutBus.LicensePlate</h2>
-            <button type="button" class="adm-btn" @onclick="() => layoutBus = null">Đóng</button>
-        </div>
-        @if (seats.Count == 0)
-        {
-            <div class="adm-empty">Xe chưa có sơ đồ ghế.</div>
-        }
-        else
-        {
-            <div class="adm-seatmaps">
-                @foreach (var floor in seats.GroupBy(s => s.Floor).OrderBy(g => g.Key))
+    <div class="adm-modal-backdrop" @onclick="() => layoutBus = null">
+        <div class="adm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-buslayout-title" @onclick:stopPropagation="true">
+            <div class="adm-modal-header">
+                <h2 id="modal-buslayout-title">Sơ đồ ghế xe: @layoutBus.LicensePlate (@layoutBus.BusTypeName)</h2>
+                <button type="button" class="adm-close-btn" @onclick="() => layoutBus = null" aria-label="Đóng">&times;</button>
+            </div>
+            <div class="adm-modal-body">
+                @if (seats.Count == 0)
                 {
-                    var columns = floor.Max(s => s.Column);
-                    <div>
-                        <h3 class="adm-section">Tầng @floor.Key</h3>
-                        <div class="adm-seatmap" style="grid-template-columns: repeat(@columns, 56px);">
-                            @foreach (var seat in floor)
-                            {
-                                <div class="adm-seat" style="grid-row: @seat.Row; grid-column: @seat.Column;" title="@seat.SeatType">@seat.SeatCode</div>
-                            }
-                        </div>
+                    <div class="adm-empty">Xe chưa có sơ đồ ghế.</div>
+                }
+                else
+                {
+                    <div class="adm-seatmaps">
+                        @foreach (var floor in seats.GroupBy(s => s.Floor).OrderBy(g => g.Key))
+                        {
+                            var columns = floor.Max(s => s.Column);
+                            <div>
+                                <h3 class="adm-section">Tầng @floor.Key</h3>
+                                <div class="adm-seatmap" style="grid-template-columns: repeat(@columns, 56px);">
+                                    @foreach (var seat in floor)
+                                    {
+                                        <div class="adm-seat" style="grid-row: @seat.Row; grid-column: @seat.Column;" title="@seat.SeatType">@seat.SeatCode</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (layoutBus.UpcomingTrips > 0)
+                {
+                    <p class="adm-hint">Xe còn @layoutBus.UpcomingTrips chuyến sắp chạy nên không thể thay sơ đồ.</p>
+                }
+                else
+                {
+                    <h3 class="adm-section">Thay sơ đồ ghế mới</h3>
+                    <div class="adm-form">
+                        <label class="wide">Định nghĩa sơ đồ mới (mỗi dòng: mã ghế,tầng,hàng,cột,loại ghế)
+                            <textarea rows="6" @bind="layoutDefinition" @bind:event="oninput"></textarea>
+                        </label>
+                    </div>
+                    <div class="adm-actions">
+                        <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="ReplaceLayoutAsync">Thay sơ đồ</button>
                     </div>
                 }
             </div>
-        }
-        @if (layoutBus.UpcomingTrips > 0)
-        {
-            <p class="adm-hint">Xe còn @layoutBus.UpcomingTrips chuyến sắp chạy nên không thể thay sơ đồ.</p>
-        }
-        else
-        {
-            <div class="adm-form">
-                <label class="wide">Thay sơ đồ mới (mỗi dòng: mã ghế,tầng,hàng,cột,loại ghế)
-                    <textarea rows="6" @bind="layoutDefinition" @bind:event="oninput"></textarea>
-                </label>
+            <div class="adm-modal-footer">
+                <button type="button" class="adm-btn" @onclick="() => layoutBus = null">Đóng</button>
             </div>
-            <div class="adm-actions">
-                <button type="button" class="adm-btn primary" disabled="@IsBusy" @onclick="ReplaceLayoutAsync">Thay sơ đồ</button>
-            </div>
-        }
-    </section>
+        </div>
+    </div>
 }
 
 <section class="adm-card">

@@ -43,6 +43,16 @@ public sealed class AdminDashboardDto
     public int EmailsPending { get; init; }
     public int EmailsFailed { get; init; }
     public int PaymentEventsNeedingReview { get; init; }
+    public IReadOnlyList<AdminDashboardTopRouteDto> TopRoutes { get; init; } = Array.Empty<AdminDashboardTopRouteDto>();
+    public IReadOnlyList<AdminBookingRowDto> RecentBookings { get; init; } = Array.Empty<AdminBookingRowDto>();
+}
+
+public sealed class AdminDashboardTopRouteDto
+{
+    public string RouteName { get; init; } = string.Empty;
+    public string OperatorName { get; init; } = string.Empty;
+    public int BookingCount { get; init; }
+    public decimal TotalRevenue { get; init; }
 }
 
 public sealed class AdminOperatorDto
@@ -326,6 +336,8 @@ public sealed class AdminEmailRowDto
     public DateTimeOffset NextAttemptAt { get; init; }
     public DateTimeOffset? SentAt { get; init; }
     public string? LastError { get; init; }
+    public string RecipientEmail { get; init; } = string.Empty;
+    public string Payload { get; init; } = string.Empty;
 }
 
 public sealed class AdminPaymentEventDto
