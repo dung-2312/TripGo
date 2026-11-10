@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<ITripRepository, TripRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<ILoginAuditRepository, LoginAuditRepository>();
         services.AddScoped<IAdminRepository, AdminRepository>();
         services.AddScoped<IPaymentGatewayRepository, PaymentGatewayRepository>();
         services.AddScoped<Tripgo.Application.Interfaces.Persistence.IPasswordResetTokenRepository, Persistence.Repositories.PasswordResetTokenRepository>();
