@@ -48,6 +48,12 @@ public class AppDbContext : DbContext
     public DbSet<BookingConfirmationEmailOutbox> BookingConfirmationEmailOutbox =>
         Set<BookingConfirmationEmailOutbox>();
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.AddInterceptors(new DatabaseWriteSafetyInterceptor());
+    }
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         EnsureWritesTargetIsolatedDatabase();

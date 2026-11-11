@@ -13,7 +13,7 @@ public sealed class BookingConfirmationEmailWorker : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(20);
     private const int BatchSize = 10;
-    private const int MaximumAttempts = 5;
+    internal const int MaximumAttempts = 5;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingConfirmationEmailWorker> _logger;
     private readonly IConfiguration _configuration;

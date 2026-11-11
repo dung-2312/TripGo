@@ -57,13 +57,20 @@ public sealed class SmtpEmailSender : IEmailSender
             throw new ArgumentException("Booking confirmation requires a recipient and booking code.", nameof(confirmation));
         }
 
+        var configuredBaseUrl = _configuration["Email:BaseUrl"];
+        if (!TryGetApplicationUri(configuredBaseUrl, out var appUri))
+        {
+            _logger.LogError("Booking confirmation email was not sent because Email:BaseUrl is missing, invalid, or unauthorized ('{BaseUrl}').", configuredBaseUrl);
+            return Task.FromResult(false);
+        }
+
         if (IsTestDomain(confirmation.RecipientEmail))
         {
             _logger.LogInformation("Sandbox test recipient {Recipient} simulated successfully without hitting public SMTP.", confirmation.RecipientEmail);
             return Task.FromResult(true);
         }
 
-        var baseUrl = _configuration["Email:BaseUrl"] ?? "http://localhost:5065";
+        var baseUrl = appUri.ToString().TrimEnd('/');
         var seats = string.Join(", ", confirmation.SeatCodes);
         var departureTimeOffset = confirmation.DepartureTime.ToOffset(TimeSpan.FromHours(7));
         var departureFull = departureTimeOffset.ToString(
@@ -78,9 +85,8 @@ public sealed class SmtpEmailSender : IEmailSender
 
         var amount = confirmation.TotalAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
         var template = BookingEmailTemplate.For(confirmation.MessageType, confirmation.BookingCode, confirmation.CancellationReason);
-        var ticketCode = string.IsNullOrWhiteSpace(confirmation.TicketCode)
-            ? $"TKT-{confirmation.BookingCode}"
-            : confirmation.TicketCode;
+        var hasValidTicket = !string.IsNullOrWhiteSpace(confirmation.TicketCode);
+        var ticketCode = hasValidTicket ? confirmation.TicketCode! : string.Empty;
 
         var (origin, dest) = ParseRoute(confirmation.RouteName);
         var manageOrderUrl = $"{baseUrl.TrimEnd('/')}/my-tickets?code={Uri.EscapeDataString(confirmation.BookingCode)}";
@@ -90,16 +96,19 @@ public sealed class SmtpEmailSender : IEmailSender
 
         const string qrContentId = "ticket-qr";
         byte[]? qrBytes = null;
-        try
+        if (hasValidTicket)
         {
-            using var generator = new QRCoder.QRCodeGenerator();
-            using var qrData = generator.CreateQrCode($"TRIPGO:{confirmation.BookingCode}:{ticketCode}", QRCoder.QRCodeGenerator.ECCLevel.M);
-            var pngByteQr = new QRCoder.PngByteQRCode(qrData);
-            qrBytes = pngByteQr.GetGraphic(5);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to render QR code for email confirmation {BookingCode}.", confirmation.BookingCode);
+            try
+            {
+                using var generator = new QRCoder.QRCodeGenerator();
+                using var qrData = generator.CreateQrCode($"TRIPGO:{confirmation.BookingCode}:{ticketCode}", QRCoder.QRCodeGenerator.ECCLevel.M);
+                var pngByteQr = new QRCoder.PngByteQRCode(qrData);
+                qrBytes = pngByteQr.GetGraphic(5);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to render QR code for email confirmation {BookingCode}.", confirmation.BookingCode);
+            }
         }
 
         var text = $"""
@@ -109,7 +118,7 @@ public sealed class SmtpEmailSender : IEmailSender
 
             THÔNG TIN VÉ ĐIỆN TỬ:
             Mã đặt chỗ (Booking Code): {confirmation.BookingCode}
-            Mã vé điện tử (Ticket Code): {ticketCode}
+            {(hasValidTicket ? $"Mã vé điện tử (Ticket Code): {ticketCode}" : "Mã vé điện tử: Đang chờ thanh toán (Mã vé và QR soát vé sẽ được tạo tự động sau khi thanh toán thành công)")}
             Tuyến đường: {confirmation.RouteName}
             Nhà xe đối tác: {confirmation.OperatorName}
             Thời gian khởi hành: {departureFull}
@@ -345,7 +354,7 @@ public sealed class SmtpEmailSender : IEmailSender
                       <tr>
                         <td style="padding:0 24px 16px 24px;">
                           <div style="background:#eff6ff;border-left:4px solid #1868e8;padding:12px 14px;border-radius:4px;font-size:13px;color:#1e3a8a;line-height:1.5;">
-                            <strong>Hướng dẫn xuất trình vé:</strong> Quý khách vui lòng có mặt tại điểm đón trước giờ khởi hành ít nhất <strong>30 phút</strong> và xuất trình email này hoặc mã QR vé điện tử cho nhân viên nhà xe để soát vé lên xe.
+                            <strong>Hướng dẫn xuất trình vé:</strong> {(hasValidTicket ? "Quý khách vui lòng có mặt tại điểm đón trước giờ khởi hành ít nhất <strong>30 phút</strong> và xuất trình email này hoặc mã QR vé điện tử cho nhân viên nhà xe để soát vé lên xe." : "Đơn đặt chỗ đang chờ thanh toán. Quý khách vui lòng hoàn tất thanh toán để nhận vé điện tử và mã QR soát vé chính thức.")}
                           </div>
                         </td>
                       </tr>
@@ -432,20 +441,58 @@ public sealed class SmtpEmailSender : IEmailSender
             port is > 0 and <= 65535;
     }
 
-    private static bool TryGetApplicationUri(string? baseUrl, out Uri applicationUri)
+    private bool TryGetApplicationUri(string? baseUrl, out Uri applicationUri)
     {
-        if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsed) &&
-            (parsed.Scheme == Uri.UriSchemeHttps || parsed.IsLoopback) &&
-            parsed.AbsolutePath == "/" &&
-            string.IsNullOrEmpty(parsed.Query) &&
-            string.IsNullOrEmpty(parsed.Fragment))
+        applicationUri = null!;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            _logger.LogError("Email delivery skipped: 'Email:BaseUrl' is missing or empty.");
+            return false;
+        }
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsed) ||
+            parsed.AbsolutePath != "/" ||
+            !string.IsNullOrEmpty(parsed.Query) ||
+            !string.IsNullOrEmpty(parsed.Fragment))
+        {
+            _logger.LogError("Email delivery skipped: 'Email:BaseUrl' ('{BaseUrl}') is not a valid absolute application root URI.", baseUrl);
+            return false;
+        }
+
+        // HTTPS is always permitted in all environments
+        if (parsed.Scheme == Uri.UriSchemeHttps)
         {
             applicationUri = parsed;
             return true;
         }
 
-        applicationUri = null!;
+        // Localhost / Loopback is permitted ONLY in Development when explicitly configured
+        if (parsed.IsLoopback)
+        {
+            var isDev = IsDevelopmentEnvironment();
+            var allowLocalhostInDev = bool.TryParse(_configuration["Email:AllowLocalhostInDevelopment"], out var allowed) && allowed;
+            if (isDev && allowLocalhostInDev)
+            {
+                applicationUri = parsed;
+                return true;
+            }
+
+            _logger.LogError("Email delivery skipped: Localhost BaseUrl ('{BaseUrl}') is rejected in non-development environment or when 'Email:AllowLocalhostInDevelopment' is false.", baseUrl);
+            return false;
+        }
+
+        // Insecure HTTP external URLs are strictly rejected
+        _logger.LogError("Email delivery skipped: Insecure HTTP BaseUrl ('{BaseUrl}') is rejected in non-local environments; HTTPS is required.", baseUrl);
         return false;
+    }
+
+    private bool IsDevelopmentEnvironment()
+    {
+        var env = _configuration["ASPNETCORE_ENVIRONMENT"]
+               ?? _configuration["DOTNET_ENVIRONMENT"]
+               ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+               ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        return string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> SendAsync(

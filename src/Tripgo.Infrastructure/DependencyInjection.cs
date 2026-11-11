@@ -23,8 +23,21 @@ public static class DependencyInjection
         }
 
         services.AddDbContext<AppDbContext>(options =>
+        {
             options.UseSqlServer(connectionString, sqlServer =>
-                sqlServer.EnableRetryOnFailure()));
+                sqlServer.EnableRetryOnFailure());
+            options.AddInterceptors(new Persistence.DatabaseWriteSafetyInterceptor());
+        });
+
+        services.AddMemoryCache();
+        services.AddScoped<Tripgo.Application.Interfaces.IRoadRoutingService>(sp =>
+        {
+            var config = sp.GetService<IConfiguration>();
+            var cache = sp.GetService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+            var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<Services.OsrmRoadRoutingService>>();
+            var httpClient = sp.GetService<System.Net.Http.HttpClient>() ?? new System.Net.Http.HttpClient();
+            return new Services.OsrmRoadRoutingService(httpClient, config, cache, logger);
+        });
 
         services.AddScoped<ITripRepository, TripRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();

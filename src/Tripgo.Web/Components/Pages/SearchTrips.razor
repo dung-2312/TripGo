@@ -379,6 +379,9 @@
                                                 <i class="bi bi-geo-alt-fill me-1"></i> Điểm đón/trả & Chi tiết lộ trình
                                                 <i class="bi @(previewStopsTripId == trip.Id ? "bi-chevron-up" : "bi-chevron-down") ms-1 small"></i>
                                             </button>
+                                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-semibold" @onclick="() => OpenRoadRouteMapModal(trip.Id, null, null)">
+                                                <i class="bi bi-map-fill text-danger me-1"></i> Xem lộ trình
+                                            </button>
                                         </div>
                                     </div>
 
@@ -912,7 +915,10 @@
 
                                             <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top flex-wrap gap-2">
                                                 <BackButton Label="Quay lại chọn ghế" OnClick="() => bookingStep = 0" />
-                                                <div class="d-flex align-items-center gap-2">
+                                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                    <button type="button" class="btn btn-outline-primary fw-semibold px-3 py-2 rounded-pill" @onclick="() => OpenRoadRouteMapModal(selectedTripId, selectedPickupPoint?.Id, selectedDropoffPoint?.Id)">
+                                                        <i class="bi bi-map-fill text-danger me-1"></i> Xem lộ trình (Đón - Trả đã chọn)
+                                                    </button>
                                                     @if (selectedPickupPoint == null || selectedDropoffPoint == null)
                                                     {
                                                         <span class="small text-danger fw-semibold d-none d-md-inline">
@@ -1682,6 +1688,178 @@
     </main>
 </div>
 
+<!-- ROAD ROUTE MAP MODAL (OPENSTREETMAP + OSRM ROAD NETWORK) -->
+@if (showRoadMapModal && currentRoadMap != null)
+{
+    <div class="tg-modal-backdrop" @onclick="CloseRoadRouteMapModal">
+        <div class="tg-modal-dialog modal-xl" style="max-width: 1100px; width: 95%;" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 rounded-4 shadow-2xl overflow-hidden bg-white">
+                <!-- Modal Header -->
+                <div class="modal-header bg-dark text-white py-3 px-4 d-flex justify-content-between align-items-center border-bottom border-secondary">
+                    <div class="d-flex align-items-center gap-3">
+                        <div style="background:#2563eb;color:white;width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 12px rgba(37,99,235,0.6);">
+                            <i class="bi bi-map-fill"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold fs-5 text-white d-flex align-items-center gap-2">
+                                <span>Lộ trình đường bộ: @currentRoadMap.RouteName</span>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 rounded-pill" style="font-size: 0.75rem;">
+                                    BẢN ĐỒ ĐƯỜNG BỘ
+                                </span>
+                            </div>
+                            <div class="text-white-50 small">
+                                Nhà xe: <strong class="text-white">@currentRoadMap.OperatorName</strong> &bull; Biển số: <span class="badge bg-warning text-dark font-monospace fw-bold">@currentRoadMap.BusLicensePlate</span> &bull; Cự ly đường bộ: @currentRoadMap.DistanceKm km
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseRoadRouteMapModal" aria-label="Đóng cửa sổ bản đồ"></button>
+                </div>
+
+                <!-- Journey Duration & Endpoints Breakdown -->
+                <div class="bg-light px-4 py-3 border-bottom">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-4">
+                            <div class="p-2 px-3 bg-white rounded-3 border">
+                                <small class="text-success fw-bold d-block"><i class="bi bi-box-arrow-in-right me-1"></i>ĐIỂM ĐÓN ĐÃ CHỌN</small>
+                                <strong class="text-dark d-block text-truncate" title="@currentRoadMap.SelectedPickupPoint.Name">@currentRoadMap.SelectedPickupPoint.Name</strong>
+                                <span class="text-muted small">@currentRoadMap.SelectedPickupPoint.ScheduledTime</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-2 px-3 bg-white rounded-3 border">
+                                <small class="text-danger fw-bold d-block"><i class="bi bi-flag-fill me-1"></i>ĐIỂM TRẢ ĐÃ CHỌN</small>
+                                <strong class="text-dark d-block text-truncate" title="@currentRoadMap.SelectedDropoffPoint.Name">@currentRoadMap.SelectedDropoffPoint.Name</strong>
+                                <span class="text-muted small">@currentRoadMap.SelectedDropoffPoint.ScheduledTime</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-2 px-3 bg-white rounded-3 border">
+                                <small class="text-primary fw-bold d-block"><i class="bi bi-clock-history me-1"></i>THỜI GIAN HÀNH TRÌNH DỰ KIẾN</small>
+                                <strong class="text-dark d-block">@currentRoadMap.DurationSummary</strong>
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    @if (!string.IsNullOrWhiteSpace(currentRoadMap.RoadEstimatedDurationText))
+                                    {
+                                        <span class="badge bg-light text-secondary border" style="font-size:0.7rem;">@currentRoadMap.RoadEstimatedDurationText</span>
+                                    }
+                                    @if (currentRoadMap.RestStopDurationMinutes > 0)
+                                    {
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border" style="font-size:0.7rem;">@currentRoadMap.RestStopDurationMinutes phút nghỉ</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        <i class="bi bi-info-circle me-1"></i>@currentRoadMap.DurationNotice
+                    </div>
+                </div>
+
+                <!-- Modal Body: Map + Stops List Grid -->
+                <div class="p-0">
+                    <div class="row g-0">
+                        <!-- Main Map Canvas -->
+                        <div class="col-lg-8 border-end position-relative" style="min-height: 520px;">
+                            <div id="tripgo-search-route-map" style="height: 520px; width: 100%;"></div>
+
+                            @if (!currentRoadMap.IsRouteFound)
+                            {
+                                <div class="position-absolute top-50 start-50 translate-middle w-75 p-3 bg-white border border-warning rounded-3 shadow text-center" style="z-index: 550;">
+                                    <i class="bi bi-exclamation-triangle-fill text-warning fs-3 d-block mb-2"></i>
+                                    <h6 class="fw-bold text-dark">Chưa thể tải dữ liệu lộ trình đường bộ chi tiết</h6>
+                                    <p class="small text-muted mb-0">@(currentRoadMap.ErrorMessage ?? "Không thể kết nối đến máy chủ định tuyến đường bộ OSRM.")</p>
+                                </div>
+                            }
+
+                            <!-- Map Overlay Controls & Legend -->
+                            <div class="position-absolute bottom-0 start-0 m-3 bg-white p-2 px-3 rounded-4 shadow-sm border small d-flex flex-wrap align-items-center gap-3" style="z-index: 500;">
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-1 px-2 fw-semibold" onclick="tripgoMap.fitRoute()">
+                                    <i class="bi bi-arrows-fullscreen me-1"></i> Toàn tuyến
+                                </button>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#16a34a;"></span>
+                                    <span>Điểm đón</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f59e0b;"></span>
+                                    <span>Trạm dừng nghỉ</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc2626;"></span>
+                                    <span>Điểm trả</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Stop Details & Amenities -->
+                        <div class="col-lg-4 p-3 bg-light overflow-y-auto" style="max-height: 520px;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                                    <i class="bi bi-cup-hot-fill text-warning"></i>
+                                    <span>Trạm dừng nghỉ chân (@currentRoadMap.RestStops.Count)</span>
+                                </h6>
+                            </div>
+
+                            @if (currentRoadMap.HasVerifiedRestStops)
+                            {
+                                <div class="d-flex flex-column gap-3">
+                                    @foreach (var pt in currentRoadMap.RestStops)
+                                    {
+                                        <div class="card border rounded-3 p-3 shadow-sm bg-white position-relative">
+                                            <div class="d-flex justify-content-between align-items-start mb-1">
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">
+                                                    <i class="bi bi-cup-hot-fill me-1"></i> Dừng nghỉ @(pt.StayMinutes ?? 20) phút
+                                                </span>
+                                                <span class="font-monospace fw-bold text-dark small">@pt.ScheduledTime</span>
+                                            </div>
+
+                                            <div class="fw-bold text-dark fs-6 mt-1 mb-1">@pt.Name</div>
+                                            <div class="small text-muted mb-2"><i class="bi bi-geo-alt me-1"></i>@pt.Address</div>
+
+                                            <div class="small text-success bg-success-subtle p-1 px-2 rounded-2 mb-2 border border-success-subtle d-inline-block">
+                                                <i class="bi bi-shield-check me-1"></i>@pt.VerificationStatus
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(pt.Services))
+                                            {
+                                                <div class="small bg-light p-2 rounded-2 text-secondary mb-2 border">
+                                                    <strong>Tiện ích:</strong> @pt.Services
+                                                </div>
+                                            }
+
+                                            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill py-1 mt-1"
+                                                    onclick="tripgoMap.focusPoint(@pt.Latitude, @pt.Longitude, '@pt.Name', 'stop_@pt.Id')">
+                                                <i class="bi bi-crosshair me-1"></i> Xem vị trí này trên bản đồ
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="p-4 text-center bg-white rounded-3 border text-muted small">
+                                    <i class="bi bi-signpost-split fs-2 text-secondary d-block mb-2"></i>
+                                    <strong>Chưa có dữ liệu trạm dừng nghỉ xác thực</strong>
+                                    <p class="text-muted mt-1 mb-0">Trên chặng đường này chưa ghi nhận trạm dừng chân đối tác chính thức. Nhà xe sẽ bố trí điểm dừng nghỉ theo quy trình vận hành thực tế.</p>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="modal-footer bg-light px-4 py-3 d-flex justify-content-between align-items-center">
+                    <div class="text-muted small">
+                        <i class="bi bi-info-circle me-1 text-primary"></i> Lộ trình thực tế được mô phỏng theo dữ liệu đường bộ OpenStreetMap &amp; OSRM.
+                    </div>
+                    <button type="button" class="btn btn-secondary rounded-pill px-4 fw-bold" @onclick="CloseRoadRouteMapModal">
+                        Đóng bản đồ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .cursor-pointer {
         cursor: pointer;
@@ -1740,6 +1918,67 @@
     private long? previewStopsTripId;
     private TripDetailDto? selectedTripDetail;
     private HashSet<string> selectedSeats = new();
+
+    // ROAD ROUTE MAP MODAL STATE & ACTIONS
+    private bool showRoadMapModal = false;
+    private bool isLoadingRoadMap = false;
+    private string? roadMapErrorMessage = null;
+    private TripRouteMapDto? currentRoadMap = null;
+
+    private async Task OpenRoadRouteMapModal(long? tripId, long? pickupPointId, long? dropoffPointId)
+    {
+        if (!tripId.HasValue || tripId.Value <= 0) return;
+
+        showRoadMapModal = true;
+        isLoadingRoadMap = true;
+        roadMapErrorMessage = null;
+        currentRoadMap = null;
+        StateHasChanged();
+
+        try
+        {
+            currentRoadMap = await TripService.GetTripRouteMapAsync(tripId.Value, pickupPointId, dropoffPointId);
+            if (currentRoadMap == null)
+            {
+                roadMapErrorMessage = "Không tìm thấy dữ liệu chuyến xe hoặc lộ trình.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error fetching road route map for trip {TripId}", tripId.Value);
+            roadMapErrorMessage = "Lỗi tải dữ liệu lộ trình đường bộ. Vui lòng thử lại sau.";
+        }
+        finally
+        {
+            isLoadingRoadMap = false;
+            StateHasChanged();
+        }
+
+        if (currentRoadMap != null)
+        {
+            await Task.Delay(200);
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("tripgoMap.initMap", "tripgo-search-route-map", currentRoadMap);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not initialize Leaflet road map on client");
+            }
+        }
+    }
+
+    private async Task CloseRoadRouteMapModal()
+    {
+        showRoadMapModal = false;
+        currentRoadMap = null;
+        roadMapErrorMessage = null;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("tripgoMap.destroy");
+        }
+        catch { }
+    }
     private int bookingStep;
     private PickupDropoffPointDto? selectedPickupPoint;
     private PickupDropoffPointDto? selectedDropoffPoint;

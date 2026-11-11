@@ -429,19 +429,34 @@ public class BookingRepository : IBookingRepository
                     };
                 }
 
-                // 1. Verify that all requested seats have valid, unexpired holds for THIS token AND belong to this trip
+                // 1. Verify that all requested seats have valid, unexpired holds for THIS token AND belong to this trip.
+                // Keep the hold records detached from the tracked TripSeat graph so we can update seat status without
+                // triggering duplicate TripSeat identity conflicts when the new booking is inserted.
                 var validHolds = await _context.SeatHolds
-                    .Include(h => h.TripSeat)
                     .Where(h => seatIds.Contains(h.TripSeatId) &&
                                 h.HoldToken == holdToken &&
                                 h.OwnerIdentifier == ownerIdentifier &&
-                                h.TripSeat.TripId == booking.TripId &&
                                 h.Status == SeatHoldStatus.Active &&
                                 h.ExpiresAt > now)
                     .OrderBy(h => h.TripSeatId)
                     .ToListAsync(ct);
 
                 if (validHolds.Count != seatIds.Count)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return new BookingResultDto
+                    {
+                        Success = false,
+                        Message = "Phiên giữ chỗ của bạn đã hết hạn hoặc không hợp lệ. Vui lòng chọn lại ghế."
+                    };
+                }
+
+                var validTripSeatIds = validHolds.Select(h => h.TripSeatId).Distinct().ToList();
+                var tripSeatsToBook = await _context.TripSeats
+                    .Where(ts => validTripSeatIds.Contains(ts.Id) && ts.TripId == booking.TripId)
+                    .ToListAsync(ct);
+
+                if (tripSeatsToBook.Count != validTripSeatIds.Count)
                 {
                     await transaction.RollbackAsync(ct);
                     return new BookingResultDto
@@ -498,12 +513,16 @@ public class BookingRepository : IBookingRepository
                 }
                 await _context.BookingPassengers.AddRangeAsync(passengers, ct);
 
-                // 5. Update seats to Booked and holds to Confirmed
+                // 5. Update holds to Confirmed and the underlying trip seats to Booked.
                 foreach (var hold in validHolds)
                 {
                     hold.Status = SeatHoldStatus.Confirmed;
-                    hold.TripSeat.Status = TripSeatStatus.Booked;
-                    hold.TripSeat.UpdatedAt = now;
+                }
+
+                foreach (var tripSeat in tripSeatsToBook)
+                {
+                    tripSeat.Status = TripSeatStatus.Booked;
+                    tripSeat.UpdatedAt = now;
                 }
 
                 QueueBookingEmail(booking, BookingConfirmationEmailOutbox.TypeBookingAcknowledgement, string.Empty, now, tripForSale);
@@ -597,9 +616,34 @@ public class BookingRepository : IBookingRepository
                 }
 
                 var now = DateTimeOffset.UtcNow;
+                var wasPaid = booking.PaymentStatus == PaymentStatus.Paid;
+                var refundAmount = wasPaid ? BookingRules.CalculateCancellationRefund(booking) : 0m;
+                var feeAmount = wasPaid ? BookingRules.CalculateCancellationFee(booking) : 0m;
+
                 booking.Status = BookingStatus.Cancelled;
                 booking.CancelledAt = now;
-                booking.CancellationReason = reason;
+                if (wasPaid)
+                {
+                    booking.PaymentStatus = PaymentStatus.Refunded;
+                    booking.CancellationReason = string.IsNullOrWhiteSpace(reason)
+                        ? $"Khách hàng hủy vé đã thanh toán. Hoàn 50% ({refundAmount:N0} đ), phí hủy 50% ({feeAmount:N0} đ)."
+                        : $"{reason} (Hoàn 50%: {refundAmount:N0} đ, phí hủy 50%: {feeAmount:N0} đ)";
+
+                    // Revoke active ticket credentials
+                    var credentials = await _context.TicketCredentials
+                        .Where(c => c.BookingId == booking.Id && c.RevokedAt == null)
+                        .ToListAsync(ct);
+                    foreach (var cred in credentials)
+                    {
+                        cred.RevokedAt = now;
+                        cred.RevokedReason = $"Vé bị hủy bởi khách hàng. Hoàn 50% tiền ({refundAmount:N0} đ).";
+                    }
+                }
+                else
+                {
+                    booking.CancellationReason = reason;
+                }
+
                 QueueBookingEmail(booking, BookingConfirmationEmailOutbox.TypeBookingCancellation, string.Empty, now);
 
                 var seatIds = booking.BookingSeats.Select(bs => bs.TripSeatId).ToList();
@@ -1151,7 +1195,7 @@ public class BookingRepository : IBookingRepository
         trip ??= booking.Trip;
         var credential = _context.TicketCredentials.Local.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null)
             ?? _context.TicketCredentials.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null);
-        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : $"TKT-{booking.Id:D6}";
+        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : (messageType == BookingConfirmationEmailOutbox.TypeBookingConfirmation ? $"TKT-{booking.Id:D6}" : null);
 
         var payload = new BookingConfirmationEmailDto
         {

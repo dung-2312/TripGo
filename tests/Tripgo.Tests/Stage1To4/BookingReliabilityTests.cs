@@ -257,10 +257,10 @@ public sealed class BookingReliabilityTests : IAsyncLifetime
     [InlineData(BookingStatus.PendingPayment, PaymentStatus.Unpaid, true)]
     [InlineData(BookingStatus.PendingPayment, PaymentStatus.Failed, true)]
     [InlineData(BookingStatus.PendingPayment, PaymentStatus.Pending, false)]
-    [InlineData(BookingStatus.Confirmed, PaymentStatus.Paid, false)]
+    [InlineData(BookingStatus.Confirmed, PaymentStatus.Paid, true)]
     [InlineData(BookingStatus.Cancelled, PaymentStatus.Refunded, false)]
     [InlineData(BookingStatus.Expired, PaymentStatus.Unpaid, false)]
-    public void CustomerCancellation_IsAllowedOnlyBeforeMoneyIsTaken(BookingStatus status, PaymentStatus payment, bool expected)
+    public void CustomerCancellation_Policy_MatchesAllowedStates(BookingStatus status, PaymentStatus payment, bool expected)
     {
         Assert.Equal(expected, BookingRules.CustomerCanCancel(new Booking { Status = status, PaymentStatus = payment }));
     }

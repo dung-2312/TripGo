@@ -486,6 +486,7 @@ public class SandboxFixtureService : ISandboxFixtureService
         if (existingStops.Count > 0)
         {
             _context.RouteStops.RemoveRange(existingStops);
+            route.Stops.Clear();
             await _context.SaveChangesAsync(ct);
         }
 
@@ -823,11 +824,24 @@ public class SandboxFixtureService : ISandboxFixtureService
         {
             if (VerifiedPointsMap.TryGetValue(p.Id, out var verified))
             {
+                bool modified = false;
                 if (p.Name != verified.Name || p.Address != verified.Address)
                 {
                     _logger.LogInformation("Repairing Unicode for Point ID {Id}: '{OldName}' -> '{NewName}'", p.Id, p.Name, verified.Name);
                     p.Name = verified.Name;
                     p.Address = verified.Address;
+                    modified = true;
+                }
+
+                if (!p.Latitude.HasValue || !p.Longitude.HasValue || p.Latitude.Value != verified.Lat || p.Longitude.Value != verified.Lng)
+                {
+                    p.Latitude = verified.Lat;
+                    p.Longitude = verified.Lng;
+                    modified = true;
+                }
+
+                if (modified)
+                {
                     repairedCount++;
                 }
             }
@@ -840,37 +854,37 @@ public class SandboxFixtureService : ISandboxFixtureService
         }
     }
 
-    private static readonly Dictionary<long, (string Name, string Address)> VerifiedPointsMap = new()
+    private static readonly Dictionary<long, (string Name, string Address, decimal Lat, decimal Lng)> VerifiedPointsMap = new()
     {
-        [1] = ("Bến xe Miền Tây", "395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM"),
-        [2] = ("Văn phòng Quận 5", "147 Lê Hồng Phong, Phường 3, Quận 5, TP.HCM"),
-        [3] = ("Trạm Hàng Xanh", "486E Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM"),
-        [4] = ("Trạm Đức Trọng (Phi Nôm)", "Thôn Quảng Hiệp, Xã Hiệp Thạnh, Huyện Đức Trọng, Lâm Đồng"),
-        [5] = ("Bưu điện TP. Đà Lạt", "02 Trần Phú, Phường 3, TP. Đà Lạt, Lâm Đồng"),
-        [6] = ("Bến xe Đa Thiện", "01 Mai Anh Đào, Phường 8, TP. Đà Lạt, Lâm Đồng"),
-        [7] = ("Bến xe Miền Tây (FUTA)", "395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM"),
-        [8] = ("Văn phòng Lê Hồng Phong (FUTA)", "231-233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM"),
-        [9] = ("Bến xe Miền Đông Mới (FUTA)", "501 Hoàng Hữu Nam, Phường Long Bình, TP. Thủ Đức, TP.HCM"),
-        [10] = ("Bến xe Liên tỉnh Đà Lạt (FUTA)", "01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Lâm Đồng"),
-        [11] = ("Văn phòng Trần Hưng Đạo (FUTA)", "22 Trần Hưng Đạo, Phường 10, TP. Đà Lạt, Lâm Đồng"),
-        [12] = ("Bến xe Phía Nam Nha Trang (FUTA)", "Đường 23/10, Xã Vĩnh Trung, TP. Nha Trang, Khánh Hòa"),
-        [13] = ("Văn phòng Cam Ranh", "08 Tố Hữu, Phường Cam Thuần, TP. Cam Ranh, Khánh Hòa"),
-        [14] = ("Văn phòng CT3 VCN Phước Hải", "Chung cư CT3 Tố Hữu, KĐT VCN Phước Hải, TP. Nha Trang, Khánh Hòa"),
-        [15] = ("Văn phòng Hoàng Hoa Thám", "12D Hoàng Hoa Thám, Phường Lộc Thọ, TP. Nha Trang, Khánh Hòa"),
-        [16] = ("Văn phòng Phạm Ngũ Lão", "313 Phạm Ngũ Lão, Phường Phạm Ngũ Lão, Quận 1, TP.HCM"),
-        [17] = ("Văn phòng Trần Phú", "295 Trần Phú, Phường 8, Quận 5, TP.HCM"),
-        [18] = ("Trạm Đón Hàng Xanh", "Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM"),
-        [19] = ("Văn phòng Giải Phóng", "789 Giải Phóng, Phường Giáp Bát, Quận Hoàng Mai, Hà Nội"),
-        [20] = ("Văn phòng Trần Nhật Duật", "114 Trần Nhật Duật, Phường Hàng Buồm, Quận Hoàn Kiếm, Hà Nội"),
-        [21] = ("Văn phòng Cầu Giấy", "07 Phạm Văn Đồng, Phường Mai Dịch, Quận Cầu Giấy, Hà Nội"),
-        [22] = ("Trạm Ngã tư Sân bay Nội Bài", "Trạm thu phí Võ Nguyên Giáp, Sóc Sơn, Hà Nội"),
-        [23] = ("Bến xe Trung tâm Lào Cai", "Tổ 19, Phường Bình Minh, TP. Lào Cai, Lào Cai"),
-        [24] = ("Bến xe Sa Pa", "Đường Điện Biên Phủ, Thị xã Sa Pa, Lào Cai"),
-        [25] = ("Văn phòng 571 Điện Biên Phủ", "571 Điện Biên Phủ, Thị xã Sa Pa, Lào Cai"),
-        [26] = ("Văn phòng Celadon City Tân Phú", "E1.30 Celadon City, 36 Bờ Bao Tân Thắng, Tân Phú, TP.HCM"),
-        [27] = ("Bến xe Miền Đông Cũ", "292 Đinh Bộ Lĩnh, Phường 26, Quận Bình Thạnh, TP.HCM"),
-        [28] = ("Trạm Ngã 4 Bình Phước", "Quốc lộ 13, Phường Hiệp Bình Phước, TP. Thủ Đức, TP.HCM"),
-        [29] = ("Bến xe Phú Tài", "Ngã 3 Phú Tài, Phường Trần Quang Diệu, TP. Quy Nhơn, Bình Định"),
-        [30] = ("Bến xe Trung tâm Quy Nhơn", "71 Tây Sơn, Phường Ghềnh Ráng, TP. Quy Nhơn, Bình Định")
+        [1] = ("Bến xe Miền Tây", "395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM", 10.7497m, 106.6186m),
+        [2] = ("Văn phòng Quận 5", "147 Lê Hồng Phong, Phường 3, Quận 5, TP.HCM", 10.7588m, 106.6775m),
+        [3] = ("Trạm Hàng Xanh", "486E Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM", 10.7997m, 106.7118m),
+        [4] = ("Trạm Đức Trọng (Phi Nôm)", "Thôn Quảng Hiệp, Xã Hiệp Thạnh, Huyện Đức Trọng, Lâm Đồng", 11.7378m, 108.3750m),
+        [5] = ("Bưu điện TP. Đà Lạt", "02 Trần Phú, Phường 3, TP. Đà Lạt, Lâm Đồng", 11.9392m, 108.4372m),
+        [6] = ("Bến xe Đa Thiện", "01 Mai Anh Đào, Phường 8, TP. Đà Lạt, Lâm Đồng", 11.9689m, 108.4485m),
+        [7] = ("Bến xe Miền Tây (FUTA)", "395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM", 10.7497m, 106.6186m),
+        [8] = ("Văn phòng Lê Hồng Phong (FUTA)", "231-233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM", 10.7592m, 106.6780m),
+        [9] = ("Bến xe Miền Đông Mới (FUTA)", "501 Hoàng Hữu Nam, Phường Long Bình, TP. Thủ Đức, TP.HCM", 10.8753m, 106.8164m),
+        [10] = ("Bến xe Liên tỉnh Đà Lạt (FUTA)", "01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Lâm Đồng", 11.9298m, 108.4447m),
+        [11] = ("Văn phòng Trần Hưng Đạo (FUTA)", "22 Trần Hưng Đạo, Phường 10, TP. Đà Lạt, Lâm Đồng", 11.9442m, 108.4556m),
+        [12] = ("Bến xe Phía Nam Nha Trang (FUTA)", "Đường 23/10, Xã Vĩnh Trung, TP. Nha Trang, Khánh Hòa", 12.2472m, 109.1558m),
+        [13] = ("Văn phòng Cam Ranh", "08 Tố Hữu, Phường Cam Thuần, TP. Cam Ranh, Khánh Hòa", 11.9214m, 109.1591m),
+        [14] = ("Văn phòng CT3 VCN Phước Hải", "Chung cư CT3 Tố Hữu, KĐT VCN Phước Hải, TP. Nha Trang, Khánh Hòa", 12.2415m, 109.1834m),
+        [15] = ("Văn phòng Hoàng Hoa Thám", "12D Hoàng Hoa Thám, Phường Lộc Thọ, TP. Nha Trang, Khánh Hòa", 12.2442m, 109.1945m),
+        [16] = ("Văn phòng Phạm Ngũ Lão", "313 Phạm Ngũ Lão, Phường Phạm Ngũ Lão, Quận 1, TP.HCM", 10.7688m, 106.6917m),
+        [17] = ("Văn phòng Trần Phú", "295 Trần Phú, Phường 8, Quận 5, TP.HCM", 10.7554m, 106.6702m),
+        [18] = ("Trạm Đón Hàng Xanh", "Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM", 10.7997m, 106.7118m),
+        [19] = ("Văn phòng Giải Phóng", "789 Giải Phóng, Phường Giáp Bát, Quận Hoàng Mai, Hà Nội", 20.9808m, 105.8415m),
+        [20] = ("Văn phòng Trần Nhật Duật", "114 Trần Nhật Duật, Phường Hàng Buồm, Quận Hoàn Kiếm, Hà Nội", 21.0345m, 105.8546m),
+        [21] = ("Văn phòng Cầu Giấy", "07 Phạm Văn Đồng, Phường Mai Dịch, Quận Cầu Giấy, Hà Nội", 21.0368m, 105.7825m),
+        [22] = ("Trạm Ngã tư Sân bay Nội Bài", "Trạm thu phí Võ Nguyên Giáp, Sóc Sơn, Hà Nội", 21.2185m, 105.7958m),
+        [23] = ("Bến xe Trung tâm Lào Cai", "Tổ 19, Phường Bình Minh, TP. Lào Cai, Lào Cai", 22.4856m, 103.9707m),
+        [24] = ("Bến xe Sa Pa", "Đường Điện Biên Phủ, Thị xã Sa Pa, Lào Cai", 22.3364m, 103.8438m),
+        [25] = ("Văn phòng 571 Điện Biên Phủ", "571 Điện Biên Phủ, Thị xã Sa Pa, Lào Cai", 22.3385m, 103.8465m),
+        [26] = ("Văn phòng Celadon City Tân Phú", "E1.30 Celadon City, 36 Bờ Bao Tân Thắng, Tân Phú, TP.HCM", 10.8012m, 106.6165m),
+        [27] = ("Bến xe Miền Đông Cũ", "292 Đinh Bộ Lĩnh, Phường 26, Quận Bình Thạnh, TP.HCM", 10.8142m, 106.7114m),
+        [28] = ("Trạm Ngã 4 Bình Phước", "Quốc lộ 13, Phường Hiệp Bình Phước, TP. Thủ Đức, TP.HCM", 10.8525m, 106.7145m),
+        [29] = ("Bến xe Phú Tài", "Ngã 3 Phú Tài, Phường Trần Quang Diệu, TP. Quy Nhơn, Bình Định", 13.7712m, 109.1654m),
+        [30] = ("Bến xe Trung tâm Quy Nhơn", "71 Tây Sơn, Phường Ghềnh Ráng, TP. Quy Nhơn, Bình Định", 13.7554m, 109.2144m)
     };
 }

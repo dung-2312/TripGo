@@ -14,10 +14,12 @@ namespace Tripgo.Infrastructure.Persistence.Repositories;
 public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
 {
     private readonly AppDbContext _context;
+    private readonly Tripgo.Application.Interfaces.ITicketTokenProtector? _protector;
 
-    public PaymentGatewayRepository(AppDbContext context)
+    public PaymentGatewayRepository(AppDbContext context, Tripgo.Application.Interfaces.ITicketTokenProtector? protector = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
+        _protector = protector;
     }
 
     public async Task<(PayableBooking? Booking, string? Problem)> GetPayableBookingAsync(
@@ -340,7 +342,28 @@ public sealed class PaymentGatewayRepository : IPaymentGatewayRepository
 
         var credential = _context.TicketCredentials.Local.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null)
             ?? _context.TicketCredentials.FirstOrDefault(c => c.BookingId == booking.Id && c.RevokedAt == null);
-        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : $"TKT-{booking.Id:D6}";
+        if (credential == null && messageType == BookingConfirmationEmailOutbox.TypeBookingConfirmation)
+        {
+            var rawToken = "tgt_" + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var hashBytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawToken));
+            var tokenHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            var protectedToken = _protector != null ? _protector.Protect(rawToken) : ("enc:" + rawToken);
+            var expiresAt = booking.Trip?.ExpectedArrivalTime.Add(TimeSpan.FromHours(6)) ?? now.AddDays(7);
+
+            credential = new TicketCredential
+            {
+                BookingId = booking.Id,
+                TokenHash = tokenHash,
+                ProtectedToken = protectedToken,
+                IsSandbox = booking.IsDemoBooking,
+                IssuedAt = now,
+                ExpiresAt = expiresAt
+            };
+            _context.TicketCredentials.Add(credential);
+            _context.SaveChanges();
+        }
+
+        var ticketCode = credential != null ? $"TKT-{credential.Id:D6}" : null;
 
         _context.BookingConfirmationEmailOutbox.Add(new BookingConfirmationEmailOutbox
         {
