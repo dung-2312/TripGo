@@ -647,6 +647,19 @@ public class BookingRepository : IBookingRepository
         await RunWriteAsync(async () =>
         {
             _context.ChangeTracker.Clear();
+
+            // Cheap unlocked probe: the common case has nothing to expire, so skip the serializable transaction.
+            var probeTime = DateTimeOffset.UtcNow;
+            if (!await _context.Bookings.AnyAsync(
+                    b => b.Status == BookingStatus.PendingPayment &&
+                         (b.PaymentStatus == PaymentStatus.Unpaid ||
+                          b.PaymentStatus == PaymentStatus.Failed ||
+                          b.PaymentStatus == PaymentStatus.Pending) &&
+                         b.ExpiresAt <= probeTime, ct))
+            {
+                return;
+            }
+
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
@@ -654,6 +667,7 @@ public class BookingRepository : IBookingRepository
 
                 // Failed attempts took no money, so they must not keep seats locked past the payment window.
                 var expiredBookings = await _context.Bookings
+                    .AsSplitQuery()
                     .Include(b => b.BookingSeats)
                         .ThenInclude(bs => bs.TripSeat)
                     .Include(b => b.PaymentTransactions)
@@ -665,6 +679,19 @@ public class BookingRepository : IBookingRepository
                     .ToListAsync(ct);
 
                 if (expiredBookings.Count == 0) return;
+
+                // One query for every confirmed hold of the expiring bookings instead of one per booking.
+                var expiredTokens = expiredBookings.Select(b => b.HoldToken).OfType<string>().Distinct().ToList();
+                var allSeatIds = expiredBookings
+                    .SelectMany(b => b.BookingSeats.Select(bs => bs.TripSeatId))
+                    .Distinct()
+                    .ToList();
+                var confirmedHolds = (await _context.SeatHolds
+                    .Where(h => allSeatIds.Contains(h.TripSeatId) &&
+                                expiredTokens.Contains(h.HoldToken) &&
+                                h.Status == SeatHoldStatus.Confirmed)
+                    .ToListAsync(ct))
+                    .ToLookup(h => h.HoldToken);
 
                 foreach (var b in expiredBookings)
                 {
@@ -693,13 +720,8 @@ public class BookingRepository : IBookingRepository
                         }
                     }
 
-                    var holds = await _context.SeatHolds
-                        .Where(h => seatIds.Contains(h.TripSeatId) &&
-                                    h.HoldToken == b.HoldToken &&
-                                    h.Status == SeatHoldStatus.Confirmed)
-                        .ToListAsync(ct);
-
-                    foreach (var h in holds)
+                    var seatIdSet = seatIds.ToHashSet();
+                    foreach (var h in confirmedHolds[b.HoldToken ?? string.Empty].Where(h => seatIdSet.Contains(h.TripSeatId)))
                     {
                         h.Status = SeatHoldStatus.Expired;
                     }
@@ -859,6 +881,15 @@ public class BookingRepository : IBookingRepository
         await RunWriteAsync(async () =>
         {
             _context.ChangeTracker.Clear();
+
+            // Cheap unlocked probe: the common case has nothing to expire, so skip the serializable transaction.
+            var probeTime = DateTimeOffset.UtcNow;
+            if (!await _context.SeatHolds.AnyAsync(
+                    hold => hold.Status == SeatHoldStatus.Active && hold.ExpiresAt <= probeTime, ct))
+            {
+                return;
+            }
+
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var now = DateTimeOffset.UtcNow;
             var staleHolds = await _context.SeatHolds

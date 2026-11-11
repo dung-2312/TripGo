@@ -18,6 +18,17 @@ public class TripService : ITripService
     private readonly ITripRepository _repository;
     private readonly ITemporaryBookingStore _bookingStore;
     private readonly IBookingService? _bookingService;
+    private readonly ReferenceDataCache? _cache;
+
+    public TripService(
+        ITripRepository repository,
+        ITemporaryBookingStore bookingStore,
+        IBookingService bookingService,
+        ReferenceDataCache cache)
+        : this(repository, bookingStore, bookingService)
+    {
+        _cache = cache;
+    }
 
     public TripService(ITripRepository repository, ITemporaryBookingStore bookingStore, IBookingService bookingService)
     {
@@ -31,7 +42,12 @@ public class TripService : ITripService
     {
     }
 
-    public async Task<List<LocationDto>> GetLocationsAsync(CancellationToken cancellationToken = default)
+    public Task<List<LocationDto>> GetLocationsAsync(CancellationToken cancellationToken = default) =>
+        _cache is null
+            ? LoadLocationsAsync(cancellationToken)
+            : _cache.GetOrAddListAsync("locations", () => LoadLocationsAsync(cancellationToken));
+
+    private async Task<List<LocationDto>> LoadLocationsAsync(CancellationToken cancellationToken)
     {
         var locations = await _repository.GetActiveLocationsAsync(cancellationToken);
         return locations.Select(l => new LocationDto
@@ -350,7 +366,12 @@ public class TripService : ITripService
         }).ToList();
     }
 
-    public async Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default)
+    public Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default) =>
+        _cache is null
+            ? LoadRoutesAsync(ct)
+            : _cache.GetOrAddListAsync("routes", () => LoadRoutesAsync(ct));
+
+    private async Task<List<RouteDto>> LoadRoutesAsync(CancellationToken ct)
     {
         var routes = await _repository.GetActiveRoutesAsync(ct);
         return routes.Select(r => new RouteDto
@@ -418,6 +439,7 @@ public class TripService : ITripService
         };
 
         await _repository.AddRouteAsync(route, ct);
+        _cache?.Clear();
         return route.Id;
     }
 
