@@ -406,6 +406,30 @@ public class SandboxFixtureService : ISandboxFixtureService
             await _context.SaveChangesAsync(ct);
             _context.ChangeTracker.Clear();
         }
+
+        // 5. Ensure existing upcoming demo trips have available seats for testing
+        var upcomingTripsWithoutSeats = await _context.Trips
+            .Include(t => t.Seats)
+            .Where(t => t.RouteId == route.Id && t.IsDemoTrip && t.Status == TripStatus.Scheduled && t.DepartureTime > DateTimeOffset.UtcNow)
+            .ToListAsync(ct);
+
+        var restoredSeats = false;
+        foreach (var trip in upcomingTripsWithoutSeats)
+        {
+            if (trip.Seats.Count > 0 && !trip.Seats.Any(s => s.Status == TripSeatStatus.Available))
+            {
+                foreach (var s in trip.Seats)
+                {
+                    s.Status = TripSeatStatus.Available;
+                }
+                restoredSeats = true;
+            }
+        }
+        if (restoredSeats)
+        {
+            await _context.SaveChangesAsync(ct);
+            _context.ChangeTracker.Clear();
+        }
     }
 
     private async Task EnsureRouteStopsAsync(Route route, CancellationToken ct)

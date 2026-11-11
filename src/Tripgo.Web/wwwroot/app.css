@@ -2117,3 +2117,22 @@ textarea:focus-visible,
 
 #blazor-error-ui { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 2000; padding: 10px 16px; background: #fff4d6; color: #172033; box-shadow: 0 -2px 8px rgba(0,0,0,.15); }
 #blazor-error-ui .dismiss { float: right; text-decoration: none; }
+
+/* TripGo Interactive Road Route Map */
+#tripgo-search-route-map,
+#tripgo-route-map-container {
+    background-color: #f1f5f9;
+    min-height: 520px;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+}
+.leaflet-container {
+    font-family: inherit !important;
+}
+.tripgo-marker-pickup,
+.tripgo-marker-dropoff,
+.tripgo-marker-reststop {
+    background: transparent !important;
+    border: none !important;
+}
