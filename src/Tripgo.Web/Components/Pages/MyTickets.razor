@@ -1011,7 +1011,24 @@
                 var match = allTickets.FirstOrDefault(t => string.Equals(t.BookingCode, QueryCode.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (match != null)
                 {
-                    selectedDetailTicket = match;
+                    if (string.Equals(QueryAction, "cancel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (CanCancel(match))
+                        {
+                            selectedDetailTicket = null;
+                            OpenCancelModal(match);
+                        }
+                        else
+                        {
+                            selectedDetailTicket = null;
+                            actionAlertMessage = $"Đơn đặt chỗ {match.BookingCode} không đủ điều kiện hủy trực tuyến lúc này (chuyến xe đã hoàn tất hoặc đã hủy trước đó). Vui lòng liên hệ tổng đài 1900 888684.";
+                            actionAlertIsError = true;
+                        }
+                    }
+                    else
+                    {
+                        selectedDetailTicket = match;
+                    }
                 }
             }
         }
@@ -1092,15 +1109,16 @@
                     {
                         allTickets.Insert(0, found);
                     }
-                    selectedDetailTicket = found;
                     if (string.Equals(QueryAction, "cancel", StringComparison.OrdinalIgnoreCase))
                     {
                         if (CanCancel(found))
                         {
+                            selectedDetailTicket = null;
                             OpenCancelModal(found);
                         }
                         else
                         {
+                            selectedDetailTicket = null;
                             actionAlertMessage = $"Đơn đặt chỗ {found.BookingCode} không đủ điều kiện hủy trực tuyến lúc này (chuyến xe đã hoàn tất hoặc đã hủy trước đó). Vui lòng liên hệ tổng đài 1900 888684.";
                             actionAlertIsError = true;
                         }
@@ -1248,6 +1266,7 @@
 
     private void OpenCancelModal(CustomerBookingInfoDto ticket)
     {
+        selectedDetailTicket = null;
         ticketToCancel = ticket;
         showCancelModal = true;
     }

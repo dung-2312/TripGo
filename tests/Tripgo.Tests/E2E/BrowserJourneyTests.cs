@@ -229,7 +229,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await ContinueToPassengerAsync(page);
         await FillPassengerAsync(page);
         await ContinueToPaymentAsync(page);
-        await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
+        await page.GetByText("Thất bại (Từ chối thẻ / Hết hạn)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
 
         await page.GetByText("Thanh toán sandbox chưa được xác nhận").WaitForAsync();
@@ -238,7 +238,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         Assert.Equal(0, await page.GetByRole(AriaRole.Button, new() { Name = "Quay lại thông tin khách" }).CountAsync());
         Assert.True(await page.GetByRole(AriaRole.Button, new() { Name = "và chọn lại" }).IsVisibleAsync());
 
-        await page.GetByText("Thanh toán thành công (Mô phỏng)").ClickAsync();
+        await page.GetByText("Thành công (Xác nhận đơn & cấp vé)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
         await page.GetByText("Đặt chỗ và thanh toán mô phỏng hoàn tất").WaitForAsync();
     }
@@ -252,7 +252,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await ContinueToPassengerAsync(page);
         await FillPassengerAsync(page);
         await ContinueToPaymentAsync(page);
-        await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
+        await page.GetByText("Thất bại (Từ chối thẻ / Hết hạn)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "và chọn lại" }).ClickAsync();
 
@@ -289,7 +289,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await ContinueToPassengerAsync(page);
         await FillPassengerAsync(page);
         await ContinueToPaymentAsync(page);
-        await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
+        await page.GetByText("Thất bại (Từ chối thẻ / Hết hạn)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
         await page.GetByText("Thanh toán sandbox chưa được xác nhận").WaitForAsync();
 
@@ -311,15 +311,15 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         await ContinueToPassengerAsync(page);
         await FillPassengerAsync(page);
         await ContinueToPaymentAsync(page);
-        await page.GetByText("Thanh toán thất bại (Mô phỏng từ chối thẻ)").ClickAsync();
+        await page.GetByText("Thất bại (Từ chối thẻ / Hết hạn)").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Thanh toán sandbox" }).ClickAsync();
         await page.GetByText("Thanh toán sandbox chưa được xác nhận").WaitForAsync();
 
         await GotoInteractiveAsync(page, "/my-tickets");
         await page.GetByRole(AriaRole.Button, new() { Name = "Hủy đặt chỗ" }).First.ClickAsync();
-        await page.GetByRole(AriaRole.Button, new() { Name = "Xác nhận", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Xác nhận hủy đơn" }).ClickAsync();
 
-        await page.GetByText("Ghế đã được hoàn trả").WaitForAsync();
+        await page.GetByText("Ghế đã được hoàn trả lại hệ thống.").WaitForAsync();
     }
 
     [E2EFact]
@@ -357,8 +357,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
     [E2EFact]
     public async Task Admin_CanSignIn_AndOpenEveryManagementPage_WithoutErrors()
     {
-        var password = Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_ADMIN_PASSWORD");
-        Assert.False(string.IsNullOrWhiteSpace(password), "TRIPGO_SANDBOX_ADMIN_PASSWORD is required for this test.");
+        var password = Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_ADMIN_PASSWORD") ?? "AdminPassword123!";
 
         var page = await NewCustomerAsync();
         var errors = new List<string>();

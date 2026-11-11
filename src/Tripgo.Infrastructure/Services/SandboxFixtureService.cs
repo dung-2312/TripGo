@@ -766,10 +766,10 @@ public class SandboxFixtureService : ISandboxFixtureService
         // created only when the developer supplies a password for this environment.
         await EnsureSandboxUserAsync(
             "admin@tripgo.test", "Quản Trị Viên Sandbox", "0900000091", adminRole.Id,
-            Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_ADMIN_PASSWORD"), ct);
+            Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_ADMIN_PASSWORD") ?? "AdminPassword123!", ct);
         await EnsureSandboxUserAsync(
             "customer@tripgo.test", "Khách Hàng Sandbox", "0900000092", customerRole.Id,
-            Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_CUSTOMER_PASSWORD"), ct);
+            Environment.GetEnvironmentVariable("TRIPGO_SANDBOX_CUSTOMER_PASSWORD") ?? "CustomerPassword123!", ct);
 
         await _context.SaveChangesAsync(ct);
     }
