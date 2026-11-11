@@ -19,25 +19,33 @@ public class TripService : ITripService
     private readonly ITemporaryBookingStore _bookingStore;
     private readonly IBookingService? _bookingService;
     private readonly IRoadRoutingService? _roadRoutingService;
+    private readonly ReferenceDataCache? _cache;
 
     public TripService(
         ITripRepository repository,
         ITemporaryBookingStore bookingStore,
         IBookingService bookingService,
-        IRoadRoutingService? roadRoutingService = null)
+        IRoadRoutingService? roadRoutingService = null,
+        ReferenceDataCache? cache = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _bookingStore = bookingStore ?? throw new ArgumentNullException(nameof(bookingStore));
         _bookingService = bookingService;
         _roadRoutingService = roadRoutingService;
+        _cache = cache;
     }
 
     public TripService(ITripRepository repository, ITemporaryBookingStore bookingStore)
-        : this(repository, bookingStore, null!, null)
+        : this(repository, bookingStore, null!, null, null)
     {
     }
 
-    public async Task<List<LocationDto>> GetLocationsAsync(CancellationToken cancellationToken = default)
+    public Task<List<LocationDto>> GetLocationsAsync(CancellationToken cancellationToken = default) =>
+        _cache is null
+            ? LoadLocationsAsync(cancellationToken)
+            : _cache.GetOrAddListAsync("locations", () => LoadLocationsAsync(cancellationToken));
+
+    private async Task<List<LocationDto>> LoadLocationsAsync(CancellationToken cancellationToken)
     {
         var locations = await _repository.GetActiveLocationsAsync(cancellationToken);
         return locations.Select(l => new LocationDto
@@ -356,7 +364,12 @@ public class TripService : ITripService
         }).ToList();
     }
 
-    public async Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default)
+    public Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default) =>
+        _cache is null
+            ? LoadRoutesAsync(ct)
+            : _cache.GetOrAddListAsync("routes", () => LoadRoutesAsync(ct));
+
+    private async Task<List<RouteDto>> LoadRoutesAsync(CancellationToken ct)
     {
         var routes = await _repository.GetActiveRoutesAsync(ct);
         return routes.Select(r => new RouteDto
@@ -424,6 +437,7 @@ public class TripService : ITripService
         };
 
         await _repository.AddRouteAsync(route, ct);
+        _cache?.Clear();
         return route.Id;
     }
 

@@ -17,6 +17,7 @@ public static class DependencyInjection
             new InMemoryAuthRateLimiter(
                 provider.GetRequiredService<AuthSecurityOptions>().MaximumRateLimitEntries));
         services.TryAddSingleton<IAuthClientAddressProvider, NullAuthClientAddressProvider>();
+        services.AddSingleton<ReferenceDataCache>();
         services.AddScoped<TripService>();
         services.AddScoped<ITripService>(provider => provider.GetRequiredService<TripService>());
         services.AddScoped<IAdminAccessGuard, AdminAccessGuard>();
