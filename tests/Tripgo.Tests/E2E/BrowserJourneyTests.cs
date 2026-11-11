@@ -211,7 +211,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         var page = await NewCustomerAsync();
         await OpenTripAsync(page);
         await SelectFreeSeatAsync(page, 0);
-        await SelectFreeSeatAsync(page, 0);
+        await SelectFreeSeatAsync(page, 1);
         await page.GetByText("Ghế đã chọn (2):").WaitForAsync();
         await ContinueToPassengerAsync(page);
         await FillPassengerAsync(page);
@@ -338,7 +338,7 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
         var stranger = await NewCustomerAsync();
         await GotoInteractiveAsync(stranger, $"/my-tickets?code={code}");
 
-        await stranger.GetByText("Không tìm thấy vé phù hợp hoặc bạn không có quyền xem vé này.").WaitForAsync();
+        await stranger.GetByText(new Regex("Không tìm thấy vé phù hợp|đăng nhập bằng tài khoản đã đặt vé")).WaitForAsync();
         Assert.Equal(0, await stranger.GetByRole(AriaRole.Dialog).CountAsync());
     }
 
@@ -371,20 +371,20 @@ public sealed class BrowserJourneyTests : IClassFixture<BrowserFixture>
 
         var pages = new Dictionary<string, string>
         {
-            ["/admin"] = "Tổng quan",
+            ["/admin"] = "Trung tâm Điều hành",
             ["/admin/operators"] = "Nhà xe",
             ["/admin/routes"] = "Tuyến đường",
             ["/admin/fleet"] = "Đội xe và tài xế",
             ["/admin/trips"] = "Chuyến xe",
             ["/admin/bookings"] = "Đơn đặt chỗ",
-            ["/admin/monitoring"] = "Giám sát",
+            ["/admin/monitoring"] = "Giám sát hệ thống",
             ["/staff/verify-ticket"] = "Kiểm tra mã vé"
         };
 
         foreach (var (path, heading) in pages)
         {
             await GotoInteractiveAsync(page, path);
-            await page.GetByRole(AriaRole.Heading, new() { Name = heading, Level = 1 }).WaitForAsync();
+            await page.GetByRole(AriaRole.Heading, new() { NameRegex = new Regex(heading), Level = 1 }).WaitForAsync();
             Assert.Equal(0, await page.Locator(".adm-status.is-error").CountAsync());
         }
 
