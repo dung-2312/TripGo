@@ -72,6 +72,20 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 });
+// Compress static text assets (CSS/JS/SVG). HTML and JSON are deliberately excluded: they can carry
+// antiforgery tokens, and compressing secret-bearing responses over HTTPS exposes them to BREACH.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = new[]
+    {
+        "text/css",
+        "text/javascript",
+        "application/javascript",
+        "image/svg+xml",
+        "application/wasm"
+    };
+});
 builder.Services.AddSingleton<ISignInExchangeStore, SignInExchangeStore>();
 builder.Services.AddScoped<IBookingSessionContext, BookingSessionContext>();
 builder.Services.AddHostedService<BookingExpirationWorker>();
@@ -258,6 +272,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseResponseCompression();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseMiddleware<BookingSessionMiddleware>();

@@ -628,29 +628,8 @@
                                                 }
                                             </div>
 
-                                        <!-- SEAT-HOLD COUNTDOWN BANNER (Task 5) -->
-                                        @if (bookingStep >= 1 && bookingStep <= 3 && !string.IsNullOrEmpty(countdownText))
-                                        {
-                                            var isUrgent = holdExpiresAt != null && (holdExpiresAt.Value - DateTimeOffset.UtcNow).TotalSeconds < 120;
-                                            <div class="tg-hold-banner @(isUrgent ? "tg-hold-urgent" : "") mb-3">
-                                                <div class="d-flex align-items-center gap-3">
-                                                    <div class="tg-hold-time-badge @(isUrgent ? "tg-pulse-timer" : "")">
-                                                        <i class="bi bi-clock-history me-1"></i> @countdownText
-                                                    </div>
-                                                    <div>
-                                                        <strong class="text-dark small d-block">
-                                                            @(isUrgent ? "⚠️ Sắp hết hạn giữ chỗ! Vui lòng hoàn tất trong thời gian trên." : "Thời gian giữ chỗ còn lại trên máy chủ:")
-                                                        </strong>
-                                                        <span class="text-muted" style="font-size: 0.8rem;">
-                                                            Ghế của bạn được bảo lưu 10 phút. Hệ thống máy chủ tự động giải phóng ghế nếu quá hạn.
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <span class="badge bg-white text-primary border shadow-xs d-none d-md-inline-flex align-items-center gap-1 px-3 py-2">
-                                                    <i class="bi bi-shield-lock-fill text-success"></i> Khóa máy chủ 10 phút
-                                                </span>
-                                            </div>
-                                        }
+                                        <!-- SEAT-HOLD COUNTDOWN BANNER: owns its own timer -->
+                                        <HoldCountdown ExpiresAt="holdExpiresAt" Visible="@(bookingStep >= 1 && bookingStep <= 3)" OnExpired="HandleHoldExpired" />
 
                                         <!-- STEP 0: SƠ ĐỒ CHỌN GIƯỜNG NẰM 2 TẦNG (Task 4) -->
                                         @if (bookingStep == 0)
@@ -694,75 +673,7 @@
                                                 </button>
                                             </div>
 
-                                            <div class="row g-3">
-                                                @foreach (var floor in selectedTripDetail.Seats.GroupBy(s => s.Floor).OrderBy(g => g.Key))
-                                                {
-                                                    <div class="col-md-6">
-                                                        <div class="tg-bus-cabin p-3 mb-2 h-100 rounded-4">
-                                                            <div class="tg-cabin-cockpit rounded-3 mb-3">
-                                                                <div class="tg-cockpit-steering">
-                                                                    <i class="bi bi-steering-wheel"></i>
-                                                                    <span>BÁC TÀI / ĐẦU XE</span>
-                                                                </div>
-                                                                <div class="tg-cockpit-door">
-                                                                    <i class="bi bi-door-open-fill me-1"></i> CỬA LÊN XUỐNG
-                                                                </div>
-                                                            </div>
-
-                                                            <div class="fw-bold text-primary mb-3 text-center small text-uppercase" style="letter-spacing: 0.5px;">
-                                                                <i class="bi bi-layers-fill me-1"></i> TẦNG @floor.Key (@(floor.Key == 1 ? "Tầng dưới" : "Tầng trên"))
-                                                            </div>
-
-                                                            <div class="d-flex flex-column gap-2">
-                                                                @{ var splitColumn = (int)Math.Ceiling(floor.Max(s => s.Column) / 2d); }
-                                                                @foreach (var rowGroup in floor.GroupBy(s => s.Row).OrderBy(g => g.Key))
-                                                                {
-                                                                    <div class="d-flex justify-content-between align-items-center gap-2">
-                                                                        <!-- Dãy bên trái (Column 1) -->
-                                                                        <div class="d-flex gap-2">
-                                                                            @foreach (var seat in rowGroup.Where(s => s.Column <= splitColumn).OrderBy(s => s.Column))
-                                                                            {
-                                                                                <button type="button" class="tg-seat-berth @(GetSeatClass(seat))"
-                                                                                        disabled="@(!seat.IsAvailable)"
-                                                                                        aria-pressed="@(selectedSeats.Contains(seat.SeatCode) ? "true" : "false")"
-                                                                                        aria-label="Ghế @seat.SeatCode, @GetSeatStatusText(seat)"
-                                                                                        @onclick="() => ToggleSeat(seat.SeatCode)"
-                                                                                        title="Ghế @seat.SeatCode - @GetSeatStatusText(seat)">
-                                                                                    <div class="tg-berth-pillow"></div>
-                                                                                    <span class="tg-berth-code">@seat.SeatCode</span>
-                                                                                    <span class="tg-berth-price">@((seat.Price > 0 ? seat.Price : selectedTripDetail.BasePrice).ToString("N0"))đ</span>
-                                                                                </button>
-                                                                            }
-                                                                        </div>
-
-                                                                        <!-- Lối đi giữa xe -->
-                                                                        <div class="tg-cabin-aisle">
-                                                                            <span class="tg-cabin-aisle-pill">Lối đi</span>
-                                                                        </div>
-
-                                                                        <!-- Dãy bên phải (Column 2) -->
-                                                                        <div class="d-flex gap-2">
-                                                                            @foreach (var seat in rowGroup.Where(s => s.Column > splitColumn).OrderBy(s => s.Column))
-                                                                            {
-                                                                                <button type="button" class="tg-seat-berth @(GetSeatClass(seat))"
-                                                                                        disabled="@(!seat.IsAvailable)"
-                                                                                        aria-pressed="@(selectedSeats.Contains(seat.SeatCode) ? "true" : "false")"
-                                                                                        aria-label="Ghế @seat.SeatCode, @GetSeatStatusText(seat)"
-                                                                                        @onclick="() => ToggleSeat(seat.SeatCode)"
-                                                                                        title="Ghế @seat.SeatCode - @GetSeatStatusText(seat)">
-                                                                                    <div class="tg-berth-pillow"></div>
-                                                                                    <span class="tg-berth-code">@seat.SeatCode</span>
-                                                                                    <span class="tg-berth-price">@((seat.Price > 0 ? seat.Price : selectedTripDetail.BasePrice).ToString("N0"))đ</span>
-                                                                                </button>
-                                                                            }
-                                                                        </div>
-                                                                    </div>
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                }
-                                            </div>
+                                            <SeatMap Seats="selectedTripDetail.Seats" BasePrice="selectedTripDetail.BasePrice" SelectedSeats="selectedSeats" OnToggle="ToggleSeat" />
 
                                             <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top flex-wrap gap-2">
                                                 <div class="d-flex align-items-center gap-3">
@@ -1752,8 +1663,6 @@
     private decimal confirmedTotalAmount;
     private string? activeHoldToken;
     private DateTimeOffset? holdExpiresAt;
-    private CancellationTokenSource? countdownCts;
-    private string countdownText = "10:00";
     private bool isHoldingSeats;
     private bool isRefreshingSeats;
     private string selectedPaymentMethod = "SANDBOX_ATM";
@@ -1923,15 +1832,6 @@
         return location != null && popularRoutes.Any(r => r.DestinationLocationId == location.Id);
     }
 
-    private static string GetSeatStatusText(SeatLayoutItemDto seat) => seat.Status switch
-    {
-        "Available" => "còn trống",
-        "Held" => "đang được giữ",
-        "Booked" => "đã bán",
-        "Blocked" => "không mở bán",
-        _ => seat.IsAvailable ? "còn trống" : "không khả dụng"
-    };
-
     private async Task RefreshSeatsAsync()
     {
         if (selectedTripDetail == null || isRefreshingSeats)
@@ -1981,8 +1881,7 @@
                 return;
             }
 
-            StopHoldCountdown();
-            activeHoldToken = null;
+                activeHoldToken = null;
             holdExpiresAt = null;
             confirmedBookingCode = null;
             selectedSeats.Clear();
@@ -2227,13 +2126,6 @@
         searchModel.DepartureDate = VietnamTime.Today().AddDays(daysOffset);
     }
 
-    private string GetSeatClass(SeatLayoutItemDto seat)
-    {
-        if (!seat.IsAvailable) return "seat-booked";
-        if (selectedSeats.Contains(seat.SeatCode)) return "seat-selected";
-        return "seat-available";
-    }
-
     private async Task ToggleSelectTrip(long tripId)
     {
         previewStopsTripId = null;
@@ -2306,7 +2198,6 @@
             }
         }
 
-        StopHoldCountdown();
         activeHoldToken = null;
         holdExpiresAt = null;
         selectedTripId = null;
@@ -2375,7 +2266,6 @@
             {
                 activeHoldToken = holdResult.HoldToken;
                 holdExpiresAt = holdResult.ExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(10);
-                StartHoldCountdown();
                 if (selectedPickupPoint == null && selectedTripDetail.PickupPoints.Count == 1)
                 {
                     selectedPickupPoint = selectedTripDetail.PickupPoints[0];
@@ -2405,48 +2295,6 @@
         }
     }
 
-    private void StartHoldCountdown()
-    {
-        StopHoldCountdown();
-        countdownCts = new CancellationTokenSource();
-        var token = countdownCts.Token;
-
-        _ = Task.Run(async () =>
-        {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-            while (!token.IsCancellationRequested && await timer.WaitForNextTickAsync(token))
-            {
-                if (holdExpiresAt == null) break;
-                var remaining = holdExpiresAt.Value - DateTimeOffset.UtcNow;
-                if (remaining <= TimeSpan.Zero)
-                {
-                    countdownText = "00:00";
-                    await InvokeAsync(HandleHoldExpired);
-                    break;
-                }
-                else
-                {
-                    countdownText = $"{remaining.Minutes:D2}:{remaining.Seconds:D2}";
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-        }, token);
-    }
-
-    private void StopHoldCountdown()
-    {
-        try
-        {
-            countdownCts?.Cancel();
-            countdownCts?.Dispose();
-        }
-        catch { }
-        finally
-        {
-            countdownCts = null;
-        }
-    }
-
     private async Task HandleHoldExpired()
     {
         // A payment in progress decides the outcome itself; never pull state out from under it.
@@ -2455,7 +2303,6 @@
             return;
         }
 
-        StopHoldCountdown();
         activeHoldToken = null;
         holdExpiresAt = null;
         confirmedBookingCode = null;
@@ -2632,8 +2479,7 @@
 
             if (bookingAfterPayment?.Status == "Confirmed" && bookingAfterPayment.PaymentStatus == "Paid")
             {
-                StopHoldCountdown();
-                confirmedTransactionCode = payResult.TransactionCode ?? bookingAfterPayment.TransactionCode;
+                        confirmedTransactionCode = payResult.TransactionCode ?? bookingAfterPayment.TransactionCode;
                 confirmedPaymentMethod = selectedPaymentMethod switch
                 {
                     "SANDBOX_ATM" => "Thẻ / chuyển khoản (mô phỏng)",
@@ -2686,7 +2532,6 @@
 
     public void Dispose()
     {
-        StopHoldCountdown();
     }
 
     private static string GetRouteImage(RouteDto route)

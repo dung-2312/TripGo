@@ -1,0 +1,88 @@
+@* Two-deck seat map. Rows are grouped once per seat list instead of on every render. *@
+<div class="row g-3">
+    @foreach (var floor in _floors)
+    {
+        <div class="col-md-6" @key="floor.Number">
+            <div class="tg-bus-cabin p-3 mb-2 h-100 rounded-4">
+                <div class="tg-cabin-cockpit rounded-3 mb-3">
+                    <div class="tg-cockpit-steering">
+                        <i class="bi bi-steering-wheel"></i>
+                        <span>BÁC TÀI / ĐẦU XE</span>
+                    </div>
+                    <div class="tg-cockpit-door">
+                        <i class="bi bi-door-open-fill me-1"></i> CỬA LÊN XUỐNG
+                    </div>
+                </div>
+
+                <div class="fw-bold text-primary mb-3 text-center small text-uppercase" style="letter-spacing: 0.5px;">
+                    <i class="bi bi-layers-fill me-1"></i> TẦNG @floor.Number (@(floor.Number == 1 ? "Tầng dưới" : "Tầng trên"))
+                </div>
+
+                <div class="d-flex flex-column gap-2">
+                    @foreach (var row in floor.Rows)
+                    {
+                        <div class="d-flex justify-content-between align-items-center gap-2" @key="row.Number">
+                            <div class="d-flex gap-2">
+                                @foreach (var seat in row.Left)
+                                {
+                                    <SeatButton Seat="seat" BasePrice="BasePrice" IsSelected="SelectedSeats.Contains(seat.SeatCode)" OnToggle="OnToggle" @key="seat.SeatCode" />
+                                }
+                            </div>
+
+                            <div class="tg-cabin-aisle">
+                                <span class="tg-cabin-aisle-pill">Lối đi</span>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                @foreach (var seat in row.Right)
+                                {
+                                    <SeatButton Seat="seat" BasePrice="BasePrice" IsSelected="SelectedSeats.Contains(seat.SeatCode)" OnToggle="OnToggle" @key="seat.SeatCode" />
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<SeatLayoutItemDto> Seats { get; set; } = new();
+    [Parameter] public decimal BasePrice { get; set; }
+    [Parameter] public HashSet<string> SelectedSeats { get; set; } = new();
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+
+    private sealed record RowGroup(int Number, List<SeatLayoutItemDto> Left, List<SeatLayoutItemDto> Right);
+    private sealed record FloorGroup(int Number, List<RowGroup> Rows);
+
+    private List<SeatLayoutItemDto>? _builtFrom;
+    private List<FloorGroup> _floors = new();
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_builtFrom, Seats))
+        {
+            return;
+        }
+
+        _builtFrom = Seats;
+        _floors = Seats
+            .GroupBy(s => s.Floor)
+            .OrderBy(g => g.Key)
+            .Select(floor =>
+            {
+                var splitColumn = (int)Math.Ceiling(floor.Max(s => s.Column) / 2d);
+                var rows = floor
+                    .GroupBy(s => s.Row)
+                    .OrderBy(g => g.Key)
+                    .Select(row => new RowGroup(
+                        row.Key,
+                        row.Where(s => s.Column <= splitColumn).OrderBy(s => s.Column).ToList(),
+                        row.Where(s => s.Column > splitColumn).OrderBy(s => s.Column).ToList()))
+                    .ToList();
+                return new FloorGroup(floor.Key, rows);
+            })
+            .ToList();
+    }
+}

@@ -106,6 +106,35 @@ public sealed class AdminRepository : IAdminRepository
             IsSandbox = b.IsDemoBooking
         }).ToList();
 
+        // One conditional-aggregate query per table instead of one COUNT round trip per figure.
+        var tripCounts = await _context.Trips.AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Upcoming = g.Count(t => t.Status == TripStatus.Scheduled && t.DepartureTime > now),
+                Sandbox = g.Count(t => t.IsDemoTrip && t.Status == TripStatus.Scheduled && t.DepartureTime > now),
+                Reference = g.Count(t => !t.IsDemoTrip && t.Status == TripStatus.Scheduled && t.DepartureTime > now),
+                Cancelled = g.Count(t => t.Status == TripStatus.Cancelled)
+            })
+            .FirstOrDefaultAsync(ct);
+        var operatorCounts = await _context.Operators.AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Active = g.Count(o => o.IsActive),
+                Inactive = g.Count(o => !o.IsActive),
+                Verified = g.Count(o => o.IsVerified)
+            })
+            .FirstOrDefaultAsync(ct);
+        var emailCounts = await _context.BookingConfirmationEmailOutbox.AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Pending = g.Count(e => e.Status == BookingConfirmationEmailOutbox.Pending),
+                Failed = g.Count(e => e.Status == BookingConfirmationEmailOutbox.Failed)
+            })
+            .FirstOrDefaultAsync(ct);
+
         return new AdminDashboardDto
         {
             TotalBookings = bookingCounts.Sum(x => x.Count),
@@ -113,21 +142,21 @@ public sealed class AdminRepository : IAdminRepository
             ConfirmedBookings = Bookings(BookingStatus.Confirmed),
             CancelledBookings = Bookings(BookingStatus.Cancelled),
             ExpiredBookings = Bookings(BookingStatus.Expired),
-            UpcomingTrips = await _context.Trips.CountAsync(t => t.Status == TripStatus.Scheduled && t.DepartureTime > now, ct),
-            SandboxTrips = await _context.Trips.CountAsync(t => t.IsDemoTrip && t.Status == TripStatus.Scheduled && t.DepartureTime > now, ct),
-            ReferenceTrips = await _context.Trips.CountAsync(t => !t.IsDemoTrip && t.Status == TripStatus.Scheduled && t.DepartureTime > now, ct),
-            CancelledTrips = await _context.Trips.CountAsync(t => t.Status == TripStatus.Cancelled, ct),
-            ActiveOperators = await _context.Operators.CountAsync(o => o.IsActive, ct),
-            InactiveOperators = await _context.Operators.CountAsync(o => !o.IsActive, ct),
-            VerifiedOperators = await _context.Operators.CountAsync(o => o.IsVerified, ct),
+            UpcomingTrips = tripCounts?.Upcoming ?? 0,
+            SandboxTrips = tripCounts?.Sandbox ?? 0,
+            ReferenceTrips = tripCounts?.Reference ?? 0,
+            CancelledTrips = tripCounts?.Cancelled ?? 0,
+            ActiveOperators = operatorCounts?.Active ?? 0,
+            InactiveOperators = operatorCounts?.Inactive ?? 0,
+            VerifiedOperators = operatorCounts?.Verified ?? 0,
             ActiveRoutes = await _context.Routes.CountAsync(r => r.IsActive, ct),
             ActiveBuses = await _context.Buses.CountAsync(b => b.IsActive, ct),
             SandboxPaidAmount = sandboxPaid?.Total,
             SandboxPaidTransactions = sandboxPaid?.Count ?? 0,
             RealPaidAmount = realPaid?.Total,
             RealPaidTransactions = realPaid?.Count ?? 0,
-            EmailsPending = await _context.BookingConfirmationEmailOutbox.CountAsync(e => e.Status == BookingConfirmationEmailOutbox.Pending, ct),
-            EmailsFailed = await _context.BookingConfirmationEmailOutbox.CountAsync(e => e.Status == BookingConfirmationEmailOutbox.Failed, ct),
+            EmailsPending = emailCounts?.Pending ?? 0,
+            EmailsFailed = emailCounts?.Failed ?? 0,
             PaymentEventsNeedingReview = await _context.PaymentWebhookEvents.CountAsync(e => reviewOutcomes.Contains(e.Outcome), ct),
             TopRoutes = topRoutes,
             RecentBookings = recentBookings
