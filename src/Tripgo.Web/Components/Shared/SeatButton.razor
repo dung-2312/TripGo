@@ -1,0 +1,51 @@
+<button type="button" class="tg-seat-berth @CssClass"
+        disabled="@(!Seat.IsAvailable)"
+        aria-pressed="@(IsSelected ? "true" : "false")"
+        aria-label="Ghế @Seat.SeatCode, @StatusText"
+        @onclick="() => OnToggle.InvokeAsync(Seat.SeatCode)"
+        title="Ghế @Seat.SeatCode - @StatusText">
+    <div class="tg-berth-pillow"></div>
+    <span class="tg-berth-code">@Seat.SeatCode</span>
+    <span class="tg-berth-price">@((Seat.Price > 0 ? Seat.Price : BasePrice).ToString("N0"))đ</span>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public SeatLayoutItemDto Seat { get; set; } = default!;
+    [Parameter] public decimal BasePrice { get; set; }
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+
+    private string CssClass =>
+        !Seat.IsAvailable ? "seat-booked" : IsSelected ? "seat-selected" : "seat-available";
+
+    private string StatusText => Seat.Status switch
+    {
+        "Available" => "còn trống",
+        "Held" => "đang được giữ",
+        "Booked" => "đã bán",
+        "Blocked" => "không mở bán",
+        _ => Seat.IsAvailable ? "còn trống" : "không khả dụng"
+    };
+
+    // Re-render only when something this seat displays has changed.
+    private SeatLayoutItemDto? _lastSeat;
+    private bool _lastSelected;
+    private decimal _lastBasePrice;
+    private string? _lastStatus;
+    private bool _lastAvailable;
+
+    protected override bool ShouldRender()
+    {
+        var changed = !ReferenceEquals(_lastSeat, Seat) ||
+                      _lastSelected != IsSelected ||
+                      _lastBasePrice != BasePrice ||
+                      _lastStatus != Seat.Status ||
+                      _lastAvailable != Seat.IsAvailable;
+        _lastSeat = Seat;
+        _lastSelected = IsSelected;
+        _lastBasePrice = BasePrice;
+        _lastStatus = Seat.Status;
+        _lastAvailable = Seat.IsAvailable;
+        return changed;
+    }
+}

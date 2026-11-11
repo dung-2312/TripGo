@@ -1,0 +1,110 @@
+@implements IDisposable
+
+@* Owns the 1-second hold timer so only this banner re-renders each tick, not the whole booking page. *@
+@if (Visible)
+{
+    var isUrgent = ExpiresAt != null && _remaining.TotalSeconds < 120;
+    <div class="tg-hold-banner @(isUrgent ? "tg-hold-urgent" : "") mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="tg-hold-time-badge @(isUrgent ? "tg-pulse-timer" : "")">
+                <i class="bi bi-clock-history me-1"></i> @_text
+            </div>
+            <div>
+                <strong class="text-dark small d-block">
+                    @(isUrgent ? "⚠️ Sắp hết hạn giữ chỗ! Vui lòng hoàn tất trong thời gian trên." : "Thời gian giữ chỗ còn lại trên máy chủ:")
+                </strong>
+                <span class="text-muted" style="font-size: 0.8rem;">
+                    Ghế của bạn được bảo lưu 10 phút. Hệ thống máy chủ tự động giải phóng ghế nếu quá hạn.
+                </span>
+            </div>
+        </div>
+        <span class="badge bg-white text-primary border shadow-xs d-none d-md-inline-flex align-items-center gap-1 px-3 py-2">
+            <i class="bi bi-shield-lock-fill text-success"></i> Khóa máy chủ 10 phút
+        </span>
+    </div>
+}
+
+@code {
+    /// <summary>When the seat hold ends; null while no hold is active.</summary>
+    [Parameter] public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>Whether the banner is drawn. The timer runs either way so expiry is never missed.</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    [Parameter] public EventCallback OnExpired { get; set; }
+
+    private CancellationTokenSource? _cts;
+    private DateTimeOffset? _timerFor;
+    private TimeSpan _remaining = TimeSpan.FromMinutes(10);
+    private string _text = "10:00";
+
+    protected override void OnParametersSet()
+    {
+        if (_timerFor == ExpiresAt)
+        {
+            return;
+        }
+
+        Stop();
+        _timerFor = ExpiresAt;
+        if (ExpiresAt == null)
+        {
+            _remaining = TimeSpan.FromMinutes(10);
+            _text = "10:00";
+            return;
+        }
+
+        UpdateText();
+        _cts = new CancellationTokenSource();
+        _ = RunAsync(_cts.Token);
+    }
+
+    private void UpdateText()
+    {
+        _remaining = ExpiresAt!.Value - DateTimeOffset.UtcNow;
+        _text = _remaining <= TimeSpan.Zero ? "00:00" : $"{_remaining.Minutes:D2}:{_remaining.Seconds:D2}";
+    }
+
+    private async Task RunAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                UpdateText();
+                if (_remaining <= TimeSpan.Zero)
+                {
+                    await InvokeAsync(() => OnExpired.InvokeAsync());
+                    return;
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void Stop()
+    {
+        try
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _cts = null;
+        }
+    }
+
+    public void Dispose() => Stop();
+}
