@@ -10,7 +10,7 @@ namespace Tripgo.Tests;
 internal static class TestDatabase
 {
     private const string TeamDefault =
-        @"Server=localhost\MSSQLSERVER01;Database=TripgoDb_IsolatedTest;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true;";
+        @"Server=localhost\MSSQLSERVER01;Database=TripgoDb_IsolatedTest;Trusted_Connection=True;TrustServerCertificate=True;";
 
     public static string ConnectionString { get; } = Resolve();
 

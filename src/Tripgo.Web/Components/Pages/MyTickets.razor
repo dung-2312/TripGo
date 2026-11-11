@@ -94,6 +94,11 @@
                                 <i class="bi bi-box-arrow-in-right me-1"></i> Đăng nhập ngay
                             </a>
                         </NotAuthorized>
+                        <Authorized>
+                            <a href="/auth/logout" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold shadow-sm">
+                                <i class="bi bi-box-arrow-right me-1"></i> Đổi tài khoản khác
+                            </a>
+                        </Authorized>
                     </AuthorizeView>
                 }
                 <button type="button" class="btn-close" @onclick="() => actionAlertMessage = null" aria-label="Close"></button>
@@ -111,7 +116,7 @@
                             @(string.IsNullOrWhiteSpace(context.User.Identity?.Name) ? "U" : context.User.Identity.Name.Substring(0, 1).ToUpper())
                         </div>
                         <div>
-                            <div class="fw-bold text-dark">Xin chào, @context.User.Identity?.Name!</div>
+                            <div class="fw-bold text-dark">Xin chào, @(string.IsNullOrWhiteSpace(context.User.Identity?.Name) ? "Quý khách" : context.User.Identity.Name)!</div>
                             <small class="text-muted">
                                 <i class="bi bi-check-circle-fill text-success me-1"></i>
                                 Các đơn đặt chỗ của bạn được tự động đồng bộ hóa trên mọi thiết bị.
@@ -366,7 +371,7 @@
                                     </div>
                                 </div>
 
-                                <!-- Stub Action Buttons -->
+                                <!-- Action Buttons -->
                                 <div class="d-flex flex-column gap-2 mt-2">
                                     <button type="button" class="btn btn-primary fw-bold rounded-pill shadow-sm py-2 d-flex align-items-center justify-content-center gap-2"
                                             @onclick="() => OpenTicketModal(ticket)">
@@ -374,40 +379,20 @@
                                         <span>Xem thông tin đặt chỗ</span>
                                     </button>
 
+                                    <!-- REALTIME MAP BUTTON -->
+                                    <button type="button" class="btn btn-outline-primary fw-bold rounded-pill shadow-sm py-2 d-flex align-items-center justify-content-center gap-2"
+                                            @onclick="() => OpenRouteMapModal(ticket)">
+                                        <i class="bi bi-geo-alt-fill text-danger"></i>
+                                        <span>Xem lộ trình & Trạm dừng chân</span>
+                                    </button>
+
                                     @if (CanCancel(ticket))
                                     {
-                                        @if (confirmingCancelId == ticket.BookingId)
-                                        {
-                                            <div class="p-2 border border-danger rounded-3 bg-danger-subtle text-center">
-                                                <div class="small fw-bold text-danger mb-2">Hủy đơn đặt chỗ này?</div>
-                                                <div class="d-flex gap-2 justify-content-center">
-                                                    <button class="btn btn-danger btn-sm fw-bold px-3 rounded-pill"
-                                                            disabled="@isCancelling"
-                                                            @onclick="() => ExecuteCancelAsync(ticket)">
-                                                        @if (isCancelling)
-                                                        {
-                                                            <span class="spinner-border spinner-border-sm"></span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span>Xác nhận</span>
-                                                        }
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm rounded-pill"
-                                                            disabled="@isCancelling"
-                                                            @onclick="() => confirmingCancelId = null">
-                                                        Đóng
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <button type="button" class="btn btn-outline-danger btn-sm rounded-pill py-2"
-                                                    @onclick="() => confirmingCancelId = ticket.BookingId">
-                                                <i class="bi bi-x-circle me-1"></i> Hủy đặt chỗ
-                                            </button>
-                                        }
+                                        <button type="button" class="btn btn-outline-danger btn-sm rounded-pill py-2 fw-bold d-flex align-items-center justify-content-center gap-1"
+                                                @onclick="() => OpenCancelModal(ticket)">
+                                            <i class="bi bi-x-circle me-1"></i>
+                                            <span>@(ticket.BookingStatus == "Confirmed" ? "Hủy vé (Hoàn 50% tiền)" : "Hủy đặt chỗ")</span>
+                                        </button>
                                     }
                                 </div>
                             </div>
@@ -649,15 +634,18 @@
                         <a href="@GetReturnTripUrl(selectedDetailTicket)" class="btn btn-warning rounded-pill px-3 fw-bold text-dark shadow-sm">
                             <i class="bi bi-arrow-left-right me-1"></i> Đặt chiều về
                         </a>
+                        <button type="button" class="btn btn-outline-primary rounded-pill px-3 fw-bold" @onclick="() => OpenRouteMapModal(selectedDetailTicket)">
+                            <i class="bi bi-map-fill me-1 text-danger"></i> Xem bản đồ lộ trình (Realtime)
+                        </button>
                     </div>
                     <div class="d-flex gap-2">
                         @if (CanCancel(selectedDetailTicket))
                         {
-                            <button type="button" class="btn btn-outline-danger rounded-pill px-3" @onclick="() => ExecuteCancelAsync(selectedDetailTicket)">
-                                <i class="bi bi-x-circle me-1"></i> Hủy đặt chỗ
+                            <button type="button" class="btn btn-outline-danger rounded-pill px-3 fw-bold" @onclick="() => OpenCancelModal(selectedDetailTicket)">
+                                <i class="bi bi-x-circle me-1"></i> @(selectedDetailTicket.BookingStatus == "Confirmed" ? "Hủy vé (Hoàn 50%)" : "Hủy đặt chỗ")
                             </button>
                         }
-                        <button type="button" class="btn btn-secondary rounded-pill px-4" @onclick="CloseTicketModal">
+                        <button type="button" class="btn btn-secondary rounded-pill px-4 fw-bold" @onclick="CloseTicketModal">
                             Đóng
                         </button>
                     </div>
@@ -668,6 +656,283 @@
                     </button>
                     <button type="button" class="btn btn-secondary rounded-pill px-4" @onclick="CloseTicketModal">
                         Đóng
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- CANCELLATION CONFIRMATION MODAL WITH 50% REFUND BREAKDOWN -->
+@if (showCancelModal && ticketToCancel != null)
+{
+    <div class="tg-modal-backdrop" @onclick="CloseCancelModal">
+        <div class="tg-modal-dialog" style="max-width: 580px;" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 rounded-4 shadow-lg overflow-hidden bg-white">
+                <div class="modal-header bg-danger text-white py-3 px-4 d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-exclamation-octagon-fill fs-4"></i>
+                        <h5 class="modal-title fw-bold mb-0">Xác nhận hủy đơn đặt vé</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseCancelModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- Ticket Info Card -->
+                    <div class="bg-light p-3 rounded-3 mb-3 border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Mã đơn đặt chỗ:</span>
+                            <span class="fw-bold font-monospace text-primary">@ticketToCancel.BookingCode</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Chuyến xe:</span>
+                            <span class="fw-bold text-dark">@ticketToCancel.RouteName</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Nhà xe & Vị trí:</span>
+                            <span><strong>@ticketToCancel.OperatorName</strong> (Ghế: @string.Join(", ", ticketToCancel.SeatCodes))</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Giờ khởi hành:</span>
+                            <span class="text-danger fw-bold">@ticketToCancel.DepartureTime.ToVietnam().ToString("HH:mm - dd/MM/yyyy")</span>
+                        </div>
+                    </div>
+
+                    @if (ticketToCancel.BookingStatus == "Confirmed" && ticketToCancel.PaymentStatus == "Paid")
+                    {
+                        <!-- Paid Booking: 50% Refund Policy Breakdown -->
+                        <div class="card border-warning bg-warning-subtle rounded-3 p-3 mb-3">
+                            <div class="d-flex align-items-center gap-2 text-warning-emphasis fw-bold mb-2">
+                                <i class="bi bi-shield-exclamation fs-5"></i>
+                                <span>Chính sách hủy vé & hoàn 50% tiền</span>
+                            </div>
+                            <div class="small text-muted mb-3">
+                                Theo chính sách của nhà xe và quy chế TripGo, vé hủy trước giờ xuất bến sẽ được hoàn trả <strong>50% giá trị đã thanh toán</strong>, 50% còn lại là phí giữ chỗ và hủy vé.
+                            </div>
+                            <div class="bg-white p-3 rounded-3 border">
+                                <div class="d-flex justify-content-between py-1 border-bottom">
+                                    <span class="text-muted">Tổng tiền đã thanh toán:</span>
+                                    <span class="fw-bold">@ticketToCancel.TotalAmount.ToString("N0") đ</span>
+                                </div>
+                                <div class="d-flex justify-content-between py-1 border-bottom text-danger">
+                                    <span>Phí hủy vé theo quy chế (50%):</span>
+                                    <span class="fw-bold">-@GetCancellationFee(ticketToCancel).ToString("N0") đ</span>
+                                </div>
+                                <div class="d-flex justify-content-between pt-2 fs-5">
+                                    <span class="fw-bold text-success">Số tiền thực tế hoàn lại (50%):</span>
+                                    <span class="fw-bolder text-success">@GetRefundAmount(ticketToCancel).ToString("N0") đ</span>
+                                </div>
+                            </div>
+                            <div class="small text-muted mt-2">
+                                <i class="bi bi-info-circle me-1"></i> Số tiền hoàn sẽ được chuyển về tài khoản thanh toán ban đầu của quý khách trong vòng 24 - 48 giờ làm việc.
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Unpaid Pending Booking -->
+                        <div class="card border-info bg-info-subtle rounded-3 p-3 mb-3">
+                            <div class="d-flex align-items-center gap-2 text-info-emphasis fw-bold mb-1">
+                                <i class="bi bi-info-circle fs-5"></i>
+                                <span>Hủy đơn chưa thanh toán</span>
+                            </div>
+                            <div class="small text-muted">
+                                Đơn này chưa thanh toán nên sẽ được hủy miễn phí hoàn toàn. Ghế giữ chỗ sẽ được giải phóng ngay lập tức để người khác có thể đặt.
+                            </div>
+                        </div>
+                    }
+
+                    <div class="alert alert-secondary small rounded-3 mb-0">
+                        <i class="bi bi-exclamation-triangle me-1"></i> Sau khi xác nhận hủy, vé của bạn sẽ không còn giá trị để lên xe. Thao tác này không thể hoàn tác.
+                    </div>
+                </div>
+                <div class="modal-footer bg-light px-4 py-3 d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4 fw-bold" @onclick="CloseCancelModal" disabled="@isCancelling">
+                        Giữ lại đơn đặt vé
+                    </button>
+                    <button type="button" class="btn btn-danger rounded-pill px-4 fw-bold shadow-sm d-flex align-items-center gap-2"
+                            @onclick="() => ExecuteCancelConfirmedAsync(ticketToCancel)" disabled="@isCancelling">
+                        @if (isCancelling)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            <span>Đang xử lý hủy...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check-circle-fill"></i>
+                            <span>@(ticketToCancel.BookingStatus == "Confirmed" ? "Xác nhận hủy đơn (Hoàn 50%)" : "Xác nhận hủy đơn")</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ROAD ROUTE MAP MODAL (OPENSTREETMAP + REAL ROAD ROUTING) -->
+@if (showMapModal && currentRouteMap != null)
+{
+    <div class="tg-modal-backdrop" @onclick="CloseMapModal">
+        <div class="tg-modal-dialog modal-xl" style="max-width: 1100px; width: 95%;" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 rounded-4 shadow-2xl overflow-hidden bg-white">
+                <!-- Modal Header -->
+                <div class="modal-header bg-dark text-white py-3 px-4 d-flex justify-content-between align-items-center border-bottom border-secondary">
+                    <div class="d-flex align-items-center gap-3">
+                        <div style="background:#2563eb;color:white;width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 12px rgba(37,99,235,0.6);">
+                            <i class="bi bi-map-fill"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold fs-5 text-white d-flex align-items-center gap-2">
+                                <span>Lộ trình đường bộ: @currentRouteMap.RouteName</span>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 rounded-pill" style="font-size: 0.75rem;">
+                                    BẢN ĐỒ ĐƯỜNG BỘ
+                                </span>
+                            </div>
+                            <div class="text-white-50 small">
+                                Nhà xe: <strong class="text-white">@currentRouteMap.OperatorName</strong> &bull; Biển số: <span class="badge bg-warning text-dark font-monospace fw-bold">@currentRouteMap.BusLicensePlate</span> &bull; Cự ly: @currentRouteMap.DistanceKm km
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseMapModal" aria-label="Đóng cửa sổ bản đồ"></button>
+                </div>
+
+                <!-- Journey Duration & Endpoints Breakdown -->
+                <div class="bg-light px-4 py-3 border-bottom">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-4">
+                            <div class="p-2 px-3 bg-white rounded-3 border">
+                                <small class="text-success fw-bold d-block"><i class="bi bi-box-arrow-in-right me-1"></i>ĐIỂM ĐÓN ĐÃ CHỌN</small>
+                                <strong class="text-dark d-block text-truncate" title="@currentRouteMap.SelectedPickupPoint.Name">@currentRouteMap.SelectedPickupPoint.Name</strong>
+                                <span class="text-muted small">@currentRouteMap.SelectedPickupPoint.ScheduledTime</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-2 px-3 bg-white rounded-3 border">
+                                <small class="text-danger fw-bold d-block"><i class="bi bi-flag-fill me-1"></i>ĐIỂM TRẢ ĐÃ CHỌN</small>
+                                <strong class="text-dark d-block text-truncate" title="@currentRouteMap.SelectedDropoffPoint.Name">@currentRouteMap.SelectedDropoffPoint.Name</strong>
+                                <span class="text-muted small">@currentRouteMap.SelectedDropoffPoint.ScheduledTime</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-2 px-3 bg-white rounded-3 border">
+                                <small class="text-primary fw-bold d-block"><i class="bi bi-clock-history me-1"></i>THỜI GIAN HÀNH TRÌNH DỰ KIẾN</small>
+                                <strong class="text-dark d-block">@currentRouteMap.DurationSummary</strong>
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    @if (!string.IsNullOrWhiteSpace(currentRouteMap.RoadEstimatedDurationText))
+                                    {
+                                        <span class="badge bg-light text-secondary border" style="font-size:0.7rem;">@currentRouteMap.RoadEstimatedDurationText</span>
+                                    }
+                                    @if (currentRouteMap.RestStopDurationMinutes > 0)
+                                    {
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border" style="font-size:0.7rem;">@currentRouteMap.RestStopDurationMinutes phút nghỉ</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        <i class="bi bi-info-circle me-1"></i>@currentRouteMap.DurationNotice
+                    </div>
+                </div>
+
+                <!-- Modal Body: Map + Stops List Grid -->
+                <div class="p-0">
+                    <div class="row g-0">
+                        <!-- Main Map Canvas -->
+                        <div class="col-lg-8 border-end position-relative" style="min-height: 520px;">
+                            <div id="tripgo-route-map-container" style="height: 520px; width: 100%;"></div>
+
+                            @if (!currentRouteMap.IsRouteFound)
+                            {
+                                <div class="position-absolute top-50 start-50 translate-middle w-75 p-3 bg-white border border-warning rounded-3 shadow text-center" style="z-index: 550;">
+                                    <i class="bi bi-exclamation-triangle-fill text-warning fs-3 d-block mb-2"></i>
+                                    <h6 class="fw-bold text-dark">Chưa thể tải dữ liệu lộ trình đường bộ chi tiết</h6>
+                                    <p class="small text-muted mb-0">@(currentRouteMap.ErrorMessage ?? "Không thể kết nối đến máy chủ định tuyến đường bộ OSRM.")</p>
+                                </div>
+                            }
+
+                            <!-- Map Overlay Controls & Legend -->
+                            <div class="position-absolute bottom-0 start-0 m-3 bg-white p-2 px-3 rounded-4 shadow-sm border small d-flex flex-wrap align-items-center gap-3" style="z-index: 500;">
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-1 px-2 fw-semibold" onclick="tripgoMap.fitRoute()">
+                                    <i class="bi bi-arrows-fullscreen me-1"></i> Toàn tuyến
+                                </button>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#16a34a;"></span>
+                                    <span>Điểm đón</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f59e0b;"></span>
+                                    <span>Trạm dừng nghỉ</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc2626;"></span>
+                                    <span>Điểm trả</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Stop Details & Amenities -->
+                        <div class="col-lg-4 p-3 bg-light overflow-y-auto" style="max-height: 520px;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                                    <i class="bi bi-cup-hot-fill text-warning"></i>
+                                    <span>Trạm dừng nghỉ chân (@currentRouteMap.RestStops.Count)</span>
+                                </h6>
+                            </div>
+
+                            @if (currentRouteMap.HasVerifiedRestStops)
+                            {
+                                <div class="d-flex flex-column gap-3">
+                                    @foreach (var pt in currentRouteMap.RestStops)
+                                    {
+                                        <div class="card border rounded-3 p-3 shadow-sm bg-white position-relative">
+                                            <div class="d-flex justify-content-between align-items-start mb-1">
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">
+                                                    <i class="bi bi-cup-hot-fill me-1"></i> Dừng nghỉ @(pt.StayMinutes ?? 20) phút
+                                                </span>
+                                                <span class="font-monospace fw-bold text-dark small">@pt.ScheduledTime</span>
+                                            </div>
+
+                                            <div class="fw-bold text-dark fs-6 mt-1 mb-1">@pt.Name</div>
+                                            <div class="small text-muted mb-2"><i class="bi bi-geo-alt me-1"></i>@pt.Address</div>
+
+                                            <div class="small text-success bg-success-subtle p-1 px-2 rounded-2 mb-2 border border-success-subtle d-inline-block">
+                                                <i class="bi bi-shield-check me-1"></i>@pt.VerificationStatus
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(pt.Services))
+                                            {
+                                                <div class="small bg-light p-2 rounded-2 text-secondary mb-2 border">
+                                                    <strong>Tiện ích:</strong> @pt.Services
+                                                </div>
+                                            }
+
+                                            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill py-1 mt-1"
+                                                    onclick="tripgoMap.focusPoint(@pt.Latitude, @pt.Longitude, '@pt.Name', 'stop_@pt.Id')">
+                                                <i class="bi bi-crosshair me-1"></i> Xem vị trí này trên bản đồ
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="p-4 text-center bg-white rounded-3 border text-muted small">
+                                    <i class="bi bi-signpost-split fs-2 text-secondary d-block mb-2"></i>
+                                    <strong>Chưa có dữ liệu trạm dừng nghỉ xác thực</strong>
+                                    <p class="text-muted mt-1 mb-0">Trên chặng đường này chưa ghi nhận trạm dừng chân đối tác chính thức. Nhà xe sẽ bố trí điểm dừng nghỉ theo quy trình vận hành thực tế.</p>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="modal-footer bg-light px-4 py-3 d-flex justify-content-between align-items-center">
+                    <div class="text-muted small">
+                        <i class="bi bi-info-circle me-1 text-primary"></i> Lộ trình thực tế được mô phỏng theo dữ liệu đường bộ OpenStreetMap &amp; OSRM.
+                    </div>
+                    <button type="button" class="btn btn-secondary rounded-pill px-4 fw-bold" @onclick="CloseMapModal">
+                        Đóng bản đồ
                     </button>
                 </div>
             </div>
@@ -832,25 +1097,32 @@
                     {
                         if (CanCancel(found))
                         {
-                            confirmingCancelId = found.BookingId;
-                            actionAlertMessage = $"Bạn đang yêu cầu hủy đơn {found.BookingCode}. Vui lòng xác nhận hủy bên dưới.";
-                            actionAlertIsError = false;
+                            OpenCancelModal(found);
                         }
                         else
                         {
-                            actionAlertMessage = $"Đơn đặt chỗ {found.BookingCode} đã được xác nhận/thanh toán. Để hủy vé theo chính sách nhà xe, quý khách vui lòng liên hệ nhà xe {found.OperatorName} hoặc tổng đài TripGo 1900 888684.";
-                            actionAlertIsError = false;
+                            actionAlertMessage = $"Đơn đặt chỗ {found.BookingCode} không đủ điều kiện hủy trực tuyến lúc này (chuyến xe đã hoàn tất hoặc đã hủy trước đó). Vui lòng liên hệ tổng đài 1900 888684.";
+                            actionAlertIsError = true;
                         }
                     }
-                    actionAlertMessage = $"Đã tìm thấy thông tin đơn đặt chỗ {found.BookingCode}.";
-                    actionAlertIsError = false;
+                    else
+                    {
+                        selectedDetailTicket = found;
+                        actionAlertMessage = $"Đã tìm thấy thông tin đơn đặt chỗ {found.BookingCode}.";
+                        actionAlertIsError = false;
+                    }
                 }
                 else
                 {
                     var authState = await AuthStateProvider.GetAuthenticationStateAsync();
                     var isAuthenticated = authState.User?.Identity?.IsAuthenticated == true &&
                                          authState.User.HasClaim(c => c.Type == ClaimTypes.NameIdentifier);
-                    if (!isAuthenticated)
+                    var isAdmin = authState.User?.IsInRole("Admin") == true;
+                    if (isAdmin)
+                    {
+                        actionAlertMessage = "Tài khoản Quản trị viên hiện tại không thể xem vé ở chế độ Khách hàng. Vui lòng bấm 'Đổi tài khoản khác' bên trên.";
+                    }
+                    else if (!isAuthenticated)
                     {
                         actionAlertMessage = $"Đơn đặt chỗ {query} được liên kết với tài khoản thành viên. Quý khách vui lòng đăng nhập bằng tài khoản đã đặt vé để xem và quản lý đơn đặt chỗ này.";
                     }
@@ -950,8 +1222,119 @@
         return $"/search-trips?origin={Uri.EscapeDataString(dest)}&dest={Uri.EscapeDataString(origin)}";
     }
 
-    private static bool CanCancel(CustomerBookingInfoDto ticket) =>
-        ticket.BookingStatus == "PendingPayment" && ticket.PaymentStatus is "Unpaid" or "Failed";
+    private static bool CanCancel(CustomerBookingInfoDto ticket)
+    {
+        if (ticket.BookingStatus == "PendingPayment" && ticket.PaymentStatus is "Unpaid" or "Failed")
+            return true;
+
+        if (ticket.BookingStatus == "Confirmed" && ticket.PaymentStatus == "Paid")
+            return ticket.DepartureTime > DateTimeOffset.UtcNow;
+
+        return false;
+    }
+
+    private static decimal GetRefundAmount(CustomerBookingInfoDto ticket) =>
+        (ticket.BookingStatus == "Confirmed" && ticket.PaymentStatus == "Paid")
+            ? Math.Round(ticket.TotalAmount * 0.5m, 0)
+            : 0m;
+
+    private static decimal GetCancellationFee(CustomerBookingInfoDto ticket) =>
+        (ticket.BookingStatus == "Confirmed" && ticket.PaymentStatus == "Paid")
+            ? ticket.TotalAmount - GetRefundAmount(ticket)
+            : 0m;
+
+    private CustomerBookingInfoDto? ticketToCancel;
+    private bool showCancelModal = false;
+
+    private void OpenCancelModal(CustomerBookingInfoDto ticket)
+    {
+        ticketToCancel = ticket;
+        showCancelModal = true;
+    }
+
+    private void CloseCancelModal()
+    {
+        ticketToCancel = null;
+        showCancelModal = false;
+    }
+
+    private async Task ExecuteCancelConfirmedAsync(CustomerBookingInfoDto ticket)
+    {
+        if (isCancelling) return;
+        isCancelling = true;
+        actionAlertMessage = null;
+
+        try
+        {
+            var wasPaid = ticket.BookingStatus == "Confirmed" && ticket.PaymentStatus == "Paid";
+            var refundAmount = wasPaid ? GetRefundAmount(ticket) : 0m;
+            var feeAmount = wasPaid ? GetCancellationFee(ticket) : 0m;
+            var reason = wasPaid
+                ? $"Khách hàng tự hủy trên web. Hoàn 50% ({refundAmount:N0} đ), phí hủy 50% ({feeAmount:N0} đ)."
+                : "Khách hàng tự hủy trên trang Vé của tôi";
+
+            var success = await BookingService.CancelBookingAsync(ticket.BookingId, reason);
+            if (success)
+            {
+                actionAlertIsError = false;
+                actionAlertMessage = wasPaid
+                    ? $"Đã hủy vé {ticket.BookingCode} thành công. Hệ thống đã xác nhận hoàn 50% số tiền ({refundAmount:N0} đ) cho quý khách trong vòng 24 - 48 giờ làm việc. Ghế đã được hoàn trả lại hệ thống."
+                    : $"Đã hủy đặt chỗ {ticket.BookingCode} thành công. Ghế đã được hoàn trả lại hệ thống.";
+
+                showCancelModal = false;
+                ticketToCancel = null;
+                selectedDetailTicket = null;
+                confirmingCancelId = null;
+                await LoadTicketsAsync();
+            }
+            else
+            {
+                actionAlertIsError = true;
+                actionAlertMessage = "Không thể hủy đơn đặt chỗ này (chuyến xe có thể đã hoàn tất hoặc bạn không có quyền thao tác).";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Booking cancellation failed for booking {BookingId}.", ticket.BookingId);
+            actionAlertIsError = true;
+            actionAlertMessage = "Không thể hủy đơn đặt chỗ lúc này. Vui lòng thử lại sau.";
+        }
+        finally
+        {
+            isCancelling = false;
+        }
+    }
+
+    // REALTIME ROUTE MAP MODAL HANDLERS
+    private TripRouteMapDto? currentRouteMap;
+    private bool showMapModal = false;
+    private bool isLoadingMap = false;
+
+    private async Task OpenRouteMapModal(CustomerBookingInfoDto ticket)
+    {
+        isLoadingMap = true;
+        showMapModal = true;
+        currentRouteMap = await TripService.GetTripRouteMapAsync(ticket.TripId, ticket.PickupPointId, ticket.DropoffPointId);
+        isLoadingMap = false;
+        StateHasChanged();
+
+        if (currentRouteMap != null)
+        {
+            await Task.Delay(250);
+            await JSRuntime.InvokeVoidAsync("tripgoMap.initMap", "tripgo-route-map-container", currentRouteMap);
+        }
+    }
+
+    private async Task CloseMapModal()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("tripgoMap.destroy");
+        }
+        catch { }
+        showMapModal = false;
+        currentRouteMap = null;
+    }
 
     private static bool HasPendingPayment(CustomerBookingInfoDto ticket) =>
         ticket.BookingStatus == "PendingPayment" &&
