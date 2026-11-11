@@ -108,6 +108,16 @@ public class UserProfileDto
     public int TotalBookings { get; set; }
 }
 
+public class LoginAuditLogDto
+{
+    public long Id { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public bool IsSuccessful { get; set; }
+    public string? FailureReason { get; set; }
+    public string? IpAddress { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 public class UpdateProfileRequestDto
 {
     [Required(ErrorMessage = "Vui lòng nhập họ và tên")]

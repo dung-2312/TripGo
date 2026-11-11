@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Tripgo.Application.DTOs;
@@ -14,5 +15,6 @@ public interface IAuthService
     Task<AuthResultDto> ChangePasswordAsync(long userId, ChangePasswordRequestDto request, CancellationToken ct = default);
     Task<AuthResultDto> RequestPasswordResetAsync(string email, CancellationToken ct = default);
     Task<AuthResultDto> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct = default);
+    Task<IReadOnlyList<LoginAuditLogDto>> GetLoginHistoryAsync(long userId, CancellationToken ct = default);
     Task<int> ClaimGuestBookingsAsync(long userId, string guestOwnerIdentifier, CancellationToken ct = default);
 }
